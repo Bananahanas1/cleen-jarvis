@@ -1,9 +1,3 @@
-{
-  "name": "shopify",
-  "version": "0.1.0",
-  "description": "Shopify: read orders, products, customers via Admin API. For e-commerce businesses tracking inventory and fulfillment.",
-  "entry": "plugin.py",
-  "category": "commerce",
-  "auth": "access-token",
-  "auth_hint": "Store {store: 'mystore.myshopify.com', access_token: 'shpat_...'} under 'shopify' in tool_config.json"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:bf0ba50238f80701890917b11b58deb9b9009022749ac5057343f7d9207d582b
+size 381

@@ -1,5 +1,3 @@
-{
-    "description":  "Microsoft CRLSet",
-    "name":  "MicrosoftCRLSet",
-    "version":  "6498.2025.9.4"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:98821f71a1973ac61b45967ce0c121eb598ac6e95abaa23c912d2f33e4237d8c
+size 113

@@ -1,20 +1,3 @@
-{
-  "runtimeOptions": {
-    "tfm": "net8.0",
-    "frameworks": [
-      {
-        "name": "Microsoft.NETCore.App",
-        "version": "8.0.0"
-      },
-      {
-        "name": "Microsoft.AspNetCore.App",
-        "version": "8.0.0"
-      }
-    ],
-    "configProperties": {
-      "System.GC.Server": true,
-      "System.Reflection.Metadata.MetadataUpdater.IsSupported": false,
-      "System.Runtime.Serialization.EnableUnsafeBinaryFormatterSerialization": false
-    }
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:2927e7d9a65748a82c4f265a0c9c1876a5ee233d9f5283881e0966e81ca94e14
+size 488

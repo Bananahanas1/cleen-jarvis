@@ -1,5 +1,3 @@
-{
-  "baseUrl": "https://your-ui-tars-compatible-endpoint/v1",
-  "apiKey": "DO_NOT_COMMIT_REAL_KEY",
-  "model": "your-ui-tars-model"
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:98c11bfe4da00da9615e03796319b6ba373928ce0cdc2ca332c2be80918d89fb
+size 134

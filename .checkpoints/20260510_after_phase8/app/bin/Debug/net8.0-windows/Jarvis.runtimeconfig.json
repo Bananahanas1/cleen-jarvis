@@ -1,18 +1,3 @@
-{
-  "runtimeOptions": {
-    "tfm": "net8.0",
-    "frameworks": [
-      {
-        "name": "Microsoft.NETCore.App",
-        "version": "8.0.0"
-      },
-      {
-        "name": "Microsoft.WindowsDesktop.App",
-        "version": "8.0.0"
-      }
-    ],
-    "configProperties": {
-      "CSWINRT_USE_WINDOWS_UI_XAML_PROJECTIONS": false
-    }
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:a6a31e881a564ce497254b0cc044c32ade3cf5f02c6501e43c8425e8698b2c00
+size 357

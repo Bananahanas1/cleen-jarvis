@@ -1,23 +1,3 @@
-{
-  "runtimeTarget": {
-    "name": ".NETCoreApp,Version=v7.0",
-    "signature": ""
-  },
-  "compilationOptions": {},
-  "targets": {
-    ".NETCoreApp,Version=v7.0": {
-      "OpenCodeServer/1.0.0": {
-        "runtime": {
-          "OpenCodeServer.dll": {}
-        }
-      }
-    }
-  },
-  "libraries": {
-    "OpenCodeServer/1.0.0": {
-      "type": "project",
-      "serviceable": false,
-      "sha512": ""
-    }
-  }
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:34d942b9125bfe9e7fc65f7c505500df62befbd63d9aadf6076cbb02f2cbd6be
+size 434
