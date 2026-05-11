@@ -1,0 +1,921 @@
+﻿<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEUROLINKED &times; JARVIS &mdash; Neural intelligens</title>
+    <meta name="description" content="3D-visualisering av Jarvis neurala hjärna i realtid">
+    <link rel="stylesheet" href="/css/style.css?v=13">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>ðŸ§ </text></svg>">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "/vendor/three.module.js",
+            "three/addons/": "/vendor/"
+        }
+    }
+    </script>
+</head>
+<body>
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <div class="loading-title">NEUROLINKED &times; JARVIS</div>
+        <div class="loading-subtitle">SAMMANLÄNKAD NEURAL INTELLIGENS</div>
+        <div class="loading-bar">
+            <div class="loading-fill" id="loading-fill"></div>
+        </div>
+        <div class="loading-status" id="loading-status">STARTAR DET NEURALA SYSTEMET...</div>
+    </div>
+
+    <!-- 3D Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- Top-Left: Stats Panel -->
+    <div id="stats-panel" class="glass-panel">
+        <div class="stats-title">
+            NEURAL AKTIVITET
+            <div class="live-indicator">
+                <div class="live-dot"></div>
+                LIVE
+                <button id="btn-restart" class="mini-control-btn" title="Starta om simuleringen" style="margin-left:8px; opacity:0.4; cursor:pointer; background:none; border:none; color:#44ffaa; font-size:10px;">↻</button>
+            </div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Neuroner:</span>
+            <span class="stat-value" id="neurons-val">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Synapser:</span>
+            <span class="stat-value" id="synapses-val">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Steg:</span>
+            <span class="stat-value" id="step-val">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Takt:</span>
+            <span class="stat-value live" id="rate-val">--</span>
+        </div>
+        <div id="stage-badge" class="stage-badge stage-EMBRYONIC">EMBRYONIC</div>
+
+        <!-- Neuromodulator Bars -->
+        <div id="neuro-bars">
+            <div class="neuro-bar-row">
+                <span class="neuro-bar-label">DA</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill da" id="bar-da" style="width:50%"></div></div>
+            </div>
+            <div class="neuro-bar-row">
+                <span class="neuro-bar-label">ACh</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill ach" id="bar-ach" style="width:50%"></div></div>
+            </div>
+            <div class="neuro-bar-row">
+                <span class="neuro-bar-label">NE</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill ne" id="bar-ne" style="width:30%"></div></div>
+            </div>
+            <div class="neuro-bar-row">
+                <span class="neuro-bar-label">5HT</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill sht" id="bar-5ht" style="width:50%"></div></div>
+            </div>
+            <div class="neuro-bar-row knowledge-neuro-row">
+                <span class="neuro-bar-label">MIN</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill memory" id="bar-memory" style="width:0%"></div></div>
+            </div>
+            <div class="neuro-bar-row knowledge-neuro-row">
+                <span class="neuro-bar-label">GRAF</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill graph" id="bar-graph" style="width:0%"></div></div>
+            </div>
+            <div class="neuro-bar-row knowledge-neuro-row">
+                <span class="neuro-bar-label">OBS</span>
+                <div class="neuro-bar-track"><div class="neuro-bar-fill obsidian" id="bar-obsidian" style="width:0%"></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right: Brain Regions -->
+    <div id="regions-panel" class="glass-panel">
+        <div class="stats-title">HJÄRNREGIONER</div>
+        <div id="region-list"></div>
+    </div>
+
+    <!-- Region Info (on click) -->
+    <div id="region-info" class="glass-panel">
+        <div class="info-title" id="info-title">--</div>
+        <div class="info-body"  id="info-body">--</div>
+    </div>
+
+    <!-- Bottom-Left: Safety -->
+    <div id="safety-panel" class="glass-panel">
+        <div class="stats-title">SÄKERHETSKÄRNA</div>
+        <div id="safety-status">
+            <div class="safety-status">
+                <span class="safety-icon safety-ok">&#10003;</span>
+                <span class="safety-ok">STARTAR...</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom-Left (above safety): Jarvis Bridge Panel -->
+    <div id="claude-panel" class="glass-panel">
+        <div class="stats-title">
+            JARVIS MINNESBRYGGA
+            <div class="live-indicator" id="claude-indicator">
+                <div class="live-dot" id="claude-dot"></div>
+                <span id="claude-conn-text">VÄNTAR</span>
+            </div>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Interaktioner:</span>
+            <span class="stat-value" id="claude-interactions">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Korttid:</span>
+            <span class="stat-value" id="memory-short-term">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Långtid:</span>
+            <span class="stat-value" id="memory-long-term">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Graphify:</span>
+            <span class="stat-value" id="memory-graph-count">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Obsidian:</span>
+            <span class="stat-value" id="memory-vault-count">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Skärm:</span>
+            <span class="stat-value" id="claude-screen">AV</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Rörelse:</span>
+            <span class="stat-value" id="claude-motion">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">AI:</span>
+            <span class="stat-value" id="memory-ai-model" style="color:#44ffaa;font-size:9px">Jarvis Codex</span>
+        </div>
+        <div class="memory-mini-card">
+            <div><span>Senast sparat</span><strong id="memory-last-saved">Inget nytt ännu</strong></div>
+            <div><span>Källa</span><strong id="memory-last-source">--</strong></div>
+            <div><span>Kvalitet</span><strong id="memory-quality">Väntar</strong></div>
+            <div><span>Återkallning</span><strong id="memory-recall">Ingen ännu</strong></div>
+            <p id="memory-preview">När Jarvis sparar eller återkallar något visas det här.</p>
+        </div>
+        <div class="bridge-button-row">
+            <button class="control-btn" id="btn-video" style="width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;">SPELA IN</button>
+            <button class="control-btn" id="btn-save"  style="width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;">SPARA</button>
+            <button class="control-btn" id="btn-load"  style="width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;">LADDA</button>
+            <button class="control-btn" id="btn-forget-memory" style="width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;">GLÖM</button>
+            <button class="control-btn" id="btn-legacyLlm"  style="display:none;width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;color:#ff8844;" title="AI-chatten hanteras av Jarvis">AI</button>
+        </div>
+    </div>
+
+    <!-- Jarvis Bridge Panel -->
+    <div id="jarvis-panel" class="glass-panel">
+        <div class="stats-title">
+            JARVIS-BRYGGA
+            <div class="live-indicator" id="jarvis-indicator">
+                <div class="live-dot" id="jarvis-dot" style="background:#667;box-shadow:none"></div>
+                <span id="jarvis-conn-text">FRÅNKOPPLAD</span>
+            </div>
+        </div>
+        <div class="bridge-status-copy" id="jarvis-status-text">Väntar på status...</div>
+        <div class="bridge-button-row compact">
+            <button class="control-btn" id="btn-jarvis-refresh" style="width:auto;padding:0 10px;font-size:9px;letter-spacing:1px;">ÅTERANSLUT</button>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Fördröjning:</span>
+            <span class="stat-value" id="jarvis-latency">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Kö:</span>
+            <span class="stat-value" id="jarvis-queue">0</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Modell:</span>
+            <span class="stat-value bridge-model" id="jarvis-model">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Läge:</span>
+            <span class="stat-value bridge-model" id="jarvis-mode">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Minnen:</span>
+            <span class="stat-value" id="jarvis-memories">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Kunskap:</span>
+            <span class="stat-value bridge-model" id="jarvis-knowledge-sync">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Neuroner:</span>
+            <span class="stat-value" id="jarvis-neurons">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Fas:</span>
+            <span class="stat-value" id="jarvis-stage">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Senast:</span>
+            <span class="stat-value bridge-model" id="jarvis-last-event">--</span>
+        </div>
+        <div class="stat-row">
+            <span class="stat-label">Fel:</span>
+            <span class="stat-value bridge-model" id="jarvis-last-error">Inga fel</span>
+        </div>
+        <div id="jarvis-capabilities" class="bridge-chip-grid"></div>
+        <div id="jarvis-activity-log" class="bridge-log"></div>
+    </div>
+
+    <!-- Center Top: disabled legacy chat overlay -->
+    <div id="legacyLlm-panel" class="glass-panel" style="display:none">
+        <div class="stats-title">ÄLDRE AI-CHATT AVSTÄNGD</div>
+        <div id="legacyLlm-messages"></div>
+        <div id="legacyLlm-thinking" style="display:none;font-size:10px;color:#ff8844;padding:4px 0;animation:pulse 1s infinite;">→ Bearbetar...</div>
+    </div>
+
+    <!-- Single Jarvis chat surface. Do not add another bottom composer; C# routes everything through this panel. -->
+    <div id="jarvis-chat-panel" class="glass-panel">
+        <div id="jarvis-chat-header">
+            <span>JARVIS-CHATT</span>
+            <span id="jarvis-chat-subtitle">Codex kan läsa bilder och filer</span>
+        </div>
+        <div id="jarvis-chat-msgs"></div>
+        <div id="jarvis-chat-thinking">&#10145; Tänker...</div>
+        <div id="jarvis-attachments"></div>
+        <div id="jarvis-composer">
+            <button class="control-btn jarvis-round-btn" id="btn-attach" title="Lägg till bilder eller filer">+</button>
+            <button class="control-btn jarvis-round-btn jarvis-mic-btn" id="btn-audio" title="Håll inne för tal till text" aria-label="Tal till text">&#127908;</button>
+            <input type="file" id="jarvis-file-input" multiple hidden>
+            <input type="text" id="jarvis-text-input"
+                   placeholder="Skriv till Jarvis..."
+                   autocomplete="off" spellcheck="false">
+            <button class="control-btn" id="btn-jarvis-send" title="Skicka till Jarvis">Skicka</button>
+        </div>
+    </div>
+
+    <!-- Main Script -->
+    <script type="module">
+    import { Brain3D } from './js/brain3d.js?v=19';
+        import { NeuralDust } from './js/particles.js?v=6';
+        import { Dashboard } from './js/dashboard.js?v=6';
+        import { JarvisBridgeDashboard } from './js/jarvis_bridge.js?v=3';
+        import { KnowledgePanel } from './js/knowledge_panel.js?v=3';
+        import { initPanelDock } from './js/panel_dock.js?v=2';
+        import { BrainWebSocket } from './js/websocket.js?v=4';
+        import { BrainTimeline } from './js/timeline.js?v=5';
+
+        // Den separata AI-chatten i NeuroLinked är avstängd.
+        // Jarvis äger all modellåtkomst via OpenAI.
+        window.setLegacyLlmApiKey = function() {};
+        window.setLegacyLlmModel = function() {};
+        async function callLegacyLlm() {
+            throw new Error('NeuroLinkeds separata AI-chatt är avstängd. Använd Jarvis.');
+        }
+
+        // === State ===
+        let brain3d, dust, dashboard, ws, jarvisBridgeUi, knowledgePanel, panelDock;
+        let lastState = null;
+        let visionActive = false;
+        let audioActive  = false;
+        let legacyLlmVisible  = false;
+        let legacyLlmHistory  = [];
+        let timeline     = null;
+        let _alertLastFiring = {};
+        let dashboardInitialized = false;
+        let dashboardServicesStarted = false;
+        let startupFallbackTimer = null;
+        let dashboardServicesTimer = null;
+
+        // === Smart Alert System ===
+        const _alertCooldowns = {};  // regionName -> timestamp
+        const ALERT_COOLDOWN_MS = 30000; // 30s per region
+        const ALERT_GLOBAL_COOLDOWN_MS = 5000; // max 1 alert per 5s globally
+        let _alertLastShown = 0;
+
+        function showAlert(icon, msg, color = '#ff8844') {
+            const now = performance.now();
+            if (now - _alertLastShown < ALERT_GLOBAL_COOLDOWN_MS) return;
+            _alertLastShown = now;
+
+            const el = document.createElement('div');
+            el.style.cssText = `
+                position:fixed; top:50px; left:50%; transform:translateX(-50%);
+                background:rgba(4,8,18,0.92); border:1px solid ${color}44;
+                border-radius:8px; padding:8px 20px; z-index:100;
+                font-family:'Consolas',monospace; font-size:11px;
+                color:${color}; letter-spacing:1.5px;
+                animation: alertIn 0.3s ease, alertOut 0.4s 2.6s ease forwards;
+                pointer-events:none;
+            `;
+            el.textContent = `${icon}  ${msg}`;
+            document.body.appendChild(el);
+            setTimeout(() => el.remove(), 3200);
+        }
+
+        function checkAlerts(state) {
+            const now = performance.now();
+            const firing = state?.region_firing || {};
+            for (const [name, rate] of Object.entries(firing)) {
+                const prev = _alertLastFiring[name] || 0;
+                const cooldownOk = !_alertCooldowns[name] || (now - _alertCooldowns[name] > ALERT_COOLDOWN_MS);
+                if (cooldownOk) {
+                    if (rate > 0.7 && prev < 0.3) {
+                        const label = name.replace(/_/g,' ').toUpperCase();
+                        showAlert('!', `TOPP: ${label}`, '#ff3399');
+                        _alertCooldowns[name] = now;
+                    } else if (rate > 0.3 && prev < 0.05) {
+                        const label = name.replace(/_/g,' ').toUpperCase();
+                        showAlert('+', `INLÄRNING: ${label}`, '#00e5ff');
+                        _alertCooldowns[name] = now;
+                    }
+                }
+                _alertLastFiring[name] = rate;
+            }
+        }
+
+
+        window._debug = {};
+
+        // SAFE DASHBOARD MODE: disables WebGL/3D and heavy knowledge rendering on weaker PCs.
+        const JARVIS_SAFE_DASHBOARD = true;
+
+        // === Loading ===
+        const loadingFill   = document.getElementById('loading-fill');
+        const loadingStatus = document.getElementById('loading-status');
+        const loadingScreen = document.getElementById('loading');
+
+        function setLoading(pct, msg) {
+            if (loadingFill)   loadingFill.style.width = `${pct}%`;
+            if (loadingStatus) loadingStatus.textContent = msg;
+        }
+
+        // === Init ===
+        async function initSafe() {
+            setLoading(100, 'SAFE MODE AKTIV');
+            setTimeout(() => {
+                loadingScreen.classList.add('hidden');
+                setTimeout(() => { loadingScreen.style.display = 'none'; }, 900);
+            }, 400);
+
+            const notice = document.createElement('div');
+            notice.id = 'safe-mode-notice';
+            notice.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);color:#4ad3f5;font-family:Consolas,monospace;font-size:11px;letter-spacing:1px;z-index:50;pointer-events:none;opacity:0.7;';
+            notice.textContent = 'Jarvis Safe Dashboard är aktiv. 3D-vyn är avstängd för att undvika frysning.';
+            document.body.appendChild(notice);
+
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new BrainWebSocket(`${wsProtocol}//${window.location.host}/ws`);
+            ws.onInit = () => {};
+            ws.onState = (state) => { lastState = state; };
+            ws.connect();
+
+            jarvisBridgeUi = new JarvisBridgeDashboard({ showAlert, sendCommand: (cmd) => ws?.sendCommand(cmd) });
+            jarvisBridgeUi.start();
+
+            panelDock = initPanelDock({ onSnap: (id) => jarvisBridgeUi?.recordLocalEvent(`Panel snäpptes: ${id}`, 'ok') });
+
+            window.jarvisAddMessage = function(role, text) {
+                jarvisBridgeUi?.addMessage(role, text);
+            };
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'jarvis_dashboard_ready' }));
+            }
+
+            const chatInput = document.getElementById('jarvis-text-input');
+            const sendButton = document.getElementById('btn-jarvis-send');
+            async function sendSafeMessage() {
+                if (!chatInput) return;
+                const msg = chatInput.value.trim();
+                if (!msg) return;
+                chatInput.value = '';
+                window.jarvisAddMessage('user', msg);
+                document.getElementById('jarvis-chat-thinking').style.display = 'block';
+                document.getElementById('jarvis-chat-panel').style.display = 'flex';
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage(JSON.stringify({ type: 'jarvis_chat', text: msg, attachments: [] }));
+                } else {
+                    document.getElementById('jarvis-chat-thinking').style.display = 'none';
+                    window.jarvisAddMessage('assistant', 'Öppna via Jarvis.exe för AI-svar (WebView2 krävs).');
+                }
+            }
+            chatInput?.addEventListener('keydown', async (e) => {
+                e.stopPropagation();
+                if (e.key !== 'Enter' || e.shiftKey) return;
+                e.preventDefault();
+                await sendSafeMessage();
+            });
+            sendButton?.addEventListener('click', async () => { await sendSafeMessage(); });
+        }
+
+        async function init() {
+            if (JARVIS_SAFE_DASHBOARD) { await initSafe(); return; }
+            setLoading(10, 'SKAPAR 3D-VY AV HJÄRNAN...');
+            const container = document.getElementById('canvas-container');
+            brain3d = new Brain3D(container);
+
+            setLoading(30, 'STARTAR NEURALT PARTIKELFLÖDE...');
+            // Light mode: keep dashboard responsive on 8GB VRAM / 16GB RAM machines.
+            dust = new NeuralDust(brain3d.scene, 700);
+
+            setLoading(38, 'STARTAR TIDSLINJE...');
+            timeline = new BrainTimeline();
+
+            setLoading(40, 'STARTAR DASHBOARD...');
+            dashboard = new Dashboard();
+
+            setLoading(50, 'ANSLUTER TILL HJÄRNSERVER...');
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${wsProtocol}//${window.location.host}/ws`;
+            ws = new BrainWebSocket(wsUrl);
+            jarvisBridgeUi = new JarvisBridgeDashboard({
+                showAlert,
+                sendCommand: (cmd) => ws?.sendCommand(cmd),
+            });
+            knowledgePanel = new KnowledgePanel({ showAlert });
+
+            function startDashboardServices() {
+                if (dashboardServicesStarted) return;
+                dashboardServicesStarted = true;
+                // The knowledge-map endpoint can take many seconds while Graphify
+                // warms up. Start it only after the brain view has bootstrapped so
+                // the WebSocket init frame and REST fallback cannot be starved.
+                jarvisBridgeUi?.start();
+                dashboardServicesTimer = setTimeout(() => {
+                    knowledgePanel?.start();
+                    panelDock = initPanelDock({
+                        onSnap: (id) => jarvisBridgeUi?.recordLocalEvent(`Panel snäpptes: ${id}`, 'ok'),
+                    });
+                    window._debug.panelDock = panelDock;
+                }, 1800);
+            }
+
+            function completeDashboardStartup(positions, source = 'websocket') {
+                if (dashboardInitialized) return;
+                dashboardInitialized = true;
+                if (startupFallbackTimer) {
+                    clearTimeout(startupFallbackTimer);
+                    startupFallbackTimer = null;
+                }
+
+                setLoading(80, 'LADDAR NEURONPOSITIONER...');
+                try {
+                    brain3d.initNeurons(positions || {});
+                } catch(e) {
+                    console.error('[INIT] initNeurons error:', e);
+                }
+                setLoading(100, 'NEURALA SYSTEMET ÄR ONLINE');
+                window._debug.brain3d = brain3d;
+                window._debug.dust    = dust;
+                window._debug.knowledgePanel = knowledgePanel;
+                window._debug.dashboardBootstrap = source;
+                if (window.chrome && window.chrome.webview) {
+                    // WebView2 diagnostics: C# can tell whether WebSocket or REST completed startup.
+                    window.chrome.webview.postMessage(JSON.stringify({
+                        type: 'dashboard_bootstrap',
+                        source
+                    }));
+                }
+                setTimeout(() => {
+                    loadingScreen.classList.add('hidden');
+                    setTimeout(() => { loadingScreen.style.display = 'none'; }, 900);
+                }, 600);
+                startDashboardServices();
+
+                // Uppdatera Jarvis-bryggans status
+                document.getElementById('claude-conn-text').textContent = 'ANSLUTEN';
+                document.getElementById('claude-dot').style.background = '#44ffaa';
+                document.getElementById('claude-dot').style.boxShadow = '0 0 8px rgba(68,255,170,0.8)';
+            }
+
+            async function hydrateDashboardStateFromRest() {
+                try {
+                    const stateResponse = await fetch('/api/state');
+                    if (!stateResponse.ok) return;
+                    const state = await stateResponse.json();
+                    lastState = state;
+                    dashboard.updateState(state);
+                    brain3d.updateState(state);
+                    checkAlerts(state);
+                    if (timeline) timeline.update(state, performance.now());
+                } catch (error) {
+                    console.warn('[INIT] REST state hydration failed:', error);
+                }
+            }
+
+            async function fetchStartupPositionsViaRest() {
+                if (dashboardInitialized) return;
+                setLoading(65, 'HÄMTAR STARTDATA VIA REST...');
+                try {
+                    const positionsResponse = await fetch('/api/positions');
+                    if (!positionsResponse.ok) {
+                        throw new Error(`HTTP ${positionsResponse.status}`);
+                    }
+
+                    const positions = await positionsResponse.json();
+                    completeDashboardStartup(positions, 'rest');
+                    await hydrateDashboardStateFromRest();
+                } catch (error) {
+                    console.warn('[INIT] REST startup fallback failed:', error);
+                    if (!dashboardInitialized) {
+                        setLoading(50, 'NEUROLINKED SVARAR INTE - FÖRSÖKER IGEN...');
+                        startupFallbackTimer = setTimeout(fetchStartupPositionsViaRest, 4000);
+                    }
+                }
+            }
+
+            ws.onInit = (positions) => completeDashboardStartup(positions, 'websocket');
+
+            ws.onState = (state) => {
+                lastState = state;
+                dashboard.updateState(state);
+                brain3d.updateState(state);
+                checkAlerts(state);
+                if (timeline) timeline.update(state, performance.now());
+            };
+
+            ws.connect();
+            // WebView2 can report the HTTP dashboard as online while missing the first
+            // WebSocket init frame. REST bootstrap prevents the loading screen from
+            // becoming permanent when NeuroLinked is already reachable.
+            startupFallbackTimer = setTimeout(fetchStartupPositionsViaRest, 8000);
+
+            // === Jarvis chat display ===
+            // C# calls this through WebView2 after OpenAI/Groq/Codex finishes.
+            window.jarvisAddMessage = function(role, text) {
+                jarvisBridgeUi?.addMessage(role, text);
+            };
+            if (window.chrome && window.chrome.webview) {
+                // Let C# flush any assistant messages queued while WebView2 loaded.
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'jarvis_dashboard_ready' }));
+            }
+
+            // === Jarvis input handlers ===
+            // The composer owns text, files and mic transcripts for one unified chat flow.
+            const chatInput = document.getElementById('jarvis-text-input');
+            const sendButton = document.getElementById('btn-jarvis-send');
+            const attachButton = document.getElementById('btn-attach');
+            const micButton = document.getElementById('btn-audio');
+            const fileInput = document.getElementById('jarvis-file-input');
+            const attachmentList = document.getElementById('jarvis-attachments');
+            const MAX_ATTACHMENTS = 6;
+            const MAX_FILE_BYTES = 12 * 1024 * 1024;
+            let selectedJarvisFiles = [];
+
+            function formatFileSize(bytes) {
+                if (!bytes) return '0 B';
+                if (bytes < 1024) return `${bytes} B`;
+                if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+                return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+            }
+
+            function renderJarvisAttachments() {
+                if (!attachmentList) return;
+                attachmentList.innerHTML = '';
+                attachmentList.classList.toggle('visible', selectedJarvisFiles.length > 0);
+
+                selectedJarvisFiles.forEach((file, index) => {
+                    const chip = document.createElement('div');
+                    chip.className = 'jarvis-attachment-chip';
+
+                    const name = document.createElement('span');
+                    name.className = 'jarvis-attachment-name';
+                    name.title = `${file.name} (${formatFileSize(file.size)})`;
+                    name.textContent = `${file.type && file.type.startsWith('image/') ? 'Bild' : 'Fil'}: ${file.name}`;
+
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'jarvis-attachment-remove';
+                    remove.textContent = 'x';
+                    remove.title = 'Ta bort bilaga';
+                    remove.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        selectedJarvisFiles.splice(index, 1);
+                        renderJarvisAttachments();
+                    });
+
+                    chip.appendChild(name);
+                    chip.appendChild(remove);
+                    attachmentList.appendChild(chip);
+                });
+            }
+
+            function readFileAsDataUrl(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(String(reader.result || ''));
+                    reader.onerror = () => reject(reader.error || new Error('Kunde inte lasa filen.'));
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            async function addJarvisFiles(files) {
+                // Keep dashboard uploads bounded before converting to data URLs for C#.
+                for (const file of Array.from(files || [])) {
+                    if (selectedJarvisFiles.length >= MAX_ATTACHMENTS) {
+                        showAlert('!', `Max ${MAX_ATTACHMENTS} bilagor per meddelande.`, '#ff8844');
+                        break;
+                    }
+
+                    if (file.size > MAX_FILE_BYTES) {
+                        showAlert('!', `${file.name} ar for stor (${formatFileSize(file.size)}).`, '#ff8844');
+                        continue;
+                    }
+
+                    try {
+                        selectedJarvisFiles.push({
+                            name: file.name || 'fil',
+                            type: file.type || 'application/octet-stream',
+                            size: file.size || 0,
+                            dataUrl: await readFileAsDataUrl(file)
+                        });
+                    } catch (error) {
+                        showAlert('!', error?.message || 'Kunde inte lasa filen.', '#ff8844');
+                    }
+                }
+
+                renderJarvisAttachments();
+            }
+
+            function attachmentSummary(attachments) {
+                if (!attachments.length) return '';
+                return attachments.map(file => `\n[${file.type && file.type.startsWith('image/') ? 'bild' : 'fil'}: ${file.name}]`).join('');
+            }
+
+            function setMicState(isRecording, label) {
+                if (!micButton) return;
+                micButton.classList.toggle('active', isRecording);
+                micButton.classList.toggle('recording', isRecording);
+                micButton.title = label || (isRecording ? 'Spelar in... släpp för tal till text' : 'Håll inne för tal till text');
+            }
+
+            window.jarvisSetTranscript = function(text, isError = false) {
+                // Speech-to-text fills the input but does not auto-send, so the user
+                // can fix names/commands before Jarvis acts.
+                if (!chatInput) return;
+                setMicState(false);
+
+                if (isError) {
+                    chatInput.value = text || '';
+                    showAlert('!', text || 'Tal till text misslyckades.', '#ff8844');
+                    chatInput.focus();
+                    return;
+                }
+
+                const transcript = String(text || '').trim();
+                if (!transcript) {
+                    showAlert('!', 'Jag hörde inget tydligt. Testa igen lite närmare mikrofonen.', '#ff8844');
+                    chatInput.focus();
+                    return;
+                }
+
+                const current = chatInput.value.trim();
+                chatInput.value = current ? `${current} ${transcript}` : transcript;
+                chatInput.focus();
+                showAlert('+', 'Tal omvandlat till text.', '#44ffaa');
+            };
+
+            async function sendJarvisMessage() {
+                if (!chatInput) return;
+                const raw = chatInput.value.trim();
+                const attachments = selectedJarvisFiles.slice();
+                if (!raw && attachments.length === 0) return;
+
+                const msg = raw || 'Titta på bifogade filer.';
+                chatInput.value = '';
+                selectedJarvisFiles = [];
+                renderJarvisAttachments();
+
+                // Mirror the prompt to NeuroLinked memory/visual state before C# answers.
+                ws.sendTextInput(msg);
+                const loweredMsg = msg.toLowerCase();
+                const knowledgeEventType = /kom ihåg|kom ihag|remember|spara/.test(loweredMsg)
+                    ? 'memory_save'
+                    : /vad minns|minns du|återkalla|aterkalla|recall/.test(loweredMsg)
+                        ? 'memory_recall'
+                        : 'chat_input';
+                window.jarvisKnowledgeEvent?.({
+                    type: knowledgeEventType,
+                    source: 'chat',
+                    target: knowledgeEventType === 'memory_recall' ? 'hippocampus' : 'memory_bridge',
+                    label: msg.slice(0, 80),
+                    status: 'ok',
+                });
+
+                // Show the user's message immediately even if WebView2 is unavailable.
+                window.jarvisAddMessage('user', msg + attachmentSummary(attachments));
+                document.getElementById('jarvis-chat-thinking').style.display = 'block';
+                document.getElementById('jarvis-chat-panel').style.display = 'flex';
+
+                // Send to Jarvis C# for AI response and attachment conversion.
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage(JSON.stringify({ type: 'jarvis_chat', text: msg, attachments }));
+                } else {
+                    document.getElementById('jarvis-chat-thinking').style.display = 'none';
+                    window.jarvisAddMessage('assistant', 'Öppna via Jarvis.exe för AI-svar (WebView2 krävs).');
+                }
+            }
+
+            chatInput?.addEventListener('keydown', async (e) => {
+                e.stopPropagation();
+                if (e.key !== 'Enter' || e.shiftKey) return;
+                e.preventDefault();
+                await sendJarvisMessage();
+            });
+
+            sendButton?.addEventListener('click', async () => {
+                await sendJarvisMessage();
+            });
+
+            attachButton?.addEventListener('click', () => {
+                fileInput?.click();
+            });
+
+            fileInput?.addEventListener('change', async () => {
+                await addJarvisFiles(fileInput.files);
+                fileInput.value = '';
+            });
+
+            // Äldre AI-växling är avstängd; Jarvis äger modellåtkomsten.
+            document.getElementById('btn-legacyLlm')?.addEventListener('click', () => {
+                legacyLlmVisible = !legacyLlmVisible;
+                document.getElementById('legacyLlm-panel').classList.toggle('visible', legacyLlmVisible);
+                document.getElementById('btn-legacyLlm').classList.toggle('active', legacyLlmVisible);
+            });
+
+            // Vision toggle
+            const btnVision = document.getElementById('btn-vision');
+            btnVision?.addEventListener('click', () => {
+                visionActive = !visionActive;
+                btnVision.classList.toggle('active', visionActive);
+                ws.sendCommand(visionActive ? 'start_vision' : 'stop_vision');
+            });
+
+            // Microphone (STT) via Jarvis Bridge. Pointer events make "hold to talk"
+            // work with mouse, touch and pen without creating a second input path.
+            if (micButton) {
+                const startMic = (event) => {
+                    event.preventDefault();
+                    if (micButton.classList.contains('recording')) return;
+                    setMicState(true);
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage(JSON.stringify({ type: 'start_mic' }));
+                    } else {
+                        setMicState(false);
+                        window.jarvisSetTranscript('Öppna via Jarvis.exe för tal till text.', true);
+                    }
+                };
+
+                const stopMic = (event) => {
+                    event?.preventDefault();
+                    if (!micButton.classList.contains('recording')) return;
+                    setMicState(false, 'Transkriberar...');
+                    if (window.chrome && window.chrome.webview) {
+                        window.chrome.webview.postMessage(JSON.stringify({ type: 'stop_mic' }));
+                    }
+                };
+
+                micButton.addEventListener('pointerdown', startMic);
+                micButton.addEventListener('pointerup', stopMic);
+                micButton.addEventListener('pointercancel', stopMic);
+                micButton.addEventListener('pointerleave', stopMic);
+            }
+
+
+
+            // Skärminspelning
+            let videoActive = false;
+            document.getElementById('btn-video').addEventListener('click', () => {
+                videoActive = !videoActive;
+                const btn = document.getElementById('btn-video');
+                btn.classList.toggle('active', videoActive);
+                btn.textContent = videoActive ? 'SPELAR IN ●' : 'SPELA IN';
+                btn.style.color = videoActive ? '#ff2255' : '';
+                if (videoActive) {
+                    ws.sendCommand('start_screen');
+                    ws.sendCommand('start_video');
+                    jarvisBridgeUi?.recordLocalEvent('Skärm/minne började spelas in', 'ok');
+                } else {
+                    ws.sendCommand('stop_video');
+                    ws.sendCommand('stop_screen');
+                    jarvisBridgeUi?.recordLocalEvent('Skärm/minne slutade spela in', 'ok');
+                }
+            });
+
+            // Spara / ladda
+            document.getElementById('btn-save').addEventListener('click', () => {
+                ws.sendCommand('save');
+                jarvisBridgeUi?.recordLocalEvent('Minnesbryggan sparade hjärnläge', 'ok');
+                const btn = document.getElementById('btn-save');
+                btn.textContent = 'SPARAT ✓'; btn.classList.add('active');
+                setTimeout(() => { btn.textContent='SPARA'; btn.classList.remove('active'); }, 2000);
+            });
+            document.getElementById('btn-load').addEventListener('click', () => {
+                ws.sendCommand('load');
+                jarvisBridgeUi?.recordLocalEvent('Minnesbryggan laddade hjärnläge', 'ok');
+                const btn = document.getElementById('btn-load');
+                btn.textContent = 'LADDAT ✓'; btn.classList.add('active');
+                setTimeout(() => { btn.textContent='LADDA'; btn.classList.remove('active'); }, 2000);
+            });
+            
+            // Starta om hjärnan
+            document.getElementById('btn-restart').addEventListener('click', () => {
+                if (confirm('Vill du starta om det neurala systemet?')) {
+                    ws.sendCommand('restart');
+                }
+            });
+
+            // Region click
+            window.addEventListener('regionClick', (e) => {
+                const info = e.detail;
+                const panel = document.getElementById('region-info');
+                document.getElementById('info-title').textContent = (info.label || info.name || '').toUpperCase().replace(/_/g,' ');
+                document.getElementById('info-title').style.color = `#${info.color || 'ff8844'}`;
+                let body = info.description || '';
+                if (info.count) body += `<br><br><strong>${info.count.toLocaleString('sv-SE')} neuroner</strong>`;
+                if (lastState?.regions?.[info.name]) {
+                    const rs = lastState.regions[info.name];
+                    body += `<br>Aktivering: ${(rs.firing_rate * 100).toFixed(1).replace('.', ',')}%`;
+                    body += `<br>Medelpotential: ${rs.mean_potential?.toFixed(1).replace('.', ',') || '--'} mV`;
+                }
+                document.getElementById('info-body').innerHTML = body;
+                panel.classList.add('visible');
+                clearTimeout(panel._hideTimeout);
+                panel._hideTimeout = setTimeout(() => panel.classList.remove('visible'), 5000);
+            });
+
+            // Animation loop
+            let lastTime = performance.now();
+            function animateLoop() {
+                requestAnimationFrame(animateLoop);
+                const now = performance.now();
+                const dt = Math.min((now - lastTime) / 1000, 0.1);
+                lastTime = now;
+                const globalActivity = lastState
+                    ? Math.max(0.18, Math.min(1, Object.values(lastState.region_firing || {}).reduce((a,b) => a+b, 0) / 110))
+                    : 0.22;
+                dust.update(brain3d.time, globalActivity);
+                brain3d.animate(dt);
+            }
+            animateLoop();
+
+            // Bridge polling and the heavy knowledge-map request are started by
+            // completeDashboardStartup(), after the 3D brain is already visible.
+        }
+
+        // === Avstängd äldre AI-chatt ===
+        async function sendToLegacyLlm(message) {
+            const messagesEl = document.getElementById('legacyLlm-messages');
+            const thinkingEl = document.getElementById('legacyLlm-thinking');
+
+            // Show user message
+            const userDiv = document.createElement('div');
+            userDiv.className = 'legacyLlm-msg user';
+            userDiv.textContent = `Du: ${message}`;
+            messagesEl.appendChild(userDiv);
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+
+            // Show thinking indicator
+            thinkingEl.style.display = 'block';
+            document.getElementById('claude-interactions').textContent =
+                parseInt(document.getElementById('claude-interactions').textContent || 0) + 1;
+
+            try {
+                const reply = await callLegacyLlm(message);
+
+                thinkingEl.style.display = 'none';
+
+                const aiDiv = document.createElement('div');
+                aiDiv.className = 'legacyLlm-msg ai';
+                aiDiv.textContent = `Jarvis: ${reply}`;
+                messagesEl.appendChild(aiDiv);
+                messagesEl.scrollTop = messagesEl.scrollHeight;
+
+                // Send to C# for TTS
+                if (window.chrome && window.chrome.webview) {
+                    window.chrome.webview.postMessage(JSON.stringify({ type: 'tts', text: reply }));
+                }
+
+            } catch (err) {
+                thinkingEl.style.display = 'none';
+                const errDiv = document.createElement('div');
+                errDiv.className = 'legacyLlm-msg';
+                errDiv.style.color = '#ff4444';
+                errDiv.textContent = `Fel: ${err.message}`;
+                messagesEl.appendChild(errDiv);
+                console.error('[Legacy LLM]', err);
+            }
+        }
+
+        // Expose legacy no-op globally for older WebView callers.
+        window._sendToLegacyLlm = sendToLegacyLlm;
+
+        // AI-inmatning hanteras av Jarvis, inte av NeuroLinked direkt.
+        document.addEventListener('DOMContentLoaded', () => {});
+
+        init().catch(console.error);
+    </script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+F:\Jarvis-clean\dist\Jarvis.exe
+F:\Jarvis-clean\dist\runtimes\win-x86\native\WebView2Loader.dll
+F:\Jarvis-clean\dist\runtimes\win-x64\native\WebView2Loader.dll
+F:\Jarvis-clean\dist\runtimes\win-arm64\native\WebView2Loader.dll
+F:\Jarvis-clean\dist\Jarvis.dll
+F:\Jarvis-clean\dist\Jarvis.deps.json
+F:\Jarvis-clean\dist\Jarvis.runtimeconfig.json
+F:\Jarvis-clean\dist\Jarvis.pdb
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.Core.dll
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.WinForms.dll
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.Wpf.dll
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.Core.xml
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.WinForms.xml
+F:\Jarvis-clean\dist\Microsoft.Web.WebView2.Wpf.xml

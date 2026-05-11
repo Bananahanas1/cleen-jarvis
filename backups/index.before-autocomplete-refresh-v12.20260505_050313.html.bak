@@ -1,0 +1,1202 @@
+﻿<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #050910;
+      color: #dff7ff;
+      font-family: Consolas, monospace;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(380px, 1fr) 390px;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .explorer, .editor, .chat {
+      border-right: 1px solid #193247;
+      background: #08111f;
+      min-height: 0;
+    }
+
+    .explorer {
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .editor {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #06101d;
+    }
+
+    .chat {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-right: none;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px 0;
+      color: #44d9ff;
+      font-size: 18px;
+    }
+
+    .top-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    button {
+      background: #102b3d;
+      color: #dff7ff;
+      border: 1px solid #44d9ff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover { background: #16425e; }
+
+    .small {
+      color: #789;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    #folderPath {
+      color: #ffaa44;
+      font-size: 12px;
+      margin: 8px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #fileTree {
+      height: calc(100vh - 105px);
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 5px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      user-select: none;
+    }
+
+    .tree-row:hover {
+      background: rgba(68, 217, 255, 0.12);
+    }
+
+    .tree-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-children {
+      margin-left: 16px;
+    }
+
+    #activeFileLabel {
+      color: #ffaa44;
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    #editorArea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      outline: none;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+
+    .msg {
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .user {
+      background: rgba(68, 217, 255, 0.12);
+      border-left: 3px solid #44d9ff;
+    }
+
+    .assistant {
+      background: rgba(80, 255, 150, 0.10);
+      border-left: 3px solid #50ff96;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #input {
+      flex: 1;
+      background: #03070d;
+      color: white;
+      border: 1px solid #24465f;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: inherit;
+    }
+
+    #suggestions {
+      position: absolute;
+      left: 0;
+      right: 74px;
+      bottom: 48px;
+      background: #02060b;
+      border: 1px solid #44d9ff;
+      border-radius: 10px;
+      padding: 6px;
+      max-height: 210px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: none;
+      z-index: 50;
+      box-shadow: 0 0 25px rgba(68, 217, 255, 0.18);
+    }
+
+    .suggestion-row {
+      padding: 6px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 7px;
+      cursor: pointer;
+      color: #dff7ff;
+    }
+
+    .suggestion-row.active {
+      background: rgba(68, 217, 255, 0.18);
+      color: #ffffff;
+    }
+
+    .suggestion-hint {
+      color: #789;
+      font-size: 11px;
+      padding: 3px 8px 6px 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="explorer">
+      <div class="top-row">
+        <h1 style="flex:1;">Project Explorer</h1>
+        <button id="loadFilesBtn">Ladda</button>
+      </div>
+
+      <div id="folderPath">Träd: projektrot</div>
+      <div id="fileTree"></div>
+    </aside>
+
+    <main class="editor">
+      <div class="top-row">
+        <h2 style="flex:1;">Filpanel</h2>
+        <button id="copyEditorBtn">Kopiera</button>
+      </div>
+
+      <div id="activeFileLabel">Ingen fil öppen.</div>
+      <textarea id="editorArea" spellcheck="false" placeholder="Klicka på en fil i Project Explorer för att visa den här." readonly></textarea>
+
+      <div class="editor-actions">
+        <button id="editBtn" disabled>Edit-läge senare</button>
+        <button id="saveBtn" disabled>Spara efter godkännande senare</button>
+        <span class="small">Just nu är panelen säker read-only. Edit/spara byggs i nästa fas.</span>
+      </div>
+    </main>
+
+    <section class="chat">
+      <h2>Jarvis Chat</h2>
+      <div id="messages"></div>
+
+      <div class="input-wrap">
+        <div id="suggestions"></div>
+        <div class="input-row">
+          <input id="input" placeholder="Skriv till Jarvis..." autocomplete="off">
+          <button id="send">Skicka</button>
+        </div>
+      </div>
+
+      <div class="small">
+        Tips: TAB byter förslag. Enter skickar. Esc stänger förslag.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+
+    const fileTree = document.getElementById("fileTree");
+    const folderPath = document.getElementById("folderPath");
+    const loadFilesBtn = document.getElementById("loadFilesBtn");
+
+    const editorArea = document.getElementById("editorArea");
+    const activeFileLabel = document.getElementById("activeFileLabel");
+    const copyEditorBtn = document.getElementById("copyEditorBtn");
+    const suggestions = document.getElementById("suggestions");
+
+    const messageHistory = [];
+    let historyIndex = 0;
+
+    let allFiles = [];
+    let allFolders = [];
+    let currentSuggestions = [];
+    let suggestionIndex = 0;
+
+    window.jarvisAddMessage = function(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + (role === "user" ? "user" : "assistant");
+      div.textContent = (role === "user" ? "Du: " : "Jarvis: ") + String(text || "");
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    };
+
+    function postMessage(payload) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(payload);
+      } else {
+        window.jarvisAddMessage("assistant", "Ingen C#-brygga hittades. Starta via Jarvis-appen.");
+      }
+    }
+
+    function normalizeLoose(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/å/g, "a")
+        .replace(/ä/g, "a")
+        .replace(/ö/g, "o")
+        .replace(/[^a-z0-9]/g, "");
+    }
+
+    function extractSmartFileOpen(text) {
+      const value = String(text || "").trim();
+      if (!value) return "";
+
+      if (/^(öppna|oppna|starta)\s+program\s*:/i.test(value)) return "";
+
+      const fileRegex = /([a-z0-9_\-\.]+(?:[\\/][a-z0-9_\-\.]+)*\.(md|txt|json|cs|html|css|js|ps1|csproj|sln|xml|yml|yaml|config|props|targets|editorconfig|gitignore|lock|log|csv|vbs))/i;
+      const match = value.match(fileRegex);
+
+      if (match) {
+        const file = match[1];
+        const hasOpenIntent = /\b(öppna|oppna|visa|läs|las|open|read)\b/i.test(value) ||
+                              /\b(koden|kod|filen|fil)\b/i.test(value);
+        const onlyFileName = value.toLowerCase() === file.toLowerCase();
+
+        if (hasOpenIntent || onlyFileName) return file;
+      }
+
+      const openLoose = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.+?)\s*$/i);
+      if (openLoose) {
+        const raw = openLoose[2].trim();
+        if (raw && !raw.startsWith("mapp") && !raw.startsWith("folder") && !raw.startsWith("program")) {
+          return raw;
+        }
+      }
+
+      return "";
+    }
+
+    function extractFolderOpen(text) {
+      const value = String(text || "").trim();
+      if (/^\s*(öppna projekt|oppna projekt|projektrot|visa projektrot)\s*$/i.test(value)) return "";
+
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return null;
+
+      return match[2].trim();
+    }
+
+    function loadRootTree() {
+      postMessage({ type: "jarvis_tree_folder_v7", path: "" });
+      postMessage({ type: "jarvis_autocomplete_files_v7" });
+    }
+
+    loadFilesBtn.addEventListener("click", loadRootTree);
+
+    function ensureFolderNode(path) {
+      const selector = '[data-folder-path="' + CSS.escape(path || "") + '"]';
+      return fileTree.querySelector(selector);
+    }
+
+    function makeTreeRow(item) {
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      row.title = item.path || "";
+
+      const icon = document.createElement("span");
+      icon.textContent = item.type === "folder" ? "▶" : "📄";
+
+      const label = document.createElement("span");
+      label.className = "tree-label";
+      label.textContent = (item.type === "folder" ? "📁 " : "") + item.name;
+
+      row.appendChild(icon);
+      row.appendChild(label);
+
+      if (item.type === "folder") {
+        row.dataset.folderPath = item.path || "";
+        row.onclick = function () {
+          const existing = row.nextElementSibling;
+
+          if (existing && existing.classList.contains("tree-children")) {
+            const isHidden = existing.style.display === "none";
+            existing.style.display = isHidden ? "block" : "none";
+            icon.textContent = isHidden ? "▼" : "▶";
+            return;
+          }
+
+          icon.textContent = "▼";
+          postMessage({ type: "jarvis_tree_folder_v7", path: item.path || "" });
+        };
+      } else {
+        row.onclick = function () {
+          postMessage({
+            type: "jarvis_open_file_smart_v7",
+            path: item.path,
+            silent: true
+          });
+        };
+      }
+
+      return row;
+    }
+
+    window.jarvisSetTreeFolderV7 = function(path, items) {
+      const cleanPath = path || "";
+      folderPath.textContent = cleanPath ? ("Träd: " + cleanPath) : "Träd: projektrot";
+
+      const container = document.createElement("div");
+      container.className = "tree-children";
+      container.dataset.childrenFor = cleanPath;
+
+      (items || []).forEach(function(item) {
+        container.appendChild(makeTreeRow(item));
+      });
+
+      if (!cleanPath) {
+        fileTree.innerHTML = "";
+        (items || []).forEach(function(item) {
+          fileTree.appendChild(makeTreeRow(item));
+        });
+        return;
+      }
+
+      const folderRow = ensureFolderNode(cleanPath);
+      if (!folderRow) return;
+
+      const old = folderRow.nextElementSibling;
+      if (old && old.classList.contains("tree-children")) old.remove();
+
+      folderRow.insertAdjacentElement("afterend", container);
+    };
+
+    window.jarvisSetAllFilesV7 = function(files, folders) {
+      allFiles = files || [];
+      allFolders = folders || [];
+      updateSuggestions();
+    };
+
+    window.jarvisSetEditorFile = function(path, content, readOnly) {
+      activeFileLabel.textContent = path ? ("Aktiv fil: " + path) : "Ingen fil öppen.";
+      editorArea.value = content || "";
+      editorArea.readOnly = readOnly !== false;
+      editorArea.scrollTop = 0;
+    };
+
+    copyEditorBtn.addEventListener("click", async function() {
+      try {
+        await navigator.clipboard.writeText(editorArea.value || "");
+        window.jarvisAddMessage("assistant", "Innehållet i filpanelen kopierades.");
+      } catch {
+        window.jarvisAddMessage("assistant", "Kunde inte kopiera från filpanelen.");
+      }
+    });
+
+    function commandBaseSuggestions(text) {
+      const commands = [
+        "öppna ",
+        "öppna mapp: ",
+        "öppna projekt",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "visa modell",
+        "lista modeller",
+        "byt modell: ",
+        "internetstatus",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "aktiv fil",
+        "läs filen",
+        "föreslå rubrik här: ",
+        "spara minne: ",
+        "projektminne: "
+      ];
+
+      const loose = normalizeLoose(text);
+      return commands
+        .filter(cmd => normalizeLoose(cmd).startsWith(loose) || normalizeLoose(cmd).includes(loose))
+        .slice(0, 8);
+    }
+
+    function fileSuggestions(text) {
+      const value = String(text || "").trim();
+      const openMatch = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.*?)\s*$/i);
+      const rawQuery = openMatch ? openMatch[2] : value;
+      const query = normalizeLoose(rawQuery);
+
+      if (!query) return [];
+
+      return allFiles
+        .filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          return normalizeLoose(file).includes(query) || normalizeLoose(fileName).includes(query);
+        })
+        .slice(0, 10)
+        .map(file => "öppna " + file);
+    }
+
+    function folderSuggestions(text) {
+      const value = String(text || "").trim();
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return [];
+
+      const query = normalizeLoose(match[2] || "");
+
+      return allFolders
+        .filter(folder => !query || normalizeLoose(folder).includes(query))
+        .slice(0, 8)
+        .map(folder => "öppna mapp: " + folder);
+    }
+
+    function updateSuggestions() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)].slice(0, 10);
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    }
+
+    function renderSuggestions() {
+      suggestions.innerHTML = "";
+
+      if (!currentSuggestions.length) {
+        hideSuggestions();
+        return;
+      }
+
+      const hint = document.createElement("div");
+      hint.className = "suggestion-hint";
+      hint.textContent = "TAB = byt/fyll förslag • Enter = skicka • Esc = stäng";
+      suggestions.appendChild(hint);
+
+      currentSuggestions.forEach(function(suggestion, index) {
+        const row = document.createElement("div");
+        row.className = "suggestion-row" + (index === suggestionIndex ? " active" : "");
+        row.textContent = suggestion;
+
+        row.onmousedown = function(event) {
+          event.preventDefault();
+          input.value = suggestion;
+          hideSuggestions();
+          input.focus();
+        };
+
+        suggestions.appendChild(row);
+      });
+
+      suggestions.style.display = "block";
+    }
+
+    function hideSuggestions() {
+      currentSuggestions = [];
+      suggestions.style.display = "none";
+    }
+
+    input.addEventListener("input", updateSuggestions);
+
+    function applySuggestion(direction) {
+      if (!currentSuggestions.length) {
+        updateSuggestions();
+      }
+
+      if (!currentSuggestions.length) return;
+
+      suggestionIndex = (suggestionIndex + direction + currentSuggestions.length) % currentSuggestions.length;
+      input.value = currentSuggestions[suggestionIndex];
+      renderSuggestions();
+
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function rememberMessage(text) {
+      if (!text) return;
+      if (messageHistory[messageHistory.length - 1] !== text) {
+        messageHistory.push(text);
+      }
+      historyIndex = messageHistory.length;
+    }
+
+    function showPreviousMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.max(0, historyIndex - 1);
+      input.value = messageHistory[historyIndex];
+      updateSuggestions();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function showNextMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.min(messageHistory.length, historyIndex + 1);
+      input.value = historyIndex >= messageHistory.length ? "" : messageHistory[historyIndex];
+      updateSuggestions();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      rememberMessage(text);
+      input.value = "";
+      hideSuggestions();
+      window.jarvisAddMessage("user", text);
+
+      const folderOpen = extractFolderOpen(text);
+      if (folderOpen !== null) {
+        postMessage({ type: "jarvis_tree_folder_v7", path: folderOpen });
+        return;
+      }
+
+      const smartFile = extractSmartFileOpen(text);
+      if (smartFile) {
+        postMessage({
+          type: "jarvis_open_file_smart_v7",
+          path: smartFile,
+          silent: false
+        });
+        return;
+      }
+
+      postMessage({
+        type: "jarvis_chat",
+        text: text
+      });
+    }
+
+    send.addEventListener("click", sendMessage);
+
+    input.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+        return;
+      }
+
+      if (event.key === "Tab") {
+        event.preventDefault();
+        applySuggestion(event.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hideSuggestions();
+        return;
+      }
+
+      if (event.key === "ArrowUp" && suggestions.style.display !== "block") {
+        event.preventDefault();
+        showPreviousMessage();
+        return;
+      }
+
+      if (event.key === "ArrowDown" && suggestions.style.display !== "block") {
+        event.preventDefault();
+        showNextMessage();
+        return;
+      }
+    });    // AUTOCOMPLETE_AND_TREE_COMMAND_FIX_V8
+    // Fixar:
+    // - "klicka på app" öppnar/expanderar app-foldern lokalt.
+    // - En bokstav som "h" ska inte visa slumpmässiga filförslag.
+    // - Filförslag visas först när du skriver öppna/visa/läs eller något som liknar filnamn.
+    // - TAB-förslag blir renare.
+
+    extractFolderOpen = function(text) {
+      const value = String(text || "").trim();
+      if (!value) return null;
+
+      if (/^\s*(öppna projekt|oppna projekt|projektrot|visa projektrot)\s*$/i.test(value)) {
+        return "";
+      }
+
+      let match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder)\s*:?\s*(.*?)\s*$/i);
+      if (match) return match[2].trim();
+
+      // Naturligt språk: "klicka på app", "gå till docs", "öppna dashboard"
+      match = value.match(/^\s*(klicka på|tryck på|gå till|ga till|öppna|oppna|visa)\s+([a-z0-9_\-\.]+)\s*$/i);
+      if (!match) return null;
+
+      const wanted = normalizeLoose(match[2]);
+      if (!wanted) return null;
+
+      const exact = (allFolders || []).find(folder => {
+        const last = String(folder).split(/[\\/]/).pop();
+        return normalizeLoose(last) === wanted || normalizeLoose(folder) === wanted;
+      });
+
+      return exact || null;
+    };
+
+    extractSmartFileOpen = function(text) {
+      const value = String(text || "").trim();
+      if (!value) return "";
+
+      if (/^(öppna|oppna|starta)\s+program\s*:/i.test(value)) return "";
+
+      const fileRegex = /([a-z0-9_\-\.]+(?:[\\/][a-z0-9_\-\.]+)*\.(md|txt|json|cs|html|css|js|ps1|csproj|sln|xml|yml|yaml|config|props|targets|editorconfig|gitignore|lock|log|csv|vbs))/i;
+      const match = value.match(fileRegex);
+
+      if (match) {
+        const file = match[1];
+        const hasOpenIntent = /\b(öppna|oppna|visa|läs|las|open|read)\b/i.test(value) ||
+                              /\b(koden|kod|filen|fil)\b/i.test(value);
+        const onlyFileName = value.toLowerCase() === file.toLowerCase();
+
+        if (hasOpenIntent || onlyFileName) return file;
+      }
+
+      // Fuzzy: "öppna readme", "öppna read me", "öppna read.me"
+      const openLoose = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.+?)\s*$/i);
+      if (openLoose) {
+        const raw = openLoose[2].trim();
+        if (raw && !/^mapp\b/i.test(raw) && !/^folder\b/i.test(raw) && !/^program\b/i.test(raw)) {
+          return raw;
+        }
+      }
+
+      return "";
+    };
+
+    commandBaseSuggestions = function(text) {
+      const commands = [
+        "hjälp",
+        "status",
+        "diskstatus",
+        "cachestatus",
+        "internetstatus",
+        "öppna projekt",
+        "öppna mapp: app",
+        "öppna mapp: docs",
+        "öppna program.cs",
+        "öppna README.md",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "visa modell",
+        "lista modeller",
+        "byt modell: qwen2.5-coder:7b",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "aktiv fil",
+        "läs filen",
+        "projektminne: "
+      ];
+
+      const loose = normalizeLoose(text);
+      if (!loose) return [];
+
+      return commands
+        .filter(cmd => normalizeLoose(cmd).startsWith(loose) || normalizeLoose(cmd).includes(loose))
+        .slice(0, 8);
+    };
+
+    fileSuggestions = function(text) {
+      const value = String(text || "").trim();
+
+      const hasOpenIntent = /^\s*(öppna|oppna|visa|läs|las|open|read)\s+/i.test(value);
+      const hasFileLikeText = /\.[a-z0-9]{1,10}$/i.test(value);
+
+      // Viktigt: om man bara skriver "h" ska vi INTE visa massa filer.
+      if (!hasOpenIntent && !hasFileLikeText) return [];
+
+      const openMatch = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.*?)\s*$/i);
+      const rawQuery = openMatch ? openMatch[2] : value;
+      const query = normalizeLoose(rawQuery);
+
+      if (!query || query.length < 2) return [];
+
+      return (allFiles || [])
+        .filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          const stem = fileName.replace(/\.[^.]+$/, "");
+
+          return normalizeLoose(file).includes(query) ||
+                 normalizeLoose(fileName).includes(query) ||
+                 normalizeLoose(stem).includes(query) ||
+                 query.includes(normalizeLoose(stem));
+        })
+        .slice(0, 10)
+        .map(file => "öppna " + file);
+    };
+
+    folderSuggestions = function(text) {
+      const value = String(text || "").trim();
+
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|klicka på|tryck på)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return [];
+
+      const query = normalizeLoose(match[2] || "");
+      if (query && query.length < 1) return [];
+
+      return (allFolders || [])
+        .filter(folder => {
+          const last = String(folder).split(/[\\/]/).pop();
+          return !query || normalizeLoose(folder).includes(query) || normalizeLoose(last).includes(query);
+        })
+        .slice(0, 8)
+        .map(folder => "öppna mapp: " + folder);
+    };
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .slice(0, 10);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };    // SMART_SUGGESTIONS_V10
+    // Autocomplete ska vara kontextuell, inte visa alla kommandon.
+    // Visar bara fungerande/bekräftade kommandon. Trasiga eller osäkra kommandon som "sök arkiv" göms tills de är fixade.
+
+    commandBaseSuggestions = function(text) {
+      const value = String(text || "").trim();
+      const loose = normalizeLoose(value);
+
+      if (!loose) return [];
+
+      const groups = [
+        {
+          trigger: ["h", "hj", "hja", "help"],
+          suggestions: ["hjälp", "kommandohjälp"]
+        },
+        {
+          trigger: ["sta", "stat", "status"],
+          suggestions: ["status", "diskstatus", "cachestatus", "internetstatus"]
+        },
+        {
+          trigger: ["disk", "c", "cache", "rens"],
+          suggestions: ["diskstatus", "cachestatus", "rensa cache preview", "rensa cache bekräfta", "kontrollera cache"]
+        },
+        {
+          trigger: ["modell", "model", "byt", "llm"],
+          suggestions: ["visa modell", "lista modeller", "byt modell: qwen2.5-coder:7b"]
+        },
+        {
+          trigger: ["min", "minne", "kom", "smart", "viktigt", "projektminne"],
+          suggestions: [
+            "kom ihåg: ",
+            "smart minne: ",
+            "viktigt minne: ",
+            "projektminne: ",
+            "visa minne",
+            "sök minne: ",
+            "minnesstatus",
+            "sammanfatta minne",
+            "glöm minne: "
+          ]
+        },
+        {
+          trigger: ["fil", "lista", "index", "aktiv", "läs", "las"],
+          suggestions: [
+            "lista filer",
+            "lista md filer",
+            "lista projektfiler",
+            "indexera projekt",
+            "aktiv fil",
+            "läs filen",
+            "läs fil: docs/PROJECT_INDEX.md"
+          ]
+        },
+        {
+          trigger: ["mapp", "proj", "app", "docs", "dash", "test"],
+          suggestions: [
+            "öppna projekt",
+            "öppna mapp: app",
+            "öppna mapp: docs",
+            "öppna mapp: dashboard",
+            "öppna mapp: tests"
+          ]
+        },
+        {
+          trigger: ["check", "backup"],
+          suggestions: ["skapa checkpoint", "lista checkpoints"]
+        },
+        {
+          trigger: ["terminal", "build", "kör", "kor"],
+          suggestions: ["terminal preview: dotnet build", "bekräfta kör", "avbryt kör"]
+        },
+        {
+          trigger: ["program", "notepad", "kalk", "paint", "explorer"],
+          suggestions: ["öppna program: notepad", "starta kalkylator", "öppna program: paint", "öppna program: explorer"]
+        }
+      ];
+
+      let result = [];
+
+      for (const group of groups) {
+        const hit = group.trigger.some(t => normalizeLoose(t).startsWith(loose) || loose.startsWith(normalizeLoose(t)));
+        if (hit) result.push(...group.suggestions);
+      }
+
+      // Direkt matchning, men bara från fungerande kommandon.
+      const safeCommands = [
+        "hjälp",
+        "kommandohjälp",
+        "status",
+        "diskstatus",
+        "cachestatus",
+        "rensa cache preview",
+        "rensa cache bekräfta",
+        "kontrollera cache",
+        "internetstatus",
+        "visa modell",
+        "lista modeller",
+        "byt modell: qwen2.5-coder:7b",
+        "kom ihåg: ",
+        "smart minne: ",
+        "viktigt minne: ",
+        "projektminne: ",
+        "visa minne",
+        "sök minne: ",
+        "minnesstatus",
+        "sammanfatta minne",
+        "glöm minne: ",
+        "lista filer",
+        "lista md filer",
+        "lista projektfiler",
+        "indexera projekt",
+        "aktiv fil",
+        "läs filen",
+        "öppna projekt",
+        "öppna mapp: app",
+        "öppna mapp: docs",
+        "öppna mapp: dashboard",
+        "öppna mapp: tests",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "terminal preview: dotnet build",
+        "bekräfta kör",
+        "avbryt kör",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "öppna program: paint",
+        "öppna program: explorer"
+      ];
+
+      result.push(
+        ...safeCommands.filter(cmd =>
+          normalizeLoose(cmd).startsWith(loose)
+        )
+      );
+
+      return [...new Set(result)].slice(0, 6);
+    };
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      // Filförslag visas bara när du tydligt skriver öppna/visa/läs eller filnamn.
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .filter(x => !normalizeLoose(x).startsWith("sokarkiv"))
+        .slice(0, 6);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };    // ARGUMENT_COMPLETION_V11
+    // Efter att användaren skriver ett filkommando ska TAB-förslag fortsätta med filnamn.
+    // Exempel: "öppna r" -> README-filer. "läs fil: app/" -> filer i app.
+    function splitFileCommandV11(text) {
+      const value = String(text || "").trimStart();
+
+      const patterns = [
+        { regex: /^(öppna|oppna|visa|open|read)\s+(.+)?$/i, prefix: "öppna " },
+        { regex: /^(läs|las)\s+(.+)?$/i, prefix: "öppna " },
+        { regex: /^(läs fil|las fil|öppna fil|oppna fil|visa fil)\s*:?\s*(.*)$/i, prefix: "öppna " },
+        { regex: /^(skriv fil)\s*:?\s*(.*)$/i, prefix: "skriv fil: " },
+        { regex: /^(lägg till fil|lagg till fil)\s*:?\s*(.*)$/i, prefix: "lägg till fil: " },
+        { regex: /^(föreslå rubrik|foresla rubrik)\s*:?\s*(.*)$/i, prefix: "föreslå rubrik: " },
+        { regex: /^(föreslå ändring|foresla andring)\s*:?\s*(.*)$/i, prefix: "föreslå ändring: " }
+      ];
+
+      for (const item of patterns) {
+        const match = value.match(item.regex);
+        if (!match) continue;
+
+        const query = (match[2] || "").trim();
+        return { isFileCommand: true, prefix: item.prefix, query };
+      }
+
+      return { isFileCommand: false, prefix: "", query: "" };
+    }
+
+    function splitFolderCommandV11(text) {
+      const value = String(text || "").trimStart();
+
+      const match = value.match(/^(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder|klicka på|tryck på)\s*:?\s*(.*)$/i);
+      if (!match) return { isFolderCommand: false, prefix: "", query: "" };
+
+      return {
+        isFolderCommand: true,
+        prefix: "öppna mapp: ",
+        query: (match[2] || "").trim()
+      };
+    }
+
+    fileSuggestions = function(text) {
+      const parsed = splitFileCommandV11(text);
+
+      if (!parsed.isFileCommand) {
+        const value = String(text || "").trim();
+        const looksLikeFile = /\.[a-z0-9]{1,12}$/i.test(value);
+        if (!looksLikeFile) return [];
+
+        parsed.prefix = "öppna ";
+        parsed.query = value;
+      }
+
+      const queryRaw = parsed.query || "";
+      const query = normalizeLoose(queryRaw);
+
+      let candidates = (allFiles || []);
+
+      if (queryRaw.includes("/") || queryRaw.includes("\\")) {
+        const normalizedPathQuery = queryRaw.replace(/\\/g, "/").toLowerCase();
+        candidates = candidates.filter(file => file.toLowerCase().includes(normalizedPathQuery));
+      } else if (query.length >= 1) {
+        candidates = candidates.filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          const stem = fileName.replace(/\.[^.]+$/, "");
+
+          return normalizeLoose(file).includes(query) ||
+                 normalizeLoose(fileName).includes(query) ||
+                 normalizeLoose(stem).includes(query) ||
+                 query.includes(normalizeLoose(stem));
+        });
+      } else {
+        const important = [
+          "README.md",
+          "app/Program.cs",
+          "app/JarvisClean.csproj",
+          "CURRENT_STATE.md",
+          "BUILD_PLAN.md",
+          "TODO_NEXT.md",
+          "docs/PROJECT_INDEX.md",
+          "docs/SESSION_LOG.md"
+        ];
+
+        candidates = important.filter(file => (allFiles || []).includes(file));
+      }
+
+      return candidates
+        .slice(0, 10)
+        .map(file => parsed.prefix + file);
+    };
+
+    folderSuggestions = function(text) {
+      const parsed = splitFolderCommandV11(text);
+      if (!parsed.isFolderCommand) return [];
+
+      const query = normalizeLoose(parsed.query || "");
+
+      return (allFolders || [])
+        .filter(folder => {
+          const last = String(folder).split(/[\\/]/).pop();
+          return !query ||
+                 normalizeLoose(folder).includes(query) ||
+                 normalizeLoose(last).includes(query);
+        })
+        .slice(0, 8)
+        .map(folder => parsed.prefix + folder);
+    };
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      const parsedFile = splitFileCommandV11(trimmed);
+      const parsedFolder = splitFolderCommandV11(trimmed);
+
+      if (parsedFolder.isFolderCommand) {
+        result.push(...folderSuggestions(trimmed));
+      } else if (parsedFile.isFileCommand) {
+        result.push(...fileSuggestions(trimmed));
+      } else {
+        result.push(...folderSuggestions(trimmed));
+        result.push(...fileSuggestions(trimmed));
+
+        if (result.length === 0) {
+          result.push(...commandBaseSuggestions(trimmed));
+        }
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .filter(x => !normalizeLoose(x).startsWith("sokarkiv"))
+        .slice(0, 8);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };
+
+
+
+
+
+
+
+    window.jarvisAddMessage("assistant", "Jarvis dashboard laddad.");
+
+    setTimeout(function() {
+      loadRootTree();
+    }, 400);
+  </script>
+</body>
+</html>
+
+
+

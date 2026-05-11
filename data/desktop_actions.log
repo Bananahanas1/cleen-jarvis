@@ -1,0 +1,13 @@
+2026-05-10 08:03:12  LAUNCH  notepad  pid=21488  path=notepad.exe
+2026-05-10 15:09:42  DISABLE  desktop-control disabled
+2026-05-10 15:12:40  DISABLE  desktop-control disabled
+2026-05-10 15:29:07  DISABLE  desktop-control disabled
+2026-05-10 17:54:48  ENABLE  desktop-control enabled
+2026-05-10 17:55:23  SCREENSHOT  F:\Jarvis-clean\data\screenshots\20260510-175523.png
+2026-05-10 17:55:34  ACTION  Click Desktop-action preview: | - Åtgärd: klick @ (100, 200) | - Källa: manual | - Skapad: 2026-05-10 17:55:30
+2026-05-10 17:57:32  DISABLE  desktop-control disabled
+2026-05-10 20:45:55  DISABLE  desktop-control disabled
+2026-05-11 00:45:56  DISABLE  desktop-control disabled
+2026-05-11 00:53:21  ENABLE  desktop-control enabled
+2026-05-11 00:53:33  SCREENSHOT  F:\Jarvis-clean\data\screenshots\20260511-005332.png
+2026-05-11 04:27:49  DISABLE  desktop-control disabled

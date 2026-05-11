@@ -1,0 +1,14 @@
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\bin\Debug\net8.0\CommandRouterV1.Tests.exe
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\bin\Debug\net8.0\CommandRouterV1.Tests.deps.json
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\bin\Debug\net8.0\CommandRouterV1.Tests.runtimeconfig.json
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\bin\Debug\net8.0\CommandRouterV1.Tests.dll
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\bin\Debug\net8.0\CommandRouterV1.Tests.pdb
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.GeneratedMSBuildEditorConfig.editorconfig
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.AssemblyInfoInputs.cache
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.AssemblyInfo.cs
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.csproj.CoreCompileInputs.cache
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.dll
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\refint\CommandRouterV1.Tests.dll
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.pdb
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\CommandRouterV1.Tests.genruntimeconfig.cache
+F:\Jarvis-clean\tests\CommandRouterV1.Tests\obj\Debug\net8.0\ref\CommandRouterV1.Tests.dll

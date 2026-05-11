@@ -1,0 +1,2473 @@
+﻿<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      scrollbar-color: #1f4e68 #03070d;
+      scrollbar-width: thin;
+    }
+
+    *::-webkit-scrollbar {
+      width: 12px;
+      height: 12px;
+    }
+
+    *::-webkit-scrollbar-track {
+      background: #03070d;
+      border-radius: 8px;
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background: #1f4e68;
+      border: 2px solid #03070d;
+      border-radius: 8px;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background: #2d7594;
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: #03070d;
+    }
+
+    body {
+      margin: 0;
+      background: #050910;
+      color: #dff7ff;
+      font-family: Consolas, monospace;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 280px minmax(380px, 1fr) 390px;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .explorer, .editor, .chat {
+      border-right: 1px solid #193247;
+      background: #08111f;
+      min-height: 0;
+    }
+
+    .explorer {
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .editor {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #06101d;
+    }
+
+    .chat {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-right: none;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px 0;
+      color: #44d9ff;
+      font-size: 18px;
+    }
+
+    .top-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    button {
+      background: #102b3d;
+      color: #dff7ff;
+      border: 1px solid #44d9ff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover { background: #16425e; }
+
+    .small {
+      color: #789;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    #pendingApprovalHint {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      border: 1px solid #ffaa44;
+      border-radius: 8px;
+      background: #1a2517;
+      color: #f4fbff;
+      padding: 7px 9px;
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    #folderPath {
+      color: #ffaa44;
+      font-size: 12px;
+      margin: 8px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #fileTree {
+      height: calc(100vh - 105px);
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .tree-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 5px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      user-select: none;
+    }
+
+    .tree-row:hover {
+      background: rgba(68, 217, 255, 0.12);
+    }
+
+    .tree-row.review-highlight {
+      background: rgba(80, 255, 150, 0.16);
+      outline: 1px solid rgba(80, 255, 150, 0.55);
+    }
+
+    .tree-row.active-file {
+      background: rgba(255, 170, 68, 0.14);
+      box-shadow: inset 2px 0 0 #ffaa44;
+    }
+
+    .tree-row.active-folder {
+      background: rgba(255, 170, 68, 0.07);
+    }
+
+    .tree-label {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .tree-children {
+      margin-left: 16px;
+    }
+
+    #activeFileLabel {
+      color: #ffaa44;
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    #editorArea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      outline: none;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    #terminalPanel {
+      display: none;
+      flex: 0 0 260px;
+      min-height: 180px;
+      max-height: 38vh;
+      flex-direction: column;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .terminal-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 40px;
+      padding: 7px 10px;
+      border-bottom: 1px solid #193247;
+      background: #071321;
+    }
+
+    #terminalTitle {
+      flex: 1;
+      color: #ffaa44;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    #terminalStatus {
+      color: #9bb2c3;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    #terminalOutput {
+      flex: 1;
+      margin: 0;
+      overflow: auto;
+      white-space: pre;
+      padding: 10px;
+      color: #dff7ff;
+      font-family: Consolas, monospace;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    #visualPanel {
+      display: none;
+      flex: 1;
+      min-height: 0;
+      flex-direction: column;
+      gap: 12px;
+      overflow: auto;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .visual-kicker {
+      color: #ffaa44;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+
+    .visual-title {
+      margin: 0;
+      color: #dff7ff;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .visual-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .visual-cell {
+      border: 1px solid #193247;
+      border-radius: 8px;
+      background: #081827;
+      padding: 10px;
+      min-height: 92px;
+    }
+
+    .visual-label {
+      color: #80dfff;
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .visual-value {
+      color: #f4fbff;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .visual-note {
+      border-left: 3px solid #50ff96;
+      padding-left: 10px;
+      color: #a9bdc8;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    .panel-button.active {
+      background: #1c4d6b;
+      border-color: #50ff96;
+      color: #f4fbff;
+    }
+
+    .terminal-button {
+      min-width: 32px;
+      height: 28px;
+      padding: 0 8px;
+      border-color: #789;
+      color: #cfd6dc;
+      font-size: 12px;
+    }
+
+    #changeReviewBar {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+      background: #1c1f22;
+      border: 1px solid #34383d;
+      border-radius: 8px;
+      padding: 6px 10px;
+      color: #dff7ff;
+    }
+
+    #changeReviewSummary {
+      flex: 1;
+      color: #cfd6dc;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .change-added-count {
+      color: #50ff96;
+      font-weight: 700;
+    }
+
+    .change-removed-count {
+      color: #ff6b6b;
+      font-weight: 700;
+    }
+
+    #closeChangeReviewBtn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      border-color: #789;
+      color: #cfd6dc;
+      line-height: 1;
+      font-size: 18px;
+    }
+
+    #undoLastChangeBtn {
+      min-width: 74px;
+      height: 30px;
+      padding: 0 10px;
+    }
+
+    #diffViewer {
+      flex: 1;
+      display: none;
+      min-height: 0;
+      flex-direction: column;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    #diffHeader {
+      padding: 9px 12px;
+      color: #ffaa44;
+      border-bottom: 1px solid #193247;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    #diffBody {
+      flex: 1;
+      overflow: auto;
+      padding: 8px 0;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .diff-line {
+      padding: 1px 12px;
+      border-left: 3px solid transparent;
+      overflow-wrap: anywhere;
+    }
+
+    .diff-line.added {
+      color: #d9ffe8;
+      background: rgba(80, 255, 150, 0.12);
+      border-left-color: #50ff96;
+    }
+
+    .diff-line.removed {
+      color: #ffdede;
+      background: rgba(255, 107, 107, 0.12);
+      border-left-color: #ff6b6b;
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+
+    .msg {
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .user {
+      background: rgba(68, 217, 255, 0.12);
+      border-left: 3px solid #44d9ff;
+    }
+
+    .assistant {
+      background: rgba(80, 255, 150, 0.10);
+      border-left: 3px solid #50ff96;
+    }
+
+    .input-wrap {
+      position: relative;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #input {
+      flex: 1;
+      background: #03070d;
+      color: white;
+      border: 1px solid #24465f;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: inherit;
+    }
+
+    #suggestions {
+      position: absolute;
+      left: 0;
+      right: 74px;
+      bottom: 48px;
+      background: #02060b;
+      border: 1px solid #44d9ff;
+      border-radius: 10px;
+      padding: 6px;
+      max-height: 210px;
+      overflow-y: auto;
+      overflow-x: hidden;
+      display: none;
+      z-index: 50;
+      box-shadow: 0 0 25px rgba(68, 217, 255, 0.18);
+    }
+
+    .suggestion-row {
+      padding: 6px 8px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      border-radius: 7px;
+      cursor: pointer;
+      color: #dff7ff;
+    }
+
+    .suggestion-row.active {
+      background: rgba(68, 217, 255, 0.18);
+      color: #ffffff;
+    }
+
+    .suggestion-command {
+      color: #f4fbff;
+    }
+
+    .suggestion-folder {
+      color: #ffd966;
+    }
+
+    .suggestion-file {
+      color: #80ff96;
+    }
+
+    .suggestion-hint {
+      color: #789;
+      font-size: 11px;
+      padding: 3px 8px 6px 8px;
+    }
+
+    .approval-backdrop {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      background: rgba(1, 5, 10, 0.72);
+      z-index: 200;
+    }
+
+    .approval-dialog {
+      width: min(560px, calc(100vw - 36px));
+      max-height: calc(100vh - 36px);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #071321;
+      border: 1px solid #44d9ff;
+      border-radius: 8px;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.48);
+      padding: 16px;
+    }
+
+    .approval-label {
+      color: #ffaa44;
+      font-size: 12px;
+    }
+
+    #approvalTitle {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    #approvalDescription {
+      margin: 0;
+      color: #dff7ff;
+      line-height: 1.45;
+    }
+
+    #approvalMeta {
+      color: #9bb2c3;
+      font-size: 12px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    #approvalPreview {
+      margin: 0;
+      max-height: 240px;
+      overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 8px;
+      padding: 10px;
+      color: #ffffff;
+      font-family: Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .approval-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .approval-secondary {
+      border-color: #789;
+      color: #c7d8e6;
+    }
+
+    #approvalApproveBtn:disabled {
+      opacity: 0.48;
+      cursor: not-allowed;
+      border-color: #496070;
+      color: #9bb2c3;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="explorer">
+      <div class="top-row">
+        <h1 style="flex:1;">Project Explorer</h1>
+        <button id="loadFilesBtn">Ladda</button>
+      </div>
+
+      <div id="folderPath">Träd: projektrot</div>
+      <div id="fileTree"></div>
+    </aside>
+
+    <main class="editor">
+      <div class="top-row">
+        <h2 id="workspaceTitle" style="flex:1;">Workspace Panel</h2>
+        <button id="showWorkspaceBtn" class="panel-button active">Filer</button>
+        <button id="showVisualBtn" class="panel-button">Översikt</button>
+        <button id="showTerminalBtn">Terminal</button>
+        <button id="copyEditorBtn">Kopiera</button>
+      </div>
+
+      <div id="activeFileLabel">Ingen fil öppen.</div>
+      <div id="changeReviewBar">
+        <div id="changeReviewSummary"></div>
+        <button id="reviewChangesBtn" type="button">Granska ändringar</button>
+        <button id="undoLastChangeBtn" type="button" title="Ångra senaste godkända filändring">↶ Ångra</button>
+        <button id="closeChangeReviewBtn" type="button" title="Stäng granskning">×</button>
+      </div>
+      <div id="diffViewer">
+        <div id="diffHeader"></div>
+        <div id="diffBody"></div>
+      </div>
+      <div id="visualPanel">
+        <div>
+          <div class="visual-kicker">Jarvis Översikt</div>
+          <h3 class="visual-title">Minne, Obsidian och säker arbetsloop</h3>
+        </div>
+        <div class="visual-grid">
+          <div class="visual-cell">
+            <div class="visual-label">Aktiv fil</div>
+            <div id="visualActiveFile" class="visual-value">Ingen aktiv fil.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Aktiv mapp</div>
+            <div id="visualActiveFolder" class="visual-value">(projektrot)</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Senaste filändring</div>
+            <div id="visualLatestChange" class="visual-value">Ingen filändring ännu.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Pending approval</div>
+            <div id="visualPendingState" class="visual-value">Ingen pending approval.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Terminal</div>
+            <div id="visualTerminalState" class="visual-value">Ingen terminalkörning ännu.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Minne</div>
+            <div id="visualMemoryState" class="visual-value">Minnesstatus laddas.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Senaste minnesförändring</div>
+            <div id="visualMemoryChangeState" class="visual-value">Ingen minnesförändring ännu.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Senaste bygge</div>
+            <div id="visualBuildStatusState" class="visual-value">Ingen byggstatus ännu.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Obsidian</div>
+            <div id="visualObsidianState" class="visual-value">Obsidian är inte konfigurerat.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Jarvis-loop</div>
+            <div id="visualLoopState" class="visual-value">Observe -> Think -> Plan -> Ask -> Act -> Verify -> Report -> Remember</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Teknisk riktning</div>
+            <div id="visualArchitectureState" class="visual-value">3D, Obsidian och NeuroLink ska senare bli egna paneler ovanpå säkra state-signaler.</div>
+          </div>
+        </div>
+        <div class="visual-note">
+          Översiktspanelen visar state. Den styr inte datorn, skriver inte till Obsidian och kör ingen tung 3D eller bakgrundsagent.
+        </div>
+      </div>
+      <textarea id="editorArea" spellcheck="false" placeholder="Klicka på en fil i Project Explorer för att visa den här." readonly></textarea>
+      <div id="terminalPanel">
+        <div class="terminal-header">
+          <div id="terminalTitle">Terminal</div>
+          <div id="terminalStatus">Ingen körning</div>
+          <button id="terminalCopyBtn" class="terminal-button" type="button">Kopiera</button>
+          <button id="terminalClearBtn" class="terminal-button" type="button">Rensa</button>
+          <button id="terminalCloseBtn" class="terminal-button" type="button">×</button>
+        </div>
+        <pre id="terminalOutput">Ingen terminaloutput än.</pre>
+      </div>
+
+      <div class="editor-actions">
+        <button id="editBtn" type="button" disabled>Edit-läge</button>
+        <button id="saveBtn" type="button" disabled>Spara med godkännande</button>
+        <span id="editorStatus" class="small">Öppna en fil för att redigera säkert.</span>
+      </div>
+    </main>
+
+    <section class="chat">
+      <h2>Jarvis Chat</h2>
+      <div id="messages"></div>
+
+      <div class="input-wrap">
+        <div id="suggestions"></div>
+        <div id="pendingApprovalHint"></div>
+        <div class="input-row">
+          <input id="input" placeholder="Skriv till Jarvis..." autocomplete="off">
+          <button id="send">Skicka</button>
+        </div>
+      </div>
+
+      <div class="small">
+        Tips: TAB byter förslag. Enter skickar. Esc stänger förslag.
+      </div>
+    </section>
+  </div>
+
+  <div id="approvalModal" class="approval-backdrop" role="dialog" aria-modal="true" aria-labelledby="approvalTitle">
+    <div class="approval-dialog">
+      <div class="approval-label">Väntar på godkännande</div>
+      <h2 id="approvalTitle">Godkänn åtgärd</h2>
+      <p id="approvalDescription"></p>
+      <div id="approvalMeta"></div>
+      <pre id="approvalPreview"></pre>
+      <div class="approval-actions">
+        <button id="approvalCancelBtn" class="approval-secondary" type="button">Avbryt</button>
+        <button id="approvalApproveBtn" type="button">Godkänn</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+    const pendingApprovalHint = document.getElementById("pendingApprovalHint");
+
+    const fileTree = document.getElementById("fileTree");
+    const folderPath = document.getElementById("folderPath");
+    const loadFilesBtn = document.getElementById("loadFilesBtn");
+
+    const editorArea = document.getElementById("editorArea");
+    const activeFileLabel = document.getElementById("activeFileLabel");
+    const workspaceTitle = document.getElementById("workspaceTitle");
+    const showWorkspaceBtn = document.getElementById("showWorkspaceBtn");
+    const showVisualBtn = document.getElementById("showVisualBtn");
+    const showTerminalBtn = document.getElementById("showTerminalBtn");
+    const copyEditorBtn = document.getElementById("copyEditorBtn");
+    const suggestions = document.getElementById("suggestions");
+    const changeReviewBar = document.getElementById("changeReviewBar");
+    const changeReviewSummary = document.getElementById("changeReviewSummary");
+    const reviewChangesBtn = document.getElementById("reviewChangesBtn");
+    const undoLastChangeBtn = document.getElementById("undoLastChangeBtn");
+    const closeChangeReviewBtn = document.getElementById("closeChangeReviewBtn");
+    const diffViewer = document.getElementById("diffViewer");
+    const diffHeader = document.getElementById("diffHeader");
+    const diffBody = document.getElementById("diffBody");
+    const visualPanel = document.getElementById("visualPanel");
+    const visualActiveFile = document.getElementById("visualActiveFile");
+    const visualActiveFolder = document.getElementById("visualActiveFolder");
+    const visualLatestChange = document.getElementById("visualLatestChange");
+    const visualPendingState = document.getElementById("visualPendingState");
+    const visualTerminalState = document.getElementById("visualTerminalState");
+    const visualMemoryState = document.getElementById("visualMemoryState");
+    const visualMemoryChangeState = document.getElementById("visualMemoryChangeState");
+    const visualBuildStatusState = document.getElementById("visualBuildStatusState");
+    const visualObsidianState = document.getElementById("visualObsidianState");
+    const visualLoopState = document.getElementById("visualLoopState");
+    const visualArchitectureState = document.getElementById("visualArchitectureState");
+
+    const approvalModal = document.getElementById("approvalModal");
+    const approvalTitle = document.getElementById("approvalTitle");
+    const approvalDescription = document.getElementById("approvalDescription");
+    const approvalMeta = document.getElementById("approvalMeta");
+    const approvalPreview = document.getElementById("approvalPreview");
+    const approvalApproveBtn = document.getElementById("approvalApproveBtn");
+    const approvalCancelBtn = document.getElementById("approvalCancelBtn");
+    const terminalPanel = document.getElementById("terminalPanel");
+    const terminalTitle = document.getElementById("terminalTitle");
+    const terminalStatus = document.getElementById("terminalStatus");
+    const terminalOutput = document.getElementById("terminalOutput");
+    const terminalCopyBtn = document.getElementById("terminalCopyBtn");
+    const terminalClearBtn = document.getElementById("terminalClearBtn");
+    const terminalCloseBtn = document.getElementById("terminalCloseBtn");
+    const editBtn = document.getElementById("editBtn");
+    const saveBtn = document.getElementById("saveBtn");
+    const editorStatus = document.getElementById("editorStatus");
+
+    const messageHistory = [];
+    let historyIndex = 0;
+
+    let allFiles = [];
+    let allFolders = [];
+    let currentSuggestions = [];
+    let suggestionIndex = 0;
+    let latestFileChangeReviewV1 = null;
+    let highlightedProjectPathV1 = "";
+    let activeTreePathV1 = "";
+    let fileChangeReviewOpenV1 = false;
+    let approvalUnlockTimerV16 = null;
+    let currentPendingApprovalV1 = null;
+    let latestTerminalPayloadV1 = null;
+    let activeEditorPathV1 = "";
+    let activeEditorOriginalContentV1 = "";
+    let editorEditModeV1 = false;
+    let editorSaveBlockedV1 = false;
+    let workspacePanelModeV1 = "files";
+    let jarvisOverviewPayloadV1 = null;
+
+    window.jarvisAddMessage = function(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + (role === "user" ? "user" : "assistant");
+      div.textContent = (role === "user" ? "Du: " : "Jarvis: ") + String(text || "");
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    };
+
+    function postMessage(payload) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(payload);
+      } else {
+        window.jarvisAddMessage("assistant", "Ingen C#-brygga hittades. Starta via Jarvis-appen.");
+      }
+    }
+
+    function setPanelButtonStateV1(mode) {
+      if (mode === "visual") {
+        showVisualBtn.classList.add("active");
+        showWorkspaceBtn.classList.remove("active");
+      } else {
+        showWorkspaceBtn.classList.add("active");
+        showVisualBtn.classList.remove("active");
+      }
+    }
+
+    function computeActiveFolderLabelV1(path) {
+      const clean = String(path || "").replace(/\\/g, "/").replace(/^\/+/, "").trim();
+      if (!clean) return "(projektrot)";
+      const lastSlash = clean.lastIndexOf("/");
+      if (lastSlash < 0) return "(projektrot)";
+      const folder = clean.slice(0, lastSlash);
+      return folder || "(projektrot)";
+    }
+
+    window.computeActiveFolderLabelV1 = computeActiveFolderLabelV1;
+
+    function renderVisualPanelV1() {
+      visualActiveFile.textContent = activeEditorPathV1 || "Ingen aktiv fil.";
+      visualActiveFolder.textContent = computeActiveFolderLabelV1(activeEditorPathV1);
+
+      if (latestFileChangeReviewV1) {
+        const changePath = String(latestFileChangeReviewV1.path || latestFileChangeReviewV1.Path || "");
+        const label = fileChangeReviewSummaryLabelV1(latestFileChangeReviewV1);
+        visualLatestChange.textContent = changePath ? (label + "\n" + changePath) : label;
+      } else {
+        visualLatestChange.textContent = "Ingen filändring ännu.";
+      }
+
+      if (currentPendingApprovalV1) {
+        const pendingType = String(currentPendingApprovalV1.type || currentPendingApprovalV1.Type || "Pending");
+        const title = String(currentPendingApprovalV1.title || currentPendingApprovalV1.Title || "");
+        visualPendingState.textContent = title ? (pendingType + "\n" + title) : pendingType;
+      } else {
+        visualPendingState.textContent = "Ingen pending approval.";
+      }
+
+      if (latestTerminalPayloadV1) {
+        const command = String(latestTerminalPayloadV1.command || latestTerminalPayloadV1.Command || "");
+        const exitCode = latestTerminalPayloadV1.exitCode ?? latestTerminalPayloadV1.ExitCode ?? "?";
+        visualTerminalState.textContent = command ? ("Senast: " + command + "\nExit: " + exitCode) : ("Exit: " + exitCode);
+      } else {
+        visualTerminalState.textContent = "Ingen terminalkörning ännu.";
+      }
+
+      const overview = jarvisOverviewPayloadV1 || {};
+      visualMemoryState.textContent = String(overview.memory || overview.Memory || "Minnesstatus laddas.");
+      visualMemoryChangeState.textContent = String(overview.memoryChange || overview.MemoryChange || "Ingen minnesförändring ännu.");
+      visualBuildStatusState.textContent = String(overview.buildStatus || overview.BuildStatus || "Ingen byggstatus ännu.");
+      visualObsidianState.textContent = String(overview.obsidian || overview.Obsidian || "Obsidian är inte konfigurerat.");
+      visualLoopState.textContent = String(overview.loop || overview.Loop || "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember");
+      visualArchitectureState.textContent = String(
+        overview.architecture ||
+        overview.Architecture ||
+        "Workspace Panel är den praktiska huvudytan. Översikt är en separat panel för status, framtida 3D, Obsidian och NeuroLink."
+      );
+    }
+
+    window.jarvisSetJarvisOverviewV1 = function(payload) {
+      jarvisOverviewPayloadV1 = payload || {};
+      renderVisualPanelV1();
+    };
+
+    function updatePendingApprovalHintV1() {
+      if (!currentPendingApprovalV1) {
+        pendingApprovalHint.style.display = "none";
+        pendingApprovalHint.textContent = "";
+        return;
+      }
+
+      const pendingType = String(currentPendingApprovalV1.type || currentPendingApprovalV1.Type || "Pending");
+      const title = String(currentPendingApprovalV1.title || currentPendingApprovalV1.Title || "Åtgärd väntar");
+      pendingApprovalHint.style.display = "flex";
+      pendingApprovalHint.textContent = "Pending: " + pendingType + " - " + title;
+    }
+
+    window.jarvisShowVisualPanelV1 = function() {
+      workspacePanelModeV1 = "visual";
+      workspaceTitle.textContent = "Jarvis Översikt";
+      setPanelButtonStateV1("visual");
+      renderVisualPanelV1();
+      visualPanel.style.display = "flex";
+      editorArea.style.display = "none";
+      diffViewer.style.display = "none";
+    };
+
+    window.jarvisShowWorkspacePanelV1 = function() {
+      workspacePanelModeV1 = "files";
+      workspaceTitle.textContent = "Workspace Panel";
+      setPanelButtonStateV1("files");
+      visualPanel.style.display = "none";
+      diffViewer.style.display = "none";
+      editorArea.style.display = "";
+      fileChangeReviewOpenV1 = false;
+    };
+
+    window.jarvisShowPendingApprovalV1 = function(payload) {
+      const approval = payload || {};
+      currentPendingApprovalV1 = approval;
+      renderVisualPanelV1();
+      updatePendingApprovalHintV1();
+
+      if (approvalUnlockTimerV16) {
+        clearTimeout(approvalUnlockTimerV16);
+        approvalUnlockTimerV16 = null;
+      }
+
+      approvalTitle.textContent = String(approval.title || "Godkänn åtgärd");
+      approvalDescription.textContent = String(approval.description || "Jarvis vill utföra en åtgärd som kräver ditt godkännande.");
+      approvalMeta.textContent = String(approval.meta || "");
+      approvalPreview.textContent = String(approval.preview || "(ingen preview)");
+      approvalApproveBtn.disabled = true;
+      approvalApproveBtn.textContent = "Godkänn (vänta)";
+      approvalModal.style.display = "flex";
+      approvalCancelBtn.focus();
+
+      approvalUnlockTimerV16 = setTimeout(function() {
+        approvalApproveBtn.disabled = false;
+        approvalApproveBtn.textContent = "Godkänn";
+        approvalUnlockTimerV16 = null;
+      }, 1200);
+    };
+
+    window.jarvisHidePendingApprovalV1 = function() {
+      if (approvalUnlockTimerV16) {
+        clearTimeout(approvalUnlockTimerV16);
+        approvalUnlockTimerV16 = null;
+      }
+
+      approvalModal.style.display = "none";
+      approvalTitle.textContent = "Godkänn åtgärd";
+      approvalDescription.textContent = "";
+      approvalMeta.textContent = "";
+      approvalPreview.textContent = "";
+      approvalApproveBtn.disabled = false;
+      approvalApproveBtn.textContent = "Godkänn";
+      currentPendingApprovalV1 = null;
+      renderVisualPanelV1();
+      updatePendingApprovalHintV1();
+    };
+
+    function renderTerminalPayloadV1(payload) {
+      const terminal = payload || {};
+      const command = String(terminal.command || "");
+      const workingDirectory = String(terminal.workingDirectory || "");
+      const summary = String(terminal.summary || "");
+      const output = String(terminal.output || "");
+      const error = String(terminal.error || "");
+      const timedOut = Boolean(terminal.timedOut);
+      const exitCode = terminal.exitCode;
+
+      const lines = [];
+      lines.push("Kommando:");
+      lines.push(command || "(okänt)");
+      lines.push("");
+      lines.push("Working directory:");
+      lines.push(workingDirectory || "(okänd)");
+      lines.push("");
+      lines.push("Sammanfattning:");
+      lines.push(summary || "- Ingen sammanfattning.");
+      lines.push("");
+      lines.push("Output:");
+      lines.push(output.trim() ? output.trim() : "(tomt)");
+
+      if (error.trim()) {
+        lines.push("");
+        lines.push("Error:");
+        lines.push(error.trim());
+      }
+
+      terminalTitle.textContent = command ? ("Terminal: " + command) : "Terminal";
+      terminalStatus.textContent = timedOut ? "Timeout" : ("Exit " + String(exitCode ?? "?"));
+      terminalOutput.textContent = lines.join("\n");
+    }
+
+    window.jarvisShowTerminalPanelV1 = function(payload) {
+      latestTerminalPayloadV1 = payload || {};
+      renderTerminalPayloadV1(latestTerminalPayloadV1);
+      renderVisualPanelV1();
+      terminalPanel.style.display = "flex";
+    };
+
+    approvalApproveBtn.addEventListener("click", function() {
+      if (approvalApproveBtn.disabled) return;
+
+      postMessage({ type: "jarvis_pending_approval_v1", action: "approve" });
+      window.jarvisHidePendingApprovalV1();
+    });
+
+    approvalCancelBtn.addEventListener("click", function() {
+      postMessage({ type: "jarvis_pending_approval_v1", action: "cancel" });
+      window.jarvisHidePendingApprovalV1();
+    });
+
+    showTerminalBtn.addEventListener("click", function() {
+      if (terminalPanel.style.display === "flex") {
+        terminalPanel.style.display = "none";
+        return;
+      }
+
+      if (latestTerminalPayloadV1) {
+        renderTerminalPayloadV1(latestTerminalPayloadV1);
+      }
+
+      renderVisualPanelV1();
+      terminalPanel.style.display = "flex";
+    });
+
+    showWorkspaceBtn.addEventListener("click", function() {
+      window.jarvisShowWorkspacePanelV1();
+    });
+
+    showVisualBtn.addEventListener("click", function() {
+      window.jarvisShowVisualPanelV1();
+    });
+
+    terminalCloseBtn.addEventListener("click", function() {
+      terminalPanel.style.display = "none";
+    });
+
+    terminalClearBtn.addEventListener("click", function() {
+      latestTerminalPayloadV1 = null;
+      terminalTitle.textContent = "Terminal";
+      terminalStatus.textContent = "Ingen körning";
+      terminalOutput.textContent = "Ingen terminaloutput än.";
+      renderVisualPanelV1();
+    });
+
+    terminalCopyBtn.addEventListener("click", async function() {
+      try {
+        await navigator.clipboard.writeText(terminalOutput.textContent || "");
+        window.jarvisAddMessage("assistant", "Terminaloutput kopierad.");
+      } catch {
+        window.jarvisAddMessage("assistant", "Kunde inte kopiera terminaloutput.");
+      }
+    });
+
+    function normalizeLoose(value) {
+      return String(value || "")
+        .toLowerCase()
+        .replace(/å/g, "a")
+        .replace(/ä/g, "a")
+        .replace(/ö/g, "o")
+        .replace(/[^a-z0-9]/g, "");
+    }
+
+    function extractSmartFileOpen(text) {
+      const value = String(text || "").trim();
+      if (!value) return "";
+
+      if (/^(öppna|oppna|starta)\s+program\s*:/i.test(value)) return "";
+
+      const fileRegex = /([a-z0-9_\-\.]+(?:[\\/][a-z0-9_\-\.]+)*\.(md|txt|json|cs|html|css|js|ps1|csproj|sln|xml|yml|yaml|config|props|targets|editorconfig|gitignore|lock|log|csv|vbs))/i;
+      const match = value.match(fileRegex);
+
+      if (match) {
+        const file = match[1];
+        const hasOpenIntent = /\b(öppna|oppna|visa|läs|las|open|read)\b/i.test(value) ||
+                              /\b(koden|kod|filen|fil)\b/i.test(value);
+        const onlyFileName = value.toLowerCase() === file.toLowerCase();
+
+        if (hasOpenIntent || onlyFileName) return file;
+      }
+
+      const openLoose = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.+?)\s*$/i);
+      if (openLoose) {
+        const raw = openLoose[2].trim();
+        if (raw && !raw.startsWith("mapp") && !raw.startsWith("folder") && !raw.startsWith("program")) {
+          return raw;
+        }
+      }
+
+      return "";
+    }
+
+    function extractFolderOpen(text) {
+      const value = String(text || "").trim();
+      if (/^\s*(öppna projekt|oppna projekt|projektrot|visa projektrot)\s*$/i.test(value)) return "";
+
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return null;
+
+      return match[2].trim();
+    }
+
+    function loadRootTree() {
+      postMessage({ type: "jarvis_tree_folder_v7", path: "" });
+      postMessage({ type: "jarvis_autocomplete_files_v7" });
+    }
+
+    loadFilesBtn.addEventListener("click", loadRootTree);
+
+    function ensureFolderNode(path) {
+      const selector = '[data-folder-path="' + CSS.escape(path || "") + '"]';
+      return fileTree.querySelector(selector);
+    }
+
+    function makeTreeRow(item) {
+      const row = document.createElement("div");
+      row.className = "tree-row";
+      row.title = item.path || "";
+
+      const icon = document.createElement("span");
+      icon.textContent = item.type === "folder" ? "▶" : "📄";
+
+      const label = document.createElement("span");
+      label.className = "tree-label";
+      label.textContent = (item.type === "folder" ? "📁 " : "") + item.name;
+
+      row.appendChild(icon);
+      row.appendChild(label);
+
+      if (item.type === "folder") {
+        row.dataset.folderPath = item.path || "";
+        if (isActiveFolderPathV1(row.dataset.folderPath, activeTreePathV1)) {
+          row.classList.add("active-folder");
+        }
+        row.onclick = function () {
+          const existing = row.nextElementSibling;
+
+          if (existing && existing.classList.contains("tree-children")) {
+            const isHidden = existing.style.display === "none";
+            existing.style.display = isHidden ? "block" : "none";
+            icon.textContent = isHidden ? "▼" : "▶";
+            return;
+          }
+
+          icon.textContent = "▼";
+          postMessage({ type: "jarvis_tree_folder_v7", path: item.path || "" });
+        };
+      } else {
+        row.dataset.filePath = item.path || "";
+        if (highlightedProjectPathV1 && highlightedProjectPathV1 === row.dataset.filePath) {
+          row.className += " review-highlight";
+        }
+        if (activeTreePathV1 && activeTreePathV1 === row.dataset.filePath) {
+          row.classList.add("active-file");
+        }
+
+        row.onclick = function () {
+          window.jarvisSetActiveTreeFileV1(item.path || "");
+          postMessage({
+            type: "jarvis_open_file_smart_v7",
+            path: item.path,
+            silent: true
+          });
+        };
+      }
+
+      return row;
+    }
+
+    function isActiveFolderPathV1(folderPath, activePath) {
+      const folder = String(folderPath || "").replace(/\\/g, "/");
+      const active = String(activePath || "").replace(/\\/g, "/");
+      if (!folder || !active) return false;
+      return active === folder || active.indexOf(folder + "/") === 0;
+    }
+
+    window.jarvisSetTreeFolderV7 = function(path, items) {
+      const cleanPath = path || "";
+      folderPath.textContent = cleanPath ? ("Träd: " + cleanPath) : "Träd: projektrot";
+
+      const container = document.createElement("div");
+      container.className = "tree-children";
+      container.dataset.childrenFor = cleanPath;
+
+      (items || []).forEach(function(item) {
+        container.appendChild(makeTreeRow(item));
+      });
+
+      if (!cleanPath) {
+        fileTree.innerHTML = "";
+        (items || []).forEach(function(item) {
+          fileTree.appendChild(makeTreeRow(item));
+        });
+        window.jarvisHighlightProjectPathV1(highlightedProjectPathV1);
+        window.jarvisSetActiveTreeFileV1(activeTreePathV1);
+        return;
+      }
+
+      const folderRow = ensureFolderNode(cleanPath);
+      if (!folderRow) return;
+
+      const old = folderRow.nextElementSibling;
+      if (old && old.classList.contains("tree-children")) old.remove();
+
+      folderRow.insertAdjacentElement("afterend", container);
+      window.jarvisHighlightProjectPathV1(highlightedProjectPathV1);
+      window.jarvisSetActiveTreeFileV1(activeTreePathV1);
+    };
+
+    window.jarvisSetAllFilesV7 = function(files, folders) {
+      allFiles = files || [];
+      allFolders = folders || [];
+      updateSuggestions();
+    };
+
+    window.jarvisSetEditorFile = function(path, content, readOnly, isTruncated) {
+      const cleanPath = String(path || "").replace(/\\/g, "/");
+      const reviewPath = latestFileChangeReviewV1
+        ? String(latestFileChangeReviewV1.path || latestFileChangeReviewV1.Path || "").replace(/\\/g, "/")
+        : "";
+
+      activeEditorPathV1 = cleanPath;
+      activeEditorOriginalContentV1 = content || "";
+      editorEditModeV1 = false;
+      editorSaveBlockedV1 = Boolean(isTruncated);
+      window.jarvisSetActiveTreeFileV1(cleanPath);
+      activeFileLabel.textContent = cleanPath ? ("Aktiv fil: " + cleanPath) : "Ingen fil öppen.";
+      editorArea.value = content || "";
+      editorArea.readOnly = readOnly !== false;
+      editorArea.scrollTop = 0;
+      updateEditorButtonsV1();
+      renderVisualPanelV1();
+      workspacePanelModeV1 = "files";
+      workspaceTitle.textContent = "Workspace Panel";
+      setPanelButtonStateV1("files");
+      visualPanel.style.display = "none";
+
+      if (fileChangeReviewOpenV1 && cleanPath && cleanPath === reviewPath) {
+        renderFileChangeDiffV1(latestFileChangeReviewV1);
+        return;
+      }
+
+      fileChangeReviewOpenV1 = false;
+      editorArea.style.display = "";
+      diffViewer.style.display = "none";
+    };
+
+    function updateEditorButtonsV1() {
+      const hasFile = Boolean(activeEditorPathV1);
+      const dirty = hasFile && editorArea.value !== activeEditorOriginalContentV1;
+
+      editBtn.disabled = !hasFile || editorSaveBlockedV1;
+      saveBtn.disabled = !hasFile || editorSaveBlockedV1 || !editorEditModeV1 || !dirty;
+
+      if (!hasFile) {
+        editorStatus.textContent = "Öppna en fil för att redigera säkert.";
+      } else if (editorSaveBlockedV1) {
+        editorStatus.textContent = "Filen visas trunkerad och kan inte sparas från panelen.";
+      } else if (editorEditModeV1 && dirty) {
+        editorStatus.textContent = "Osparad ändring. Spara skapar pending preview.";
+      } else if (editorEditModeV1) {
+        editorStatus.textContent = "Edit-läge aktivt. Ändra texten innan du sparar.";
+      } else {
+        editorStatus.textContent = "Read-only tills du väljer Edit-läge.";
+      }
+    }
+
+    editBtn.addEventListener("click", function() {
+      if (!activeEditorPathV1) {
+        window.jarvisAddMessage("assistant", "Öppna en fil i Project Explorer först.");
+        return;
+      }
+
+      if (editorSaveBlockedV1) {
+        window.jarvisAddMessage("assistant", "Filen är för lång/trunkerad i panelen och kan inte sparas här.");
+        return;
+      }
+
+      editorEditModeV1 = true;
+      editorArea.readOnly = false;
+      editorArea.focus();
+      updateEditorButtonsV1();
+    });
+
+    saveBtn.addEventListener("click", function() {
+      if (!activeEditorPathV1) {
+        window.jarvisAddMessage("assistant", "Ingen aktiv fil att spara.");
+        return;
+      }
+
+      if (editorSaveBlockedV1) {
+        window.jarvisAddMessage("assistant", "Filen är för lång/trunkerad i panelen och kan inte sparas här.");
+        return;
+      }
+
+      if (editorArea.value === activeEditorOriginalContentV1) {
+        window.jarvisAddMessage("assistant", "Ingen ändring att spara.");
+        updateEditorButtonsV1();
+        return;
+      }
+
+      postMessage({
+        type: "jarvis_editor_save_pending_v1",
+        path: activeEditorPathV1,
+        content: editorArea.value
+      });
+    });
+
+    editorArea.addEventListener("input", function() {
+      if (!editorEditModeV1) return;
+      updateEditorButtonsV1();
+    });
+
+    window.jarvisHighlightProjectPathV1 = function(path) {
+      highlightedProjectPathV1 = String(path || "").replace(/\\/g, "/");
+
+      if (!fileTree.querySelectorAll) return;
+
+      const highlighted = fileTree.querySelectorAll(".tree-row.review-highlight");
+      highlighted.forEach(function(row) {
+        row.classList.remove("review-highlight");
+      });
+
+      if (!highlightedProjectPathV1) return;
+
+      const selector = '[data-file-path="' + CSS.escape(highlightedProjectPathV1) + '"]';
+      const row = fileTree.querySelector(selector);
+      if (!row) return;
+
+      row.classList.add("review-highlight");
+      if (row.scrollIntoView) {
+        row.scrollIntoView({ block: "nearest" });
+      }
+    };
+
+    window.jarvisSetActiveTreeFileV1 = function(path) {
+      activeTreePathV1 = String(path || "").replace(/\\/g, "/");
+
+      if (!fileTree.querySelectorAll) return;
+
+      const previousFiles = fileTree.querySelectorAll(".tree-row.active-file");
+      previousFiles.forEach(function(row) { row.classList.remove("active-file"); });
+
+      const previousFolders = fileTree.querySelectorAll(".tree-row.active-folder");
+      previousFolders.forEach(function(row) { row.classList.remove("active-folder"); });
+
+      if (!activeTreePathV1) return;
+
+      const fileSelector = '[data-file-path="' + CSS.escape(activeTreePathV1) + '"]';
+      const fileRow = fileTree.querySelector(fileSelector);
+      if (fileRow) {
+        fileRow.classList.add("active-file");
+        if (fileRow.scrollIntoView) {
+          fileRow.scrollIntoView({ block: "nearest" });
+        }
+      }
+
+      const folderRows = fileTree.querySelectorAll("[data-folder-path]");
+      folderRows.forEach(function(row) {
+        const folderPath = row.dataset ? row.dataset.folderPath : "";
+        if (isActiveFolderPathV1(folderPath, activeTreePathV1)) {
+          row.classList.add("active-folder");
+        }
+      });
+    };
+
+    function renderFileChangeDiffV1(payload) {
+      const review = payload || {};
+      const reviewPath = String(review.path || review.Path || "");
+      const lines = review.lines || review.Lines || [];
+
+      diffHeader.textContent = reviewPath ? ("Granskar: " + reviewPath) : "Granskar ändring";
+      diffBody.innerHTML = "";
+
+      lines.forEach(function(line) {
+        const kind = String(line.kind || line.Kind || "context").toLowerCase();
+        const text = String(line.text || line.Text || "");
+        const row = document.createElement("div");
+
+        if (kind === "added") {
+          row.className = "diff-line added";
+          row.textContent = "+ " + text;
+        } else if (kind === "removed") {
+          row.className = "diff-line removed";
+          row.textContent = "- " + text;
+        } else {
+          row.className = "diff-line";
+          row.textContent = "  " + text;
+        }
+
+        diffBody.appendChild(row);
+      });
+
+      editorArea.style.display = "none";
+      diffViewer.style.display = "flex";
+      fileChangeReviewOpenV1 = true;
+    }
+
+    function fileChangeReviewSummaryLabelV1(review) {
+      const kind = String(review.changeKind || review.ChangeKind || "").toLowerCase();
+
+      if (kind === "create") return "1 fil skapad";
+      if (kind === "delete") return "1 fil raderad";
+      if (kind === "write") return "1 fil skriven";
+      if (kind === "append") return "1 fil utökad";
+      if (kind === "undo") return "1 fil återställd";
+
+      return "1 fil har ändrats";
+    }
+
+    window.jarvisShowFileChangeReviewV1 = function(payload) {
+      const review = payload || {};
+      latestFileChangeReviewV1 = review;
+
+      const reviewPath = String(review.path || review.Path || "");
+      const added = Number(review.added ?? review.Added ?? 0);
+      const removed = Number(review.removed ?? review.Removed ?? 0);
+
+      changeReviewSummary.innerHTML =
+        fileChangeReviewSummaryLabelV1(review) + " " +
+        '<span class="change-added-count">+' + added + "</span> " +
+        '<span class="change-removed-count">-' + removed + "</span>";
+      changeReviewBar.style.display = "flex";
+      window.jarvisHighlightProjectPathV1(reviewPath);
+      renderVisualPanelV1();
+    };
+
+    reviewChangesBtn.addEventListener("click", function() {
+      if (!latestFileChangeReviewV1) return;
+
+      const reviewPath = String(latestFileChangeReviewV1.path || latestFileChangeReviewV1.Path || "");
+      renderFileChangeDiffV1(latestFileChangeReviewV1);
+      window.jarvisHighlightProjectPathV1(reviewPath);
+      postMessage({ type: "jarvis_review_file_change_v1", path: reviewPath });
+    });
+
+    undoLastChangeBtn.addEventListener("click", function() {
+      postMessage({ type: "jarvis_undo_last_change_v1" });
+    });
+
+    closeChangeReviewBtn.addEventListener("click", function() {
+      latestFileChangeReviewV1 = null;
+      fileChangeReviewOpenV1 = false;
+      changeReviewBar.style.display = "none";
+      diffViewer.style.display = "none";
+      diffBody.innerHTML = "";
+      diffHeader.textContent = "";
+      editorArea.style.display = "";
+      window.jarvisHighlightProjectPathV1("");
+      renderVisualPanelV1();
+    });
+
+    copyEditorBtn.addEventListener("click", async function() {
+      try {
+        await navigator.clipboard.writeText(editorArea.value || "");
+        window.jarvisAddMessage("assistant", "Innehållet i filpanelen kopierades.");
+      } catch {
+        window.jarvisAddMessage("assistant", "Kunde inte kopiera från filpanelen.");
+      }
+    });
+
+    function commandBaseSuggestions(text) {
+      const commands = [
+        "öppna ",
+        "öppna mapp: ",
+        "öppna projekt",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "visa modell",
+        "lista modeller",
+        "byt modell: ",
+        "internetstatus",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "aktiv fil",
+        "läs filen",
+        "föreslå rubrik här: ",
+        "spara minne: ",
+        "projektminne: "
+      ];
+
+      const loose = normalizeLoose(text);
+      return commands
+        .filter(cmd => normalizeLoose(cmd).startsWith(loose) || normalizeLoose(cmd).includes(loose))
+        .slice(0, 8);
+    }
+
+    function fileSuggestions(text) {
+      const value = String(text || "").trim();
+      const openMatch = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.*?)\s*$/i);
+      const rawQuery = openMatch ? openMatch[2] : value;
+      const query = normalizeLoose(rawQuery);
+
+      if (!query) return [];
+
+      return allFiles
+        .filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          return normalizeLoose(file).includes(query) || normalizeLoose(fileName).includes(query);
+        })
+        .slice(0, 10)
+        .map(file => "öppna " + file);
+    }
+
+    function folderSuggestions(text) {
+      const value = String(text || "").trim();
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return [];
+
+      const query = normalizeLoose(match[2] || "");
+
+      return allFolders
+        .filter(folder => !query || normalizeLoose(folder).includes(query))
+        .slice(0, 8)
+        .map(folder => "öppna mapp: " + folder);
+    }
+
+    function updateSuggestions() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)].slice(0, 10);
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    }
+
+    function colorizeSuggestionText(suggestion) {
+      const text = String(suggestion || "");
+      const cmdRegex = /^((?:\/fil\s+(?:öppna|oppna|läs|las|skapa)\s+)|(?:\/minne\s+(?:sök|sok|arkiv\s+sök|arkiv\s+sok)\s+)|(?:\/terminal\s+preview\s+)|(?:skriv\s+fil:\s*)|(?:lägg\s+till\s+fil:\s*)|(?:lagg\s+till\s+fil:\s*)|(?:skapa\s+fil:\s*)|(?:föreslå\s+rubrik:\s*)|(?:foresla\s+rubrik:\s*)|(?:föreslå\s+ändring:\s*)|(?:foresla\s+andring:\s*)|(?:öppna\s+mapp:\s*)|(?:oppna\s+mapp:\s*)|(?:öppna\s+)|(?:oppna\s+))(.*)$/i;
+      const m = text.match(cmdRegex);
+
+      if (!m) {
+        return [{ text, kind: "command" }];
+      }
+
+      const prefix = m[1];
+      const path = m[2] || "";
+
+      if (!path) {
+        return [{ text: prefix, kind: "command" }];
+      }
+
+      const pathKind = path.endsWith("/") ? "folder" : "file";
+      return [
+        { text: prefix, kind: "command" },
+        { text: path, kind: pathKind }
+      ];
+    }
+
+    window.colorizeSuggestionText = colorizeSuggestionText;
+
+    function renderSuggestions() {
+      suggestions.innerHTML = "";
+
+      if (!currentSuggestions.length) {
+        hideSuggestions();
+        return;
+      }
+
+      const hint = document.createElement("div");
+      hint.className = "suggestion-hint";
+      hint.textContent = "TAB = byt/fyll förslag • Space = lås valt förslag • Enter = skicka • Esc = stäng";
+      suggestions.appendChild(hint);
+
+      currentSuggestions.forEach(function(suggestion, index) {
+        const row = document.createElement("div");
+        row.className = "suggestion-row" + (index === suggestionIndex ? " active" : "");
+
+        const parts = colorizeSuggestionText(suggestion);
+        parts.forEach(function(part) {
+          const span = document.createElement("span");
+          span.className = "suggestion-" + part.kind;
+          span.textContent = part.text;
+          row.appendChild(span);
+        });
+
+        row.onmousedown = function(event) {
+          event.preventDefault();
+          input.value = suggestion;
+          hideSuggestions();
+          input.focus();
+        };
+
+        suggestions.appendChild(row);
+      });
+
+      suggestions.style.display = "block";
+    }
+
+    function hideSuggestions() {
+      currentSuggestions = [];
+      suggestions.style.display = "none";
+    }
+
+    input.addEventListener("input", updateSuggestions);
+
+    function applySuggestion(direction) {
+      if (!currentSuggestions.length) {
+        updateSuggestions();
+      }
+
+      if (!currentSuggestions.length) return;
+
+      suggestionIndex = (suggestionIndex + direction + currentSuggestions.length) % currentSuggestions.length;
+      input.value = currentSuggestions[suggestionIndex];
+      renderSuggestions();
+
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function rememberMessage(text) {
+      if (!text) return;
+      if (messageHistory[messageHistory.length - 1] !== text) {
+        messageHistory.push(text);
+      }
+      historyIndex = messageHistory.length;
+    }
+
+    function showPreviousMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.max(0, historyIndex - 1);
+      input.value = messageHistory[historyIndex];
+      updateSuggestions();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function showNextMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.min(messageHistory.length, historyIndex + 1);
+      input.value = historyIndex >= messageHistory.length ? "" : messageHistory[historyIndex];
+      updateSuggestions();
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      rememberMessage(text);
+      input.value = "";
+      hideSuggestions();
+      window.jarvisAddMessage("user", text);
+
+      const folderOpen = extractFolderOpen(text);
+      if (folderOpen !== null) {
+        postMessage({ type: "jarvis_tree_folder_v7", path: folderOpen });
+        return;
+      }
+
+      const smartFile = extractSmartFileOpen(text);
+      if (smartFile) {
+        postMessage({
+          type: "jarvis_open_file_smart_v7",
+          path: smartFile,
+          silent: false
+        });
+        return;
+      }
+
+      postMessage({
+        type: "jarvis_chat",
+        text: text
+      });
+    }
+
+    send.addEventListener("click", sendMessage);
+
+    input.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+        return;
+      }
+
+      if (event.key === "Tab") {
+        event.preventDefault();
+        applySuggestion(event.shiftKey ? -1 : 1);
+        return;
+      }
+
+      if (event.key === " ") {
+        if (suggestions.style.display === "block" &&
+            currentSuggestions.length > 0 &&
+            currentSuggestions[suggestionIndex] &&
+            input.value === currentSuggestions[suggestionIndex]) {
+          event.preventDefault();
+          hideSuggestions();
+          setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+          return;
+        }
+      }
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hideSuggestions();
+        return;
+      }
+
+      if (event.key === "ArrowUp" && suggestions.style.display !== "block") {
+        event.preventDefault();
+        showPreviousMessage();
+        return;
+      }
+
+      if (event.key === "ArrowDown" && suggestions.style.display !== "block") {
+        event.preventDefault();
+        showNextMessage();
+        return;
+      }
+    });    // AUTOCOMPLETE_AND_TREE_COMMAND_FIX_V8
+    // Fixar:
+    // - "klicka på app" öppnar/expanderar app-foldern lokalt.
+    // - En bokstav som "h" ska inte visa slumpmässiga filförslag.
+    // - Filförslag visas först när du skriver öppna/visa/läs eller något som liknar filnamn.
+    // - TAB-förslag blir renare.
+
+    extractFolderOpen = function(text) {
+      const value = String(text || "").trim();
+      if (!value) return null;
+
+      if (/^\s*(öppna projekt|oppna projekt|projektrot|visa projektrot)\s*$/i.test(value)) {
+        return "";
+      }
+
+      let match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder)\s*:?\s*(.*?)\s*$/i);
+      if (match) return match[2].trim();
+
+      // Naturligt språk: "klicka på app", "gå till docs", "öppna dashboard"
+      match = value.match(/^\s*(klicka på|tryck på|gå till|ga till|öppna|oppna|visa)\s+([a-z0-9_\-\.]+)\s*$/i);
+      if (!match) return null;
+
+      const wanted = normalizeLoose(match[2]);
+      if (!wanted) return null;
+
+      const exact = (allFolders || []).find(folder => {
+        const last = String(folder).split(/[\\/]/).pop();
+        return normalizeLoose(last) === wanted || normalizeLoose(folder) === wanted;
+      });
+
+      return exact || null;
+    };
+
+    extractSmartFileOpen = function(text) {
+      const value = String(text || "").trim();
+      if (!value) return "";
+      if (value.startsWith("/")) return "";
+      if (isRouterOnlyCommandV15(value)) return "";
+
+      if (/^(öppna|oppna|starta)\s+program\s*:/i.test(value)) return "";
+      if (/^\s*(skapa fil|skriv fil|lägg till fil|lagg till fil|append fil)\s*:?\s+/i.test(value)) return "";
+      if (isMemoryDisplayPhraseV13(value)) return "";
+
+      const fileRegex = /([a-z0-9_\-\.]+(?:[\\/][a-z0-9_\-\.]+)*\.(md|txt|json|cs|html|css|js|ps1|csproj|sln|xml|yml|yaml|config|props|targets|editorconfig|gitignore|lock|log|csv|vbs))/i;
+      const match = value.match(fileRegex);
+
+      if (match) {
+        const file = match[1];
+        const hasOpenIntent = /\b(öppna|oppna|visa|läs|las|open|read)\b/i.test(value) ||
+                              /\b(koden|kod|filen|fil)\b/i.test(value);
+        const onlyFileName = value.toLowerCase() === file.toLowerCase();
+
+        if (hasOpenIntent || onlyFileName) return file;
+      }
+
+      // Fuzzy: "öppna readme", "öppna read me", "öppna read.me"
+      const openLoose = value.match(/^\s*(öppna|oppna|open)\s+(.+?)\s*$/i);
+      if (openLoose) {
+        const raw = openLoose[2].trim();
+        if (raw && !/^mapp\b/i.test(raw) && !/^folder\b/i.test(raw) && !/^program\b/i.test(raw)) {
+          const exactKnown = findExactKnownFileTargetV16(raw);
+          if (hasKnownFileExtensionV16(raw) || exactKnown) return exactKnown || raw;
+        }
+      }
+
+      const readLoose = value.match(/^\s*(visa|läs|las|read)\s+(.+?)\s*$/i);
+      if (readLoose) {
+        const raw = readLoose[2].trim();
+        if (raw) {
+          const exactKnown = findExactKnownFileTargetV16(raw);
+          if (hasKnownFileExtensionV16(raw) || exactKnown) return exactKnown || raw;
+        }
+      }
+
+      return "";
+    };
+
+    function hasKnownFileExtensionV16(target) {
+      return /\.[a-z0-9]{1,12}\b/i.test(String(target || ""));
+    }
+
+    function findExactKnownFileTargetV16(target) {
+      const wanted = normalizeLoose(target);
+      if (!wanted) return "";
+
+      const exact = (allFiles || []).find(file => {
+        const fileName = String(file).split(/[\\/]/).pop();
+        const stem = fileName.replace(/\.[^.]+$/, "");
+        return normalizeLoose(file) === wanted ||
+               normalizeLoose(fileName) === wanted ||
+               normalizeLoose(stem) === wanted;
+      });
+
+      return exact || "";
+    }
+
+    function isRouterOnlyCommandV15(text) {
+      const value = String(text || "").trim();
+      if (!value) return false;
+      if (value.startsWith("/")) return true;
+
+      const compact = normalizeLoose(value);
+      const routerOnlyExact = [
+        "terminal",
+        "terminalpanelen",
+        "visaterminal",
+        "oppnaterminal",
+        "visaterminalpanelen",
+        "vadstoditerminalen",
+        "senasteterminal",
+        "terminaloutput",
+        "avbryt",
+        "avbrytallt",
+        "cancel",
+        "stoppa"
+      ];
+
+      if (routerOnlyExact.includes(compact)) return true;
+
+      const routerOnlyPrefixes = [
+        "skrivfil",
+        "skapafil",
+        "laggtillfil",
+        "appendfil",
+        "foreslaandring",
+        "foreslarubrik",
+        "godkannfilskrivning",
+        "avbrytfilskrivning",
+        "terminalpreview",
+        "terminalvisa",
+        "terminalshow",
+        "terminaloutput",
+        "bekraftakor",
+        "avbrytkor",
+        "raderafil",
+        "tabortfil",
+        "deletefile"
+      ];
+
+      return routerOnlyPrefixes.some(prefix => compact.startsWith(prefix));
+    }
+
+    function isMemoryDisplayPhraseV13(text) {
+      const value = String(text || "").trim();
+      if (/\.[a-z0-9]{1,12}\b/i.test(value)) return false;
+
+      const normalized = value
+        .toLowerCase()
+        .replace(/å/g, "a")
+        .replace(/ä/g, "a")
+        .replace(/ö/g, "o");
+
+      if (!/^(visa|show)\b/i.test(normalized)) return false;
+
+      return /\b(minne|minnen|projektminnen)\b/i.test(normalized);
+    }
+
+    commandBaseSuggestions = function(text) {
+      const commands = [
+        "hjälp",
+        "status",
+        "diskstatus",
+        "cachestatus",
+        "internetstatus",
+        "öppna projekt",
+        "öppna mapp: app",
+        "öppna mapp: docs",
+        "öppna program.cs",
+        "öppna README.md",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "visa modell",
+        "lista modeller",
+        "byt modell: qwen2.5-coder:7b",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "aktiv fil",
+        "läs filen",
+        "projektminne: "
+      ];
+
+      const loose = normalizeLoose(text);
+      if (!loose) return [];
+
+      return commands
+        .filter(cmd => normalizeLoose(cmd).startsWith(loose) || normalizeLoose(cmd).includes(loose))
+        .slice(0, 8);
+    };
+
+    fileSuggestions = function(text) {
+      const value = String(text || "").trim();
+
+      const hasOpenIntent = /^\s*(öppna|oppna|visa|läs|las|open|read)\s+/i.test(value);
+      const hasFileLikeText = /\.[a-z0-9]{1,10}$/i.test(value);
+
+      // Viktigt: om man bara skriver "h" ska vi INTE visa massa filer.
+      if (!hasOpenIntent && !hasFileLikeText) return [];
+
+      const openMatch = value.match(/^\s*(öppna|oppna|visa|läs|las|open|read)\s+(.*?)\s*$/i);
+      const rawQuery = openMatch ? openMatch[2] : value;
+      const query = normalizeLoose(rawQuery);
+
+      if (!query || query.length < 2) return [];
+
+      return (allFiles || [])
+        .filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          const stem = fileName.replace(/\.[^.]+$/, "");
+
+          return normalizeLoose(file).includes(query) ||
+                 normalizeLoose(fileName).includes(query) ||
+                 normalizeLoose(stem).includes(query) ||
+                 query.includes(normalizeLoose(stem));
+        })
+        .slice(0, 10)
+        .map(file => "öppna " + file);
+    };
+
+    folderSuggestions = function(text) {
+      const value = String(text || "").trim();
+
+      const match = value.match(/^\s*(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|klicka på|tryck på)\s*:?\s*(.*?)\s*$/i);
+      if (!match) return [];
+
+      const query = normalizeLoose(match[2] || "");
+      if (query && query.length < 1) return [];
+
+      return (allFolders || [])
+        .filter(folder => {
+          const last = String(folder).split(/[\\/]/).pop();
+          return !query || normalizeLoose(folder).includes(query) || normalizeLoose(last).includes(query);
+        })
+        .slice(0, 8)
+        .map(folder => "öppna mapp: " + folder);
+    };
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .slice(0, 10);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };    // SMART_SUGGESTIONS_V10
+    // Autocomplete ska vara kontextuell, inte visa alla kommandon.
+    // Visar bara fungerande/bekräftade kommandon. Trasiga eller osäkra kommandon som "sök arkiv" göms tills de är fixade.
+
+    commandBaseSuggestions = function(text) {
+      const value = String(text || "").trim();
+
+      if (value.startsWith("/")) {
+        return slashCommandSuggestionsV14(value);
+      }
+
+      const loose = normalizeLoose(value);
+
+      if (!loose) return [];
+
+      function hasPendingApprovalTypeV16(type) {
+        const pendingType = currentPendingApprovalV1
+          ? String(currentPendingApprovalV1.type || currentPendingApprovalV1.Type || "")
+          : "";
+
+        return normalizeLoose(pendingType) === normalizeLoose(type);
+      }
+
+      function terminalCommandSuggestionsV16() {
+        const suggestions = ["terminal preview: dotnet build"];
+
+        if (hasPendingApprovalTypeV16("TerminalRun")) {
+          suggestions.push("bekräfta kör", "avbryt kör");
+        }
+
+        return suggestions;
+      }
+
+      const groups = [
+        {
+          trigger: ["h", "hj", "hja", "help"],
+          suggestions: ["hjälp", "kommandohjälp"]
+        },
+        {
+          trigger: ["sta", "stat", "status", "over", "oversikt", "översikt", "obsidian"],
+          suggestions: ["status", "översikt", "obsidian status", "diskstatus", "cachestatus", "internetstatus"]
+        },
+        {
+          trigger: ["disk", "c", "cache", "rens"],
+          suggestions: ["diskstatus", "cachestatus", "rensa cache preview", "rensa cache bekräfta", "kontrollera cache"]
+        },
+        {
+          trigger: ["modell", "model", "byt", "llm"],
+          suggestions: ["visa modell", "lista modeller", "byt modell: qwen2.5-coder:7b"]
+        },
+        {
+          trigger: ["min", "minne", "kom", "smart", "viktigt", "projektminne"],
+          suggestions: [
+            "kom ihåg: ",
+            "smart minne: ",
+            "viktigt minne: ",
+            "projektminne: ",
+            "visa minne",
+            "sök minne: ",
+            "minnesstatus",
+            "obsidian status",
+            "sammanfatta minne",
+            "glöm minne: "
+          ]
+        },
+        {
+          trigger: ["fil", "lista", "index", "aktiv", "läs", "las"],
+          suggestions: [
+            "lista filer",
+            "lista md filer",
+            "lista projektfiler",
+            "indexera projekt",
+            "aktiv fil",
+            "läs filen",
+            "läs fil: docs/PROJECT_INDEX.md"
+          ]
+        },
+        {
+          trigger: ["mapp", "proj", "app", "docs", "dash", "test"],
+          suggestions: [
+            "öppna projekt",
+            "öppna mapp: app",
+            "öppna mapp: docs",
+            "öppna mapp: dashboard",
+            "öppna mapp: tests"
+          ]
+        },
+        {
+          trigger: ["check", "backup"],
+          suggestions: ["skapa checkpoint", "lista checkpoints"]
+        },
+        {
+          trigger: ["terminal", "build", "kör", "kor"],
+          suggestions: terminalCommandSuggestionsV16()
+        },
+        {
+          trigger: ["program", "notepad", "kalk", "paint", "explorer"],
+          suggestions: ["öppna program: notepad", "starta kalkylator", "öppna program: paint", "öppna program: explorer"]
+        }
+      ];
+
+      let result = [];
+
+      for (const group of groups) {
+        const hit = group.trigger.some(t => normalizeLoose(t).startsWith(loose) || loose.startsWith(normalizeLoose(t)));
+        if (hit) result.push(...group.suggestions);
+      }
+
+      // Direkt matchning, men bara från fungerande kommandon.
+      const safeCommands = [
+        "hjälp",
+        "kommandohjälp",
+        "status",
+        "översikt",
+        "obsidian status",
+        "diskstatus",
+        "cachestatus",
+        "rensa cache preview",
+        "rensa cache bekräfta",
+        "kontrollera cache",
+        "internetstatus",
+        "visa modell",
+        "lista modeller",
+        "byt modell: qwen2.5-coder:7b",
+        "kom ihåg: ",
+        "smart minne: ",
+        "viktigt minne: ",
+        "projektminne: ",
+        "visa minne",
+        "sök minne: ",
+        "minnesstatus",
+        "sammanfatta minne",
+        "glöm minne: ",
+        "lista filer",
+        "lista md filer",
+        "lista projektfiler",
+        "indexera projekt",
+        "aktiv fil",
+        "läs filen",
+        "öppna projekt",
+        "öppna mapp: app",
+        "öppna mapp: docs",
+        "öppna mapp: dashboard",
+        "öppna mapp: tests",
+        "skapa checkpoint",
+        "lista checkpoints",
+        "terminal preview: dotnet build",
+        "öppna program: notepad",
+        "starta kalkylator",
+        "öppna program: paint",
+        "öppna program: explorer"
+      ];
+
+      result.push(
+        ...safeCommands.filter(cmd =>
+          normalizeLoose(cmd).startsWith(loose)
+        )
+      );
+
+      result.push(
+        ...terminalCommandSuggestionsV16().filter(cmd =>
+          normalizeLoose(cmd).startsWith(loose)
+        )
+      );
+
+      return [...new Set(result)].slice(0, 6);
+    };
+
+    function slashCommandSuggestionsV14(text) {
+      const value = String(text || "").trim();
+      const loose = normalizeLoose(value);
+
+      const slashCommands = [
+        "/hjälp",
+        "/status",
+        "/översikt",
+        "/oversikt",
+        "/minne visa",
+        "/minne status",
+        "/minne viktiga",
+        "/minne projekt",
+        "/minne sök ",
+        "/minne arkiv sök ",
+        "/obsidian status",
+        "/fil öppna ",
+        "/fil läs ",
+        "/fil skapa ",
+        "/terminal preview ",
+        "/terminal visa",
+        "/terminal godkänn",
+        "/terminal avbryt"
+      ];
+
+      if (value === "/") {
+        return slashCommands.slice(0, 8);
+      }
+
+      return slashCommands
+        .filter(cmd => normalizeLoose(cmd).startsWith(loose))
+        .slice(0, 8);
+    }
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      // Filförslag visas bara när du tydligt skriver öppna/visa/läs eller filnamn.
+      result.push(...folderSuggestions(trimmed));
+      result.push(...fileSuggestions(trimmed));
+
+      if (result.length === 0) {
+        result.push(...commandBaseSuggestions(trimmed));
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .filter(x => !normalizeLoose(x).startsWith("sokarkiv"))
+        .slice(0, 6);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };    // ARGUMENT_COMPLETION_V11
+    // Efter att användaren skriver ett filkommando ska TAB-förslag fortsätta med filnamn.
+    // Exempel: "öppna r" -> README-filer. "läs fil: app/" -> filer i app.
+    function splitFileCommandV11(text) {
+      const value = String(text || "").trimStart();
+
+      const patterns = [
+        { regex: /^\/fil\s+(skapa)\s*(.*)$/i, prefix: "/fil skapa ", mode: "create" },
+        { regex: /^(skapa fil)\s*:?\s*(.*)$/i, prefix: "skapa fil: ", mode: "create" },
+        { regex: /^\/fil\s+(öppna|oppna)\s*(.*)$/i, prefix: "/fil öppna ", mode: "open" },
+        { regex: /^\/fil\s+(läs|las)\s*(.*)$/i, prefix: "/fil läs ", mode: "open" },
+        { regex: /^(öppna|oppna|visa|open|read)\s+(.+)?$/i, prefix: "öppna ", mode: "open" },
+        { regex: /^(läs|las)\s+(.+)?$/i, prefix: "öppna ", mode: "open" },
+        { regex: /^(läs fil|las fil|öppna fil|oppna fil|visa fil)\s*:?\s*(.*)$/i, prefix: "öppna ", mode: "open" },
+        { regex: /^(skriv fil)\s*:?\s*(.*)$/i, prefix: "skriv fil: ", mode: "open" },
+        { regex: /^(lägg till fil|lagg till fil)\s*:?\s*(.*)$/i, prefix: "lägg till fil: ", mode: "open" },
+        { regex: /^(föreslå rubrik|foresla rubrik)\s*:?\s*(.*)$/i, prefix: "föreslå rubrik: ", mode: "open" },
+        { regex: /^(föreslå ändring|foresla andring)\s*:?\s*(.*)$/i, prefix: "föreslå ändring: ", mode: "open" }
+      ];
+
+      for (const item of patterns) {
+        const match = value.match(item.regex);
+        if (!match) continue;
+
+        const query = (match[2] || "").trim();
+        return { isFileCommand: true, prefix: item.prefix, query, mode: item.mode };
+      }
+
+      return { isFileCommand: false, prefix: "", query: "", mode: "" };
+    }
+
+    function splitFolderCommandV11(text) {
+      const value = String(text || "").trimStart();
+
+      const match = value.match(/^(öppna mapp|oppna mapp|visa mapp|gå till mapp|ga till mapp|open folder|öppna folder|oppna folder|klicka på|tryck på)\s*:?\s*(.*)$/i);
+      if (!match) return { isFolderCommand: false, prefix: "", query: "" };
+
+      return {
+        isFolderCommand: true,
+        prefix: "öppna mapp: ",
+        query: (match[2] || "").trim()
+      };
+    }
+
+    fileSuggestions = function(text) {
+      const parsed = splitFileCommandV11(text);
+
+      if (parsed.isFileCommand && parsed.mode === "create") {
+        const queryRaw = (parsed.query || "").replace(/\\/g, "/");
+        if (queryRaw.includes("=")) return [];
+
+        const query = normalizeLoose(queryRaw);
+        return (allFolders || [])
+          .filter(folder => {
+            const last = String(folder).split(/[\\/]/).pop();
+            return !query ||
+                   normalizeLoose(folder).includes(query) ||
+                   normalizeLoose(last).includes(query);
+          })
+          .slice(0, 10)
+          .map(folder => parsed.prefix + folder + (folder.endsWith("/") ? "" : "/"));
+      }
+
+      if (!parsed.isFileCommand) {
+        const value = String(text || "").trim();
+        const looksLikeFile = /\.[a-z0-9]{1,12}$/i.test(value);
+        if (!looksLikeFile) return [];
+
+        parsed.prefix = "öppna ";
+        parsed.query = value;
+      }
+
+      const queryRaw = parsed.query || "";
+      const query = normalizeLoose(queryRaw);
+
+      let candidates = (allFiles || []);
+
+      if (queryRaw.includes("/") || queryRaw.includes("\\")) {
+        const normalizedPathQuery = queryRaw.replace(/\\/g, "/").toLowerCase();
+        candidates = candidates.filter(file => file.toLowerCase().includes(normalizedPathQuery));
+      } else if (query.length >= 1) {
+        candidates = candidates.filter(file => {
+          const fileName = file.split(/[\\/]/).pop();
+          const stem = fileName.replace(/\.[^.]+$/, "");
+
+          return normalizeLoose(file).includes(query) ||
+                 normalizeLoose(fileName).includes(query) ||
+                 normalizeLoose(stem).includes(query) ||
+                 query.includes(normalizeLoose(stem));
+        });
+      } else {
+        const important = [
+          "README.md",
+          "app/Program.cs",
+          "app/JarvisClean.csproj",
+          "CURRENT_STATE.md",
+          "BUILD_PLAN.md",
+          "TODO_NEXT.md",
+          "docs/PROJECT_INDEX.md",
+          "docs/SESSION_LOG.md"
+        ];
+
+        candidates = important.filter(file => (allFiles || []).includes(file));
+      }
+
+      return candidates
+        .slice(0, 10)
+        .map(file => parsed.prefix + file);
+    };
+
+    folderSuggestions = function(text) {
+      const parsed = splitFolderCommandV11(text);
+      if (!parsed.isFolderCommand) return [];
+
+      const query = normalizeLoose(parsed.query || "");
+
+      return (allFolders || [])
+        .filter(folder => {
+          const last = String(folder).split(/[\\/]/).pop();
+          return !query ||
+                 normalizeLoose(folder).includes(query) ||
+                 normalizeLoose(last).includes(query);
+        })
+        .slice(0, 8)
+        .map(folder => parsed.prefix + folder);
+    };
+
+    updateSuggestions = function() {
+      const text = input.value;
+      const trimmed = text.trim();
+
+      if (!trimmed) {
+        hideSuggestions();
+        return;
+      }
+
+      let result = [];
+
+      const parsedFile = splitFileCommandV11(trimmed);
+      const parsedFolder = splitFolderCommandV11(trimmed);
+
+      if (parsedFolder.isFolderCommand) {
+        result.push(...folderSuggestions(trimmed));
+      } else if (parsedFile.isFileCommand) {
+        result.push(...fileSuggestions(trimmed));
+      } else {
+        result.push(...folderSuggestions(trimmed));
+        result.push(...fileSuggestions(trimmed));
+
+        if (result.length === 0) {
+          result.push(...commandBaseSuggestions(trimmed));
+        }
+      }
+
+      result = [...new Set(result)]
+        .map(x => String(x || "").trim())
+        .filter(x => x.length > 1)
+        .filter(x => x.toLowerCase() !== "öppna")
+        .filter(x => !normalizeLoose(x).startsWith("sokarkiv"))
+        .slice(0, 8);
+
+      currentSuggestions = result;
+      suggestionIndex = Math.min(suggestionIndex, Math.max(0, result.length - 1));
+
+      renderSuggestions();
+    };    // AUTOCOMPLETE_REFRESH_V12
+    // Håller fil-/mappförslag färska när nya filer skapas.
+    let jarvisAutocompleteLastRefreshV12 = 0;
+
+    function refreshAutocompleteFilesV12(force) {
+      const now = Date.now();
+
+      if (!force && now - jarvisAutocompleteLastRefreshV12 < 3000) return;
+
+      jarvisAutocompleteLastRefreshV12 = now;
+
+      postMessage({
+        type: "jarvis_autocomplete_files_v7"
+      });
+    }
+
+    input.addEventListener("focus", function() {
+      refreshAutocompleteFilesV12(false);
+    });
+
+    input.addEventListener("input", function() {
+      const value = input.value.trim();
+
+      if (/^(öppna|oppna|visa|läs|las|open|read|läs fil|las fil|öppna mapp|oppna mapp)/i.test(value)) {
+        refreshAutocompleteFilesV12(false);
+      }
+    });
+
+    loadFilesBtn.addEventListener("click", function() {
+      refreshAutocompleteFilesV12(true);
+    });
+
+
+
+
+
+
+
+
+
+    window.jarvisAddMessage("assistant", "Jarvis dashboard laddad.");
+
+    setTimeout(function() {
+      loadRootTree();
+    }, 400);
+  </script>
+</body>
+</html>
+
+
+
+

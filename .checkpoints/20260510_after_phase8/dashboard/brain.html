@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis Brain</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #03060c; color: #cfeaff; font-family: Consolas, monospace; height: 100vh; overflow: hidden; }
+    #brain-canvas { position: fixed; inset: 0; }
+    .panel {
+      position: absolute;
+      background: rgba(8, 17, 31, 0.78);
+      border: 1px solid #1f4e68;
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 12px;
+      backdrop-filter: blur(6px);
+    }
+    #stats { top: 10px; left: 10px; min-width: 220px; }
+    #stats h2 { font-size: 13px; color: #44d9ff; margin-bottom: 6px; }
+    #stats .row { display: flex; justify-content: space-between; padding: 2px 0; }
+    #stats .label { opacity: 0.7; }
+    #stats .value { color: #44ffaa; }
+    #regions { top: 10px; right: 10px; min-width: 200px; max-height: 60vh; overflow-y: auto; }
+    #regions h2 { font-size: 13px; color: #44d9ff; margin-bottom: 6px; }
+    .region-row { padding: 3px 0; cursor: pointer; transition: color 0.15s; }
+    .region-row:hover { color: #44d9ff; }
+    .region-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+    #help { bottom: 10px; left: 10px; opacity: 0.7; font-size: 11px; }
+    #info { bottom: 10px; right: 10px; min-width: 200px; display: none; }
+    #info h2 { font-size: 13px; color: #44d9ff; margin-bottom: 6px; }
+    #fallback {
+      position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: #03060c; color: #cfeaff; padding: 24px; text-align: center;
+    }
+    #fallback h1 { color: #44d9ff; margin-bottom: 12px; }
+    #fallback p { max-width: 480px; line-height: 1.5; opacity: 0.85; }
+    #live-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #44ffaa; box-shadow: 0 0 8px #44ffaa; animation: pulse 2s infinite; margin-right: 6px;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.4;} }
+  </style>
+</head>
+<body>
+  <canvas id="brain-canvas"></canvas>
+
+  <div id="stats" class="panel">
+    <h2><span id="live-dot"></span>Brain — Fas 3 statisk</h2>
+    <div class="row"><span class="label">Regioner:</span><span class="value" id="stat-regions">--</span></div>
+    <div class="row"><span class="label">Connections:</span><span class="value" id="stat-connections">--</span></div>
+    <div class="row"><span class="label">Graph noder:</span><span class="value" id="stat-graph-nodes">väntar</span></div>
+    <div class="row"><span class="label">Status:</span><span class="value" id="stat-status">initierar...</span></div>
+    <div class="row"><span class="label">Källa:</span><span class="value">lokal vendor</span></div>
+  </div>
+
+  <div id="regions" class="panel">
+    <h2>Hjärnregioner</h2>
+    <div id="region-list"></div>
+  </div>
+
+  <div id="info" class="panel">
+    <h2 id="info-title">--</h2>
+    <div id="info-body">Klicka på en region.</div>
+  </div>
+
+  <div id="help" class="panel">
+    Drag = rotera • Scroll = zoom • R = reset • S = safe mode
+  </div>
+
+  <div id="fallback" style="display:none;">
+    <h1>Brain-läge ej tillgängligt</h1>
+    <p id="fallback-msg">WebGL eller Three.js kunde inte initieras. Main-fönstret fortsätter fungera.</p>
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://jarvis.local/vendor/three.module.js",
+        "three/addons/": "https://jarvis.local/vendor/"
+      }
+    }
+  </script>
+
+  <script type="module">
+    // Brain Fas 3 — statisk version. Demonstrerar att Three.js från lokal vendor fungerar.
+    // Full port av neurolinked/dashboard/js/brain3d.js sker i senare fas (5+).
+    const BRAIN_LOG = (msg) => { try { window.chrome?.webview?.postMessage({ type: "brain_log", msg: String(msg) }); } catch {} };
+    const setStatus = (txt) => { document.getElementById("stat-status").textContent = txt; };
+    const showFallback = (reason) => {
+      document.getElementById("fallback-msg").textContent = reason;
+      document.getElementById("fallback").style.display = "flex";
+      BRAIN_LOG("Brain fallback: " + reason);
+    };
+
+    let THREE, OrbitControls;
+    try {
+      THREE = await import("three");
+      OrbitControls = (await import("three/addons/controls/OrbitControls.js")).OrbitControls;
+    } catch (e) {
+      showFallback("Three.js-import misslyckades: " + e.message);
+      throw e;
+    }
+    setStatus("Three.js laddad");
+
+    const REGIONS = {
+      prefrontal:     { x: -2.1, y:  3.5, z:  0.0, color: 0xaa88ff, label: "Prefrontalbark", role: "Planering, beslut" },
+      motor_cortex:   { x:  1.8, y:  3.2, z:  0.6, color: 0xffaa00, label: "Motorbark",      role: "Rörelse, åtgärd" },
+      sensory_cortex: { x:  3.5, y:  0.7, z:  1.4, color: 0xff6600, label: "Sensorisk bark", role: "Observation, syn, ljud" },
+      feature_layer:  { x:  1.1, y: -1.1, z:  0.7, color: 0x00c8ff, label: "Feature-lager",  role: "Kantdetektion, mönster" },
+      association:    { x: -0.3, y:  1.1, z:  0.0, color: 0xff8c00, label: "Association",    role: "Korskoppling, förståelse" },
+      concept_layer:  { x: -1.8, y:  2.1, z: -0.7, color: 0xffcc00, label: "Konceptlager",   role: "Abstrakta begrepp" },
+      predictive:     { x: -3.2, y: -0.3, z: -0.7, color: 0xff3399, label: "Prediktiv",      role: "Förutsäger nästa läge" },
+      hippocampus:    { x: -1.8, y: -1.4, z:  0.7, color: 0x00e5ff, label: "Hippocampus",    role: "Minne, återkallning" },
+      cerebellum:     { x:  0.3, y: -2.8, z: -0.7, color: 0x00ff88, label: "Lillhjärnan",    role: "Motorisk timing" },
+      brainstem:      { x:  0.0, y: -1.8, z:  0.0, color: 0xff6600, label: "Hjärnstam",      role: "Vakenhet, vitala funktioner" },
+      reflex_arc:     { x:  1.8, y: -2.1, z:  1.1, color: 0xff8800, label: "Reflexbåge",     role: "Snabba reflexer" }
+    };
+    const CONNECTIONS = [
+      ["sensory_cortex","feature_layer"], ["feature_layer","association"],
+      ["association","concept_layer"], ["concept_layer","prefrontal"],
+      ["prefrontal","motor_cortex"], ["motor_cortex","reflex_arc"],
+      ["association","hippocampus"], ["hippocampus","prefrontal"],
+      ["predictive","association"], ["brainstem","reflex_arc"],
+      ["brainstem","cerebellum"], ["cerebellum","motor_cortex"]
+    ];
+
+    document.getElementById("stat-regions").textContent = Object.keys(REGIONS).length;
+    document.getElementById("stat-connections").textContent = CONNECTIONS.length;
+
+    const canvas = document.getElementById("brain-canvas");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x03060c, 1);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+    camera.position.set(8, 4, 8);
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true;
+
+    const ambient = new THREE.AmbientLight(0x88aacc, 0.5);
+    scene.add(ambient);
+    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+    dir.position.set(10, 10, 10);
+    scene.add(dir);
+
+    const regionMeshes = {};
+    const regionGeom = new THREE.SphereGeometry(0.5, 24, 16);
+    for (const [key, r] of Object.entries(REGIONS)) {
+      const mat = new THREE.MeshPhongMaterial({ color: r.color, emissive: r.color, emissiveIntensity: 0.4, shininess: 80 });
+      const mesh = new THREE.Mesh(regionGeom, mat);
+      mesh.position.set(r.x, r.y, r.z);
+      mesh.userData = { key, ...r };
+      scene.add(mesh);
+      regionMeshes[key] = mesh;
+    }
+
+    const lineGeom = new THREE.BufferGeometry();
+    const positions = [];
+    for (const [a, b] of CONNECTIONS) {
+      const ra = REGIONS[a], rb = REGIONS[b];
+      if (!ra || !rb) continue;
+      positions.push(ra.x, ra.y, ra.z, rb.x, rb.y, rb.z);
+    }
+    lineGeom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    const lineMat = new THREE.LineBasicMaterial({ color: 0x44d9ff, transparent: true, opacity: 0.45 });
+    scene.add(new THREE.LineSegments(lineGeom, lineMat));
+
+    // Region list-panel
+    const regionList = document.getElementById("region-list");
+    for (const [key, r] of Object.entries(REGIONS)) {
+      const row = document.createElement("div");
+      row.className = "region-row";
+      row.innerHTML = `<span class="region-dot" style="background:#${r.color.toString(16).padStart(6,"0")}"></span>${r.label}`;
+      row.addEventListener("click", () => selectRegion(key));
+      regionList.appendChild(row);
+    }
+
+    function selectRegion(key) {
+      const r = REGIONS[key];
+      if (!r) return;
+      const info = document.getElementById("info");
+      document.getElementById("info-title").textContent = r.label;
+      document.getElementById("info-body").innerHTML = `<div>${r.role}</div><div style="margin-top:6px;opacity:0.6;font-size:10px;">key: ${key}</div>`;
+      info.style.display = "block";
+      // Pan camera to region
+      const target = new THREE.Vector3(r.x, r.y, r.z);
+      controls.target.copy(target);
+    }
+
+    // Click on 3D mesh
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const hits = raycaster.intersectObjects(Object.values(regionMeshes));
+      if (hits.length > 0) selectRegion(hits[0].object.userData.key);
+    });
+
+    // Keyboard shortcuts
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "r" || e.key === "R") {
+        camera.position.set(8, 4, 8); controls.target.set(0, 0, 0);
+      }
+      if (e.key === "s" || e.key === "S") {
+        showFallback("Safe mode aktiverat manuellt. Stäng och öppna Brain igen för att återgå.");
+      }
+    });
+
+    window.addEventListener("resize", () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    setStatus("renderar");
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      // Subtil emissive-puls
+      const t = performance.now() * 0.001;
+      for (const [key, mesh] of Object.entries(regionMeshes)) {
+        mesh.material.emissiveIntensity = 0.3 + 0.15 * Math.sin(t * 1.5 + key.length);
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // Optional: load graph.json to update node count chip (read-only).
+    fetch("https://jarvis.local/graphify-out/graph.json")
+      .then(r => r.ok ? r.json() : null)
+      .then(g => {
+        if (g && Array.isArray(g.nodes)) {
+          document.getElementById("stat-graph-nodes").textContent = g.nodes.length.toLocaleString("sv-SE");
+        }
+      })
+      .catch(() => { document.getElementById("stat-graph-nodes").textContent = "ej laddad"; });
+
+    BRAIN_LOG("Brain ready");
+    try { window.chrome?.webview?.postMessage({ type: "brain_ready" }); } catch {}
+  </script>
+</body>
+</html>

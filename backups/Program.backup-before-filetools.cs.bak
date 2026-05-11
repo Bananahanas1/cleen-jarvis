@@ -1,0 +1,1446 @@
+﻿using System.Diagnostics;
+using System.Globalization;
+using System.Net.Http.Json;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Microsoft.Web.WebView2.Core;
+using Microsoft.Web.WebView2.WinForms;
+
+namespace JarvisClean;
+
+internal static class Program
+{
+    [STAThread]
+    private static void Main()
+    {
+        ApplicationConfiguration.Initialize();
+        Application.Run(new JarvisForm());
+    }
+}
+
+public sealed class JarvisForm : Form
+{
+    private const string ProjectRoot = @"F:\Jarvis-clean";
+    private const string DashboardPath = @"F:\Jarvis-clean\dashboard\index.html";
+    private const string OllamaUrl = "http://127.0.0.1:11434/api/chat";
+    private const string OllamaModel = "qwen2.5-coder:1.5b";
+
+    private readonly WebView2 _webView = new();
+
+    private static readonly HttpClient Http = new()
+    {
+        Timeout = TimeSpan.FromSeconds(60)
+    };
+
+    private static List<MemoryBlock> PendingForgetMatches = new();
+
+    private sealed record MemoryBlock(string FullBlock, string Preview);
+
+    private static string PendingTerminalCommand = "";
+    private static string PendingTerminalWorkingDirectory = "";
+
+    public JarvisForm()
+    {
+        Text = "Jarvis";
+        Width = 1000;
+        Height = 720;
+        StartPosition = FormStartPosition.CenterScreen;
+
+        _webView.Dock = DockStyle.Fill;
+        Controls.Add(_webView);
+
+        Load += OnLoad;
+    }
+
+    private async void OnLoad(object? sender, EventArgs e)
+    {
+        if (!File.Exists(DashboardPath))
+        {
+            MessageBox.Show("Hittar inte dashboarden:\n" + DashboardPath);
+            return;
+        }
+
+        Directory.CreateDirectory(@"F:\DevCache\WebView2\Jarvis");
+
+        var env = await CoreWebView2Environment.CreateAsync(
+            userDataFolder: @"F:\DevCache\WebView2\Jarvis"
+        );
+
+        await _webView.EnsureCoreWebView2Async(env);
+        _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+        _webView.CoreWebView2.NavigationCompleted += async (_, _) =>
+        {
+            await AddAssistantMessage("C#-bryggan är ansluten. Jag förstår nu enklare felstavningar i kommandon.");
+        };
+
+        var html = File.ReadAllText(DashboardPath);
+        _webView.NavigateToString(html);
+    }
+
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs e)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(e.WebMessageAsJson);
+            var root = doc.RootElement;
+
+            var type = root.TryGetProperty("type", out var typeElement)
+                ? typeElement.GetString()
+                : "";
+
+            var text = root.TryGetProperty("text", out var textElement)
+                ? textElement.GetString() ?? ""
+                : "";
+
+            if (type != "jarvis_chat")
+            {
+                await AddAssistantMessage("C# fick okänd typ: " + type);
+                return;
+            }
+
+            var reply = await HandleMessageAsync(text);
+            await AddAssistantMessage(reply);
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("C#-fel: " + ex.Message);
+        }
+    }
+
+    private static async Task<string> HandleMessageAsync(string input)
+    {
+        var text = input.Trim();
+
+        if (string.IsNullOrWhiteSpace(text))
+            return "Skriv något först.";
+
+        if (TryCalculate(text, out var result))
+            return result;
+
+        var command = NormalizeCommand(text);
+
+        if (CommandIs(command, "hjalp", "help"))
+            return BuildHelp();
+
+        if (CommandIs(command, "test csharp"))
+            return "C#-bryggan fungerar.";
+
+        if (CommandIs(command, "status"))
+            return BuildStatus();
+
+        if (CommandIs(command, "diskstatus", "disk status"))
+            return DiskGuardStatusTool();
+
+        if (CommandIs(command, "cachestatus", "cache status"))
+            return CacheStatusTool();
+
+        if (CommandIs(command, "rensa cache preview", "cache preview"))
+            return CleanCachePreview();
+
+        if (CommandIs(command, "rensa cache bekrafta", "rensa cache bekräfta", "cache bekrafta"))
+            return CleanCacheConfirm();
+
+        if (CommandIs(command, "kontrollera cache", "cache kontroll", "kontrollera disklagring"))
+            return CacheConfigCheck();
+
+        if (CommandStartsWith(command, "kom ihag"))
+            return SaveSmartMemory(text, "note", 3, "general", 2);
+
+        if (CommandStartsWith(command, "smart minne"))
+            return SaveSmartMemory(text, "note", 3, "smart-memory", 2);
+
+        if (CommandStartsWith(command, "viktigt minne", "viktig minne"))
+            return SaveSmartMemory(text, "important", 5, "important", 2);
+
+        if (CommandStartsWith(command, "projektminne", "projekt minne"))
+            return SaveSmartMemory(text, "project_fact", 4, "project", command.StartsWith("projekt minne") ? 2 : 1);
+
+        if (CommandStartsWith(command, "sok minne", "sok i minne"))
+            return SearchMemory(text);
+
+        if (CommandIs(command, "visa minne", "minne"))
+            return ShowMemory();
+
+        if (CommandIs(command, "minnesstatus", "minne status"))
+            return MemoryStatus();
+
+        if (CommandIs(command, "sammanfatta minne", "sammanfatt minne", "minnessammanfattning"))
+            return SummarizeMemory();
+
+        if (CommandIs(command, "visa viktiga minnen", "viktiga minnen", "visa important"))
+            return ShowMemoriesByType("important", "Viktiga minnen");
+
+        if (CommandIs(command, "visa projektminnen", "projektminnen", "visa projekt minnen"))
+            return ShowMemoriesByType("project_fact", "Projektminnen");
+
+        if (CommandStartsWith(command, "glom minne", "glom i minne"))
+            return PrepareForgetMemory(text);
+
+        if (Regex.IsMatch(command, @"^bekrafta glom\s+\d+$"))
+            return ConfirmForgetMemory(command);
+
+        if (CommandIs(command, "oppna minne", "oppna minnesfil"))
+            return OpenMemoryTool();
+
+        if (CommandStartsWith(command, "terminal preview"))
+            return TerminalPreviewTool(text);
+
+        if (CommandIs(command, "bekrafta kor", "bekräfta kör", "confirm run"))
+            return TerminalConfirmRun();
+
+        if (CommandIs(command, "avbryt kor", "avbryt kör", "cancel run"))
+            return TerminalCancelRun();
+
+        if (CommandStartsWith(command, "lista filer"))
+            return ListFilesTool(command);
+
+        if (CommandIs(command, "oppna projektmapp", "oppna mapp", "open project folder"))
+            return OpenFolderTool(ProjectRoot);
+
+        if (CommandIs(command, "oppna dashboard", "oppna dashboardmapp"))
+            return OpenFolderTool(Path.Combine(ProjectRoot, "dashboard"));
+
+        if (CommandIs(command, "oppna app", "oppna appmapp"))
+            return OpenFolderTool(Path.Combine(ProjectRoot, "app"));
+
+        if (CommandIs(command, "test ollama"))
+            return await AskOllamaAsync("Svara bara med: Ollama fungerar");
+
+        // MEMORY_GUARD_BEFORE_OLLAMA: memory questions should use active memory.md before Ollama.
+        if (CommandIs(command, "visa arkiverade minnen", "visa arkiv", "arkiv"))
+            return ShowArchive();
+
+        if (CommandStartsWith(command, "sok arkiv", "sok i arkiv"))
+            return SearchArchive(text);
+
+        if (TryAnswerFromMemoryQuestion(text, command, out var memoryAnswer))
+            return memoryAnswer;
+
+        return await AskOllamaAsync(text);
+    }
+
+    private static string BuildHelp()
+    {
+        return
+            "Kommandon, du får stava lite fel:\n" +
+            "- hjälp\n" +
+            "- status\n" +
+            "- diskstatus\n" +
+            "- cachestatus\n" +
+            "- rensa cache preview\n" +
+            "- rensa cache bekräfta\n" +
+            "- kontrollera cache\n" +
+            "- kom ihåg: text\n" +
+            "- smart minne: text\n" +
+            "- viktigt minne: text\n" +
+            "- projektminne: text\n" +
+            "- visa minne\n" +
+            "- sök minne: text\n" +
+            "- minnesstatus\n" +
+            "- sammanfatta minne\n" +
+            "- visa viktiga minnen\n" +
+            "- visa projektminnen\n" +
+            "- öppna minne\n" +
+            "- visa arkiverade minnen\n" +
+            "- sök arkiv: text\n" +
+            "- glöm minne: text\n" +
+            "- bekräfta glöm 1\n" +
+            "- lista filer\n" +
+            "- terminal preview: dotnet build\n" +
+            "- bekräfta kör\n" +
+            "- avbryt kör\n" +
+            "- lista filer i app\n" +
+            "- lista filer i dashboard\n" +
+            "- öppna projektmapp\n" +
+            "- öppna dashboard\n" +
+            "- öppna app\n" +
+            "- test csharp\n" +
+            "- test ollama\n" +
+            "- 2+2\n" +
+            "- hej";
+    }
+
+    private static string DiskGuardStatusTool()
+    {
+        var lines = new List<string>();
+
+        foreach (var drive in DriveInfo.GetDrives().Where(d => d.IsReady))
+        {
+            if (!drive.Name.StartsWith("C", StringComparison.OrdinalIgnoreCase) &&
+                !drive.Name.StartsWith("F", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var freeGb = drive.AvailableFreeSpace / 1024.0 / 1024.0 / 1024.0;
+            var totalGb = drive.TotalSize / 1024.0 / 1024.0 / 1024.0;
+            var usedGb = totalGb - freeGb;
+
+            var warning = "";
+
+            if (drive.Name.StartsWith("C", StringComparison.OrdinalIgnoreCase) && freeGb < 5)
+                warning = "  VARNING: C-disken börjar bli låg.";
+
+            lines.Add(
+                drive.Name + " " +
+                Math.Round(usedGb, 2) + " GB använt / " +
+                Math.Round(freeGb, 2) + " GB ledigt / " +
+                Math.Round(totalGb, 2) + " GB totalt" +
+                warning
+            );
+        }
+
+        if (lines.Count == 0)
+            return "Jag kunde inte läsa diskstatus.";
+
+        return "Diskstatus:\n" + string.Join("\n", lines);
+    }
+
+    private static string CacheStatusTool()
+    {
+        var targets = GetSafeCacheTargets();
+
+        var lines = new List<string>();
+
+        foreach (var target in targets)
+        {
+            var exists = Directory.Exists(target.Path);
+
+            if (!exists)
+            {
+                lines.Add(target.Name + ":\n  Finns inte: " + target.Path);
+                continue;
+            }
+
+            var size = GetDirectorySizeSafe(target.Path);
+            var sizeText = size < 0 ? "okänd storlek" : Math.Round(size / 1024.0 / 1024.0 / 1024.0, 2) + " GB";
+
+            lines.Add(target.Name + ":\n  " + sizeText + "\n  " + target.Path);
+        }
+
+        return "Cachestatus, säkra cachemappar:\n\n" + string.Join("\n\n", lines);
+    }
+
+    private static string CleanCachePreview()
+    {
+        var targets = GetSafeCacheTargets();
+
+        var lines = targets
+            .Select(target => "- " + target.Name + "\n  " + target.Path)
+            .ToList();
+
+        return
+            "Preview: Jarvis kan rensa dessa säkra cache/temp-mappar.\n\n" +
+            string.Join("\n\n", lines) +
+            "\n\nDetta ska inte röra dina dokument, bilder, downloads, projektfiler, F:\\New project eller F:\\Jarvis-clean.\n\n" +
+            "För att faktiskt rensa, skriv:\n" +
+            "rensa cache bekräfta";
+    }
+
+    private static string CleanCacheConfirm()
+    {
+        var targets = GetSafeCacheTargets();
+
+        var results = new List<string>();
+
+        foreach (var target in targets)
+        {
+            var result = ClearDirectoryContentsSafe(target.Path);
+            results.Add(target.Name + ": " + result);
+        }
+
+        return
+            "Cache-rensning klar.\n\n" +
+            string.Join("\n", results) +
+            "\n\nJag rensade bara säkra cache/temp-mappar.";
+    }
+
+    private static string CacheConfigCheck()
+    {
+        var variables = new[]
+        {
+            "TEMP",
+            "TMP",
+            "NUGET_PACKAGES",
+            "NUGET_HTTP_CACHE_PATH",
+            "DOTNET_CLI_HOME",
+            "PIP_CACHE_DIR",
+            "npm_config_cache",
+            "HF_HOME",
+            "TRANSFORMERS_CACHE",
+            "OLLAMA_MODELS"
+        };
+
+        var lines = new List<string>();
+
+        foreach (var variable in variables)
+        {
+            var value = Environment.GetEnvironmentVariable(variable, EnvironmentVariableTarget.Process)
+                ?? Environment.GetEnvironmentVariable(variable, EnvironmentVariableTarget.User)
+                ?? "";
+
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                lines.Add(variable + ": saknas");
+                continue;
+            }
+
+            var ok = value.StartsWith(@"F:\", StringComparison.OrdinalIgnoreCase)
+                ? "OK på F-disken"
+                : "VARNING: inte på F-disken";
+
+            lines.Add(variable + ": " + value + "  [" + ok + "]");
+        }
+
+        return "Cache-konfiguration:\n" + string.Join("\n", lines);
+    }
+
+    private static (string Name, string Path)[] GetSafeCacheTargets()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        return new[]
+        {
+            ("Windows user temp", Path.Combine(localAppData, "Temp")),
+            ("NuGet HTTP cache", Path.Combine(localAppData, "NuGet", "v3-cache")),
+            ("Old NuGet packages on C", Path.Combine(userProfile, ".nuget", "packages")),
+            ("pip cache", Path.Combine(localAppData, "pip", "Cache")),
+            ("npm cache", Path.Combine(appData, "npm-cache")),
+            ("HuggingFace cache", Path.Combine(userProfile, ".cache", "huggingface")),
+            ("Jarvis F temp", @"F:\DevCache\Temp")
+        };
+    }
+
+    private static long GetDirectorySizeSafe(string path)
+    {
+        try
+        {
+            if (!Directory.Exists(path))
+                return 0;
+
+            long total = 0;
+            var stack = new Stack<string>();
+            stack.Push(path);
+
+            while (stack.Count > 0)
+            {
+                var dir = stack.Pop();
+
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(dir))
+                    {
+                        try
+                        {
+                            total += new FileInfo(file).Length;
+                        }
+                        catch
+                        {
+                            // Ignore unreadable files.
+                        }
+                    }
+                }
+                catch
+                {
+                    // Ignore unreadable directories.
+                }
+
+                try
+                {
+                    foreach (var childDir in Directory.EnumerateDirectories(dir))
+                        stack.Push(childDir);
+                }
+                catch
+                {
+                    // Ignore unreadable directories.
+                }
+            }
+
+            return total;
+        }
+        catch
+        {
+            return -1;
+        }
+    }
+
+    private static string ClearDirectoryContentsSafe(string path)
+    {
+        if (!Directory.Exists(path))
+            return "finns inte";
+
+        var deletedFiles = 0;
+        var deletedDirs = 0;
+        var failed = 0;
+
+        try
+        {
+            foreach (var file in Directory.EnumerateFiles(path))
+            {
+                try
+                {
+                    File.Delete(file);
+                    deletedFiles++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+
+            foreach (var dir in Directory.EnumerateDirectories(path))
+            {
+                try
+                {
+                    Directory.Delete(dir, recursive: true);
+                    deletedDirs++;
+                }
+                catch
+                {
+                    failed++;
+                }
+            }
+        }
+        catch
+        {
+            failed++;
+        }
+
+        return "tog bort " + deletedFiles + " filer och " + deletedDirs + " mappar. Misslyckades: " + failed;
+    }
+    private static string BuildStatus()
+    {
+        return
+            "Jarvis status:\n" +
+            "- Safe dashboard: aktiv\n" +
+            "- C#-brygga: aktiv\n" +
+            "- Smart Memory: aktivt, memory.md\n" +
+            "- Felstavnings-tolerans: aktiv\n" +
+            "- Ollama-modell: " + OllamaModel + "\n" +
+            "- NeuroLinked: avstängd\n" +
+            "- 3D/WebGL: avstängt\n" +
+            "- Projektmapp: " + ProjectRoot;
+    }
+
+    private static string SaveSmartMemory(string input, string type, int importance, string tags, int skipWords)
+    {
+        var text = ExtractValue(input, skipWords);
+
+        if (string.IsNullOrWhiteSpace(text))
+            return "Skriv så här: smart minne: något viktigt";
+
+        if (LooksLikeActualSecret(text))
+            return "Jag sparade inte detta eftersom det verkar innehålla en faktisk hemlighet, token, API-nyckel eller ett lösenord.";
+
+        Directory.CreateDirectory(Path.Combine(ProjectRoot, "data"));
+
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+        {
+            File.WriteAllText(
+                memoryPath,
+                "# Jarvis lokalt minne" + Environment.NewLine + Environment.NewLine
+            );
+        }
+
+        var entry =
+            "## " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + Environment.NewLine +
+            "Type: " + type + Environment.NewLine +
+            "Importance: " + importance + "/5" + Environment.NewLine +
+            "Tags: " + tags + Environment.NewLine + Environment.NewLine +
+            "Text:" + Environment.NewLine +
+            text + Environment.NewLine + Environment.NewLine;
+
+        File.AppendAllText(memoryPath, entry);
+
+        return $"Smart Memory sparat i memory.md. Type: {type}, Importance: {importance}/5.";
+    }
+
+    private static string ExtractValue(string input, int skipWords)
+    {
+        var colon = input.IndexOf(':');
+        if (colon >= 0)
+            return input[(colon + 1)..].Trim();
+
+        var parts = input.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length <= skipWords)
+            return "";
+
+        return string.Join(" ", parts.Skip(skipWords)).Trim();
+    }
+
+    private static bool LooksLikeActualSecret(string text)
+    {
+        var lower = text.ToLowerInvariant();
+
+        var dangerousPatterns = new[]
+        {
+            @"password\s*[:=]",
+            @"lösenord\s*[:=]",
+            @"losenord\s*[:=]",
+            @"api[_ -]?key\s*[:=]",
+            @"secret\s*[:=]",
+            @"token\s*[:=]",
+            @"private[_ -]?key\s*[:=]",
+            @"sk-[a-zA-Z0-9]{20,}",
+            @"ghp_[a-zA-Z0-9]{20,}"
+        };
+
+        return dangerousPatterns.Any(pattern => Regex.IsMatch(lower, pattern));
+    }
+
+    private static string SearchMemory(string input)
+    {
+        var query = ExtractValue(input, 2);
+
+        if (string.IsNullOrWhiteSpace(query))
+            return "Skriv så här: sök minne: Jarvis";
+
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Det finns inget lokalt minne ännu.";
+
+        var content = File.ReadAllText(memoryPath);
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Det finns inget lokalt minne ännu.";
+
+        var entries = Regex.Split(content, @"(?m)^## ")
+            .Select(entry => entry.Trim())
+            .Where(entry => !string.IsNullOrWhiteSpace(entry))
+            .Where(entry => entry.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(10)
+            .ToList();
+
+        if (entries.Count == 0)
+            return "Inga träffar i memory.md för: " + query;
+
+        return "Träffar i memory.md:\n\n" + string.Join("\n\n---\n\n", entries);
+    }
+
+    private static string ShowMemory()
+    {
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Det finns inget lokalt minne ännu.";
+
+        var content = File.ReadAllText(memoryPath).Trim();
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Det finns inget lokalt minne ännu.";
+
+        var maxLength = 3000;
+        if (content.Length > maxLength)
+            content = content[^maxLength..];
+
+        return "Lokalt minne från memory.md:\n" + content;
+    }
+
+    private static string ShowMemoriesByType(string type, string title)
+    {
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Det finns inget lokalt minne ännu.";
+
+        var content = File.ReadAllText(memoryPath);
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Det finns inget lokalt minne ännu.";
+
+        var entries = Regex.Split(content, @"(?m)^## ")
+            .Select(entry => entry.Trim())
+            .Where(entry => !string.IsNullOrWhiteSpace(entry))
+            .Where(entry => entry.Contains("Type: " + type, StringComparison.OrdinalIgnoreCase))
+            .TakeLast(20)
+            .ToList();
+
+        if (entries.Count == 0)
+            return "Inga minnen hittades för type: " + type;
+
+        return title + ":\n\n" + string.Join("\n\n---\n\n", entries);
+    }
+    private static string SummarizeMemory()
+    {
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Det finns inget lokalt minne ännu.";
+
+        var content = File.ReadAllText(memoryPath);
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Det finns inget lokalt minne ännu.";
+
+        var entries = Regex.Split(content, @"(?m)^## ")
+            .Select(entry => entry.Trim())
+            .Where(entry => !string.IsNullOrWhiteSpace(entry))
+            .Where(entry => entry.Contains("Type:", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var total = entries.Count;
+        var important = entries.Count(entry => entry.Contains("Type: important", StringComparison.OrdinalIgnoreCase));
+        var project = entries.Count(entry => entry.Contains("Type: project_fact", StringComparison.OrdinalIgnoreCase));
+        var notes = entries.Count(entry => entry.Contains("Type: note", StringComparison.OrdinalIgnoreCase));
+
+        var latest = entries
+            .TakeLast(5)
+            .Select(entry =>
+            {
+                var lines = entry.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Trim())
+                    .ToList();
+
+                var date = lines.FirstOrDefault() ?? "okänt datum";
+                var type = lines.FirstOrDefault(line => line.StartsWith("Type:", StringComparison.OrdinalIgnoreCase)) ?? "Type: okänd";
+                var importance = lines.FirstOrDefault(line => line.StartsWith("Importance:", StringComparison.OrdinalIgnoreCase)) ?? "Importance: okänd";
+
+                var textIndex = lines.FindIndex(line => line.Equals("Text:", StringComparison.OrdinalIgnoreCase));
+                var text = textIndex >= 0 && textIndex + 1 < lines.Count ? lines[textIndex + 1] : "(ingen text)";
+
+                if (text.Length > 120)
+                    text = text[..120] + "...";
+
+                return "- " + date + " | " + type + " | " + importance + " | " + text;
+            })
+            .ToList();
+
+        return
+            "Minnessammanfattning:\n" +
+            "- Totalt antal smarta minnen: " + total + "\n" +
+            "- Viktiga minnen: " + important + "\n" +
+            "- Projektminnen: " + project + "\n" +
+            "- Vanliga notes: " + notes + "\n\n" +
+            "Senaste minnen:\n" +
+            (latest.Count > 0 ? string.Join("\n", latest) : "Inga smarta minnen hittades.");
+    }
+    private static string MemoryStatus()
+    {
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Minnesfil finns inte ännu.";
+
+        var lines = File.ReadAllLines(memoryPath);
+
+        var memoryCount = lines.Count(line => line.StartsWith("## "));
+        var importantCount = lines.Count(line => line.Trim().Equals("Type: important", StringComparison.OrdinalIgnoreCase));
+        var projectCount = lines.Count(line => line.Trim().Equals("Type: project_fact", StringComparison.OrdinalIgnoreCase));
+
+        return
+            "Smart Memory status:\n" +
+            "- Antal minnen: " + memoryCount + "\n" +
+            "- Viktiga minnen: " + importantCount + "\n" +
+            "- Projektminnen: " + projectCount + "\n" +
+            "- Fil: " + memoryPath;
+    }
+
+    private static string PrepareForgetMemory(string input)
+    {
+        var query = ExtractValue(input, 2);
+
+        if (string.IsNullOrWhiteSpace(query))
+            return "Skriv så här: glöm minne: något att söka efter";
+
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Det finns inget lokalt minne ännu.";
+
+        var content = File.ReadAllText(memoryPath);
+
+        var matches = ParseMemoryBlocks(content)
+            .Where(block => block.FullBlock.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(10)
+            .ToList();
+
+        PendingForgetMatches = matches;
+
+        if (matches.Count == 0)
+            return "Jag hittade inga minnen som matchar: " + query;
+
+        var lines = matches
+            .Select((block, index) => (index + 1) + ". " + block.Preview)
+            .ToList();
+
+        return
+            "Jag hittade dessa minnen:\n\n" +
+            string.Join("\n\n", lines) +
+            "\n\nFör att arkivera ett minne, skriv exakt:\n" +
+            "bekräfta glöm 1";
+    }
+
+    private static string ConfirmForgetMemory(string command)
+    {
+        var match = Regex.Match(command, @"^bekrafta glom\s+(\d+)$");
+
+        if (!match.Success)
+            return "Skriv så här: bekräfta glöm 1";
+
+        var number = int.Parse(match.Groups[1].Value);
+        var index = number - 1;
+
+        if (PendingForgetMatches.Count == 0)
+            return "Det finns ingen aktiv glöm-lista. Skriv först: glöm minne: text";
+
+        if (index < 0 || index >= PendingForgetMatches.Count)
+            return "Ogiltigt nummer. Välj ett nummer från listan.";
+
+        var selected = PendingForgetMatches[index];
+
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+        var archivePath = Path.Combine(ProjectRoot, "data", "memory_archive.md");
+
+        if (!File.Exists(memoryPath))
+            return "Minnesfilen finns inte längre.";
+
+        var content = File.ReadAllText(memoryPath);
+        var position = content.IndexOf(selected.FullBlock, StringComparison.Ordinal);
+
+        if (position < 0)
+            return "Jag kunde inte hitta exakt minnesblock i memory.md. Försök söka igen.";
+
+        var updated = content.Remove(position, selected.FullBlock.Length).TrimEnd() + Environment.NewLine + Environment.NewLine;
+        File.WriteAllText(memoryPath, updated);
+
+        if (!File.Exists(archivePath))
+        {
+            File.WriteAllText(
+                archivePath,
+                "# Jarvis arkiverade minnen" + Environment.NewLine + Environment.NewLine
+            );
+        }
+
+        var archiveEntry =
+            "## Archived " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + Environment.NewLine + Environment.NewLine +
+            selected.FullBlock.Trim() + Environment.NewLine + Environment.NewLine;
+
+        File.AppendAllText(archivePath, archiveEntry);
+
+        PendingForgetMatches.Clear();
+
+        return "Minnet är arkiverat i memory_archive.md och borttaget från aktivt memory.md.";
+    }
+
+    private static List<MemoryBlock> ParseMemoryBlocks(string content)
+    {
+        return Regex.Matches(content, @"(?ms)^## .+?(?=^## |\z)")
+            .Select(match =>
+            {
+                var fullBlock = match.Value;
+                var preview = FormatMemoryPreview(fullBlock);
+                return new MemoryBlock(fullBlock, preview);
+            })
+            .ToList();
+    }
+
+    private static string FormatMemoryPreview(string block)
+    {
+        var lines = block
+            .Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Trim())
+            .Take(8)
+            .ToList();
+
+        var preview = string.Join(" | ", lines);
+
+        if (preview.Length > 450)
+            preview = preview[..450] + "...";
+
+        return preview;
+    }
+    private static string OpenMemoryTool()
+    {
+        Directory.CreateDirectory(Path.Combine(ProjectRoot, "data"));
+
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+        {
+            File.WriteAllText(
+                memoryPath,
+                "# Jarvis lokalt minne" + Environment.NewLine + Environment.NewLine
+            );
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "notepad.exe",
+            Arguments = "\"" + memoryPath + "\"",
+            UseShellExecute = true
+        });
+
+        return "Öppnar minnesfil: " + memoryPath;
+    }
+
+    private static string OpenFolderTool(string folder)
+    {
+        var fullTarget = Path.GetFullPath(folder);
+        var fullRoot = Path.GetFullPath(ProjectRoot);
+
+        if (!fullTarget.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
+            return "Blockerat: Jarvis får bara öppna mappar i F:\\Jarvis-clean.";
+
+        if (!Directory.Exists(fullTarget))
+            return "Mappen finns inte: " + fullTarget;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = fullTarget,
+            UseShellExecute = true
+        });
+
+        return "Öppnar mapp: " + fullTarget;
+    }
+
+    private static string TerminalPreviewTool(string input)
+    {
+        var commandText = ExtractValue(input, 2);
+
+        if (string.IsNullOrWhiteSpace(commandText))
+            return "Skriv så här: terminal preview: dotnet build";
+
+        var allowed = TryBuildSafeTerminalCommand(commandText.Trim(), out var command, out var workingDir, out var error);
+
+        if (!allowed)
+            return error;
+
+        PendingTerminalCommand = command;
+        PendingTerminalWorkingDirectory = workingDir;
+
+        return
+            "Terminal preview:\n\n" +
+            "Working directory:\n" +
+            workingDir + "\n\n" +
+            "Kommando:\n" +
+            command + "\n\n" +
+            "Om detta ser rätt ut, skriv:\n" +
+            "bekräfta kör\n\n" +
+            "Om inte, skriv:\n" +
+            "avbryt kör";
+    }
+
+    private static string TerminalConfirmRun()
+    {
+        if (string.IsNullOrWhiteSpace(PendingTerminalCommand))
+            return "Det finns inget terminalkommando att köra. Skriv först: terminal preview: dotnet build";
+
+        var command = PendingTerminalCommand;
+        var workingDir = PendingTerminalWorkingDirectory;
+
+        PendingTerminalCommand = "";
+        PendingTerminalWorkingDirectory = "";
+
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "powershell.exe",
+                Arguments = "-NoProfile -ExecutionPolicy Bypass -Command " + QuotePowerShellCommand(command),
+                WorkingDirectory = workingDir,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+
+            using var process = Process.Start(psi);
+
+            if (process is null)
+                return "Kunde inte starta PowerShell-processen.";
+
+            if (!process.WaitForExit(30000))
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                return "Kommandot tog över 30 sekunder och stoppades.";
+            }
+
+            var output = process.StandardOutput.ReadToEnd();
+            var error = process.StandardError.ReadToEnd();
+
+            return
+                "Exit code: " + process.ExitCode + "\n\n" +
+                "Output:\n" + TrimTerminalOutput(output) + "\n\n" +
+                "Error:\n" + TrimTerminalOutput(error);
+        }
+        catch (Exception ex)
+        {
+            return "Terminal-fel: " + ex.Message;
+        }
+    }
+
+    private static string TerminalCancelRun()
+    {
+        PendingTerminalCommand = "";
+        PendingTerminalWorkingDirectory = "";
+        return "Terminalkommandot avbröts.";
+    }
+
+    private static bool TryBuildSafeTerminalCommand(string requested, out string command, out string workingDir, out string error)
+    {
+        command = "";
+        workingDir = Path.Combine(ProjectRoot, "app");
+        error = "";
+
+        var normalized = NormalizeCommand(requested);
+
+        if (normalized is "dotnet build" or "build")
+        {
+            command = "dotnet build";
+            return true;
+        }
+
+        if (normalized is "dotnet publish" or "publish")
+        {
+            command = @"dotnet publish ""F:\Jarvis-clean\app\JarvisClean.csproj"" -c Release -o ""F:\Jarvis-clean\dist"" --no-self-contained";
+            return true;
+        }
+
+        if (normalized is "dotnet test" or "test")
+        {
+            command = "dotnet test";
+            return true;
+        }
+
+        if (normalized is "ollama list" or "lista modeller")
+        {
+            workingDir = ProjectRoot;
+            command = "ollama list";
+            return true;
+        }
+
+        if (normalized is "git status")
+        {
+            workingDir = ProjectRoot;
+            command = "git status";
+            return true;
+        }
+
+        if (normalized is "get current state" or "visa current state")
+        {
+            workingDir = ProjectRoot;
+            command = @"Get-Content ""F:\Jarvis-clean\CURRENT_STATE.md"" | Select-Object -Last 80";
+            return true;
+        }
+
+        error =
+            "Blockerat: detta terminalkommando är inte tillåtet ännu.\n\n" +
+            "Tillåtna kommandon just nu:\n" +
+            "- terminal preview: dotnet build\n" +
+            "- terminal preview: dotnet publish\n" +
+            "- terminal preview: dotnet test\n" +
+            "- terminal preview: ollama list\n" +
+            "- terminal preview: git status\n" +
+            "- terminal preview: get current state";
+
+        return false;
+    }
+
+    private static string QuotePowerShellCommand(string command)
+    {
+        return "\"" + command.Replace("\"", "\\\"") + "\"";
+    }
+
+    private static string TrimTerminalOutput(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return "(tomt)";
+
+        value = value.Trim();
+
+        var maxLength = 6000;
+        if (value.Length > maxLength)
+            return value[..maxLength] + "\n\n...output kortad.";
+
+        return value;
+    }
+    private static string ListFilesTool(string command)
+    {
+        string target = ProjectRoot;
+
+        if (command.Contains("app"))
+            target = Path.Combine(ProjectRoot, "app");
+        else if (command.Contains("dashboard"))
+            target = Path.Combine(ProjectRoot, "dashboard");
+        else if (command.Contains("tests"))
+            target = Path.Combine(ProjectRoot, "tests");
+        else if (command.Contains("docs"))
+            target = Path.Combine(ProjectRoot, "docs");
+        else if (command.Contains("data"))
+            target = Path.Combine(ProjectRoot, "data");
+
+        var fullTarget = Path.GetFullPath(target);
+        var fullRoot = Path.GetFullPath(ProjectRoot);
+
+        if (!fullTarget.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase))
+            return "Blockerat: Jarvis får bara lista filer i F:\\Jarvis-clean.";
+
+        if (!Directory.Exists(fullTarget))
+            return "Mappen finns inte: " + fullTarget;
+
+        var dirs = Directory.GetDirectories(fullTarget)
+            .Select(Path.GetFileName)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => "[MAPP] " + x);
+
+        var files = Directory.GetFiles(fullTarget)
+            .Select(Path.GetFileName)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .Select(x => "[FIL] " + x);
+
+        var items = dirs.Concat(files).Take(80).ToList();
+
+        if (items.Count == 0)
+            return "Inga filer hittades i: " + fullTarget;
+
+        return "Filer i " + fullTarget + ":\n" + string.Join("\n", items);
+    }
+
+    private static bool TryCalculate(string input, out string result)
+    {
+        result = "";
+
+        var compact = NormalizeCommand(input)
+            .Replace(" ", "")
+            .Replace("rakna", "")
+            .Replace("calc", "");
+
+        var match = Regex.Match(compact, @"^(-?\d+(?:[,.]\d+)?)([+\-*/])(-?\d+(?:[,.]\d+)?)$");
+
+        if (!match.Success)
+            return false;
+
+        var a = double.Parse(match.Groups[1].Value.Replace(",", "."), CultureInfo.InvariantCulture);
+        var op = match.Groups[2].Value;
+        var b = double.Parse(match.Groups[3].Value.Replace(",", "."), CultureInfo.InvariantCulture);
+
+        double value = op switch
+        {
+            "+" => a + b,
+            "-" => a - b,
+            "*" => a * b,
+            "/" when b != 0 => a / b,
+            "/" => double.NaN,
+            _ => double.NaN
+        };
+
+        result = double.IsNaN(value)
+            ? "Kan inte dela med 0."
+            : value.ToString(CultureInfo.InvariantCulture);
+
+        return true;
+    }
+
+    private static bool TryAnswerFromMemoryQuestion(string originalText, string command, out string answer)
+    {
+        answer = "";
+
+        if (command.Contains("favorit farg") || command.Contains("favoritfarg"))
+        {
+            var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+            if (!File.Exists(memoryPath))
+            {
+                answer = "Jag hittar ingen aktiv favoritfärg i memory.md.";
+                return true;
+            }
+
+            var lines = File.ReadAllLines(memoryPath)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Where(line => !line.StartsWith("#"))
+                .Where(line =>
+                {
+                    var normalized = NormalizeCommand(line);
+                    return normalized.Contains("favorit farg") || normalized.Contains("favoritfarg");
+                })
+                .ToList();
+
+            if (lines.Count == 0)
+            {
+                answer = "Jag hittar ingen aktiv favoritfärg i memory.md.";
+                return true;
+            }
+
+            answer = "I aktivt minne står det: " + lines.Last();
+            return true;
+        }
+
+        if (command.StartsWith("vad kommer du ihag om") || command.StartsWith("vad vet du om"))
+        {
+            var query = ExtractQueryAfterOm(originalText);
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                answer = MemoryStatus() + Environment.NewLine + Environment.NewLine + ShowMemory();
+                return true;
+            }
+
+            answer = SearchMemory("sök minne: " + query);
+            return true;
+        }
+
+        if (CommandIs(command, "vad kommer du ihag", "vad minns du"))
+        {
+            answer = MemoryStatus() + Environment.NewLine + Environment.NewLine + ShowMemory();
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string ExtractQueryAfterOm(string text)
+    {
+        var match = Regex.Match(text, @"\bom\b\s*(.+)$", RegexOptions.IgnoreCase);
+        return match.Success ? match.Groups[1].Value.Trim() : "";
+    }
+
+    private static string ShowArchive()
+    {
+        var archivePath = Path.Combine(ProjectRoot, "data", "memory_archive.md");
+
+        if (!File.Exists(archivePath))
+            return "Det finns inget minnesarkiv ännu.";
+
+        var content = File.ReadAllText(archivePath).Trim();
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Minnesarkivet är tomt.";
+
+        var maxLength = 3000;
+        if (content.Length > maxLength)
+            content = content[^maxLength..];
+
+        return "Arkiverade minnen från memory_archive.md:\n" + content;
+    }
+
+    private static string SearchArchive(string input)
+    {
+        var query = ExtractValue(input, 2);
+
+        if (string.IsNullOrWhiteSpace(query))
+            return "Skriv så här: sök arkiv: röd";
+
+        var archivePath = Path.Combine(ProjectRoot, "data", "memory_archive.md");
+
+        if (!File.Exists(archivePath))
+            return "Det finns inget minnesarkiv ännu.";
+
+        var content = File.ReadAllText(archivePath);
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Minnesarkivet är tomt.";
+
+        var entries = Regex.Split(content, @"(?m)^## ")
+            .Select(entry => entry.Trim())
+            .Where(entry => !string.IsNullOrWhiteSpace(entry))
+            .Where(entry => entry.Contains(query, StringComparison.OrdinalIgnoreCase))
+            .Take(10)
+            .ToList();
+
+        if (entries.Count == 0)
+            return "Inga träffar i memory_archive.md för: " + query;
+
+        return "Träffar i memory_archive.md:\n\n" + string.Join("\n\n---\n\n", entries);
+    }
+    private static string BuildMemoryContext()
+    {
+        var memoryPath = Path.Combine(ProjectRoot, "data", "memory.md");
+
+        if (!File.Exists(memoryPath))
+            return "Inget lokalt minne finns ännu.";
+
+        var content = File.ReadAllText(memoryPath).Trim();
+
+        if (string.IsNullOrWhiteSpace(content))
+            return "Inget lokalt minne finns ännu.";
+
+        var maxLength = 2500;
+        if (content.Length > maxLength)
+            content = content[^maxLength..];
+
+        return content;
+    }
+
+    private static async Task<string> AskOllamaAsync(string text)
+    {
+        try
+        {
+            var payload = new
+            {
+                model = OllamaModel,
+                stream = false,
+                keep_alive = "10m",
+                messages = new object[]
+                {
+                    new
+                    {
+                        role = "system",
+                        content = "Du är Jarvis. Svara kort, tydligt och på svenska. Du kör lokalt via Ollama. Här är relevant lokalt minne från memory.md:\n\n" + BuildMemoryContext()
+                    },
+                    new
+                    {
+                        role = "user",
+                        content = text
+                    }
+                }
+            };
+
+            using var response = await Http.PostAsJsonAsync(OllamaUrl, payload);
+
+            if (!response.IsSuccessStatusCode)
+                return $"Ollama svarade med fel: {(int)response.StatusCode} {response.ReasonPhrase}";
+
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+            if (json.RootElement.TryGetProperty("message", out var message) &&
+                message.TryGetProperty("content", out var content))
+            {
+                var reply = content.GetString();
+                if (!string.IsNullOrWhiteSpace(reply))
+                    return reply.Trim();
+            }
+
+            return "Ollama svarade, men Jarvis kunde inte läsa svaret.";
+        }
+        catch (TaskCanceledException)
+        {
+            return "Ollama tog för lång tid. Håll modellen varm med: ollama run qwen2.5-coder:1.5b";
+        }
+        catch (HttpRequestException)
+        {
+            return "Kunde inte ansluta till Ollama. Starta Ollama och försök igen.";
+        }
+        catch (Exception ex)
+        {
+            return "Ollama-fel: " + ex.Message;
+        }
+    }
+
+    private static string NormalizeCommand(string value)
+    {
+        var normalized = value
+            .Trim()
+            .ToLowerInvariant()
+            .Replace("å", "a")
+            .Replace("ä", "a")
+            .Replace("ö", "o");
+
+        normalized = Regex.Replace(normalized, @"\s+", " ");
+        return normalized;
+    }
+
+    private static bool CommandIs(string command, params string[] expected)
+    {
+        var head = CommandHead(command);
+
+        foreach (var option in expected)
+        {
+            var target = NormalizeCommand(option).TrimEnd(':');
+
+            if (head == target)
+                return true;
+
+            if (head.Replace(" ", "") == target.Replace(" ", ""))
+                return true;
+
+            if (Levenshtein(head, target) <= AllowedDistance(target))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool CommandStartsWith(string command, params string[] prefixes)
+    {
+        foreach (var prefix in prefixes)
+        {
+            var target = NormalizeCommand(prefix).TrimEnd(':');
+
+            if (command == target || command.StartsWith(target + ":") || command.StartsWith(target + " "))
+                return true;
+
+            var head = CommandHead(command);
+
+            if (Levenshtein(head, target) <= AllowedDistance(target))
+                return true;
+        }
+
+        return false;
+    }
+
+    private static string CommandHead(string command)
+    {
+        var colon = command.IndexOf(':');
+        if (colon >= 0)
+            return command[..colon].Trim();
+
+        return command.Trim();
+    }
+
+    private static int AllowedDistance(string target)
+    {
+        if (target.Length <= 5) return 1;
+        if (target.Length <= 12) return 2;
+        return 3;
+    }
+
+    private static int Levenshtein(string a, string b)
+    {
+        if (a == b) return 0;
+        if (a.Length == 0) return b.Length;
+        if (b.Length == 0) return a.Length;
+
+        var costs = new int[b.Length + 1];
+
+        for (var j = 0; j <= b.Length; j++)
+            costs[j] = j;
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var previous = costs[0];
+            costs[0] = i;
+
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var temp = costs[j];
+                var cost = a[i - 1] == b[j - 1] ? 0 : 1;
+
+                costs[j] = Math.Min(
+                    Math.Min(costs[j] + 1, costs[j - 1] + 1),
+                    previous + cost
+                );
+
+                previous = temp;
+            }
+        }
+
+        return costs[b.Length];
+    }
+
+    private async Task AddAssistantMessage(string message)
+    {
+        if (_webView.CoreWebView2 is null)
+            return;
+
+        var roleJson = JsonSerializer.Serialize("assistant");
+        var textJson = JsonSerializer.Serialize(message);
+
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisAddMessage({roleJson}, {textJson});"
+        );
+    }
+}
+
+
+
+
+
+
+
+

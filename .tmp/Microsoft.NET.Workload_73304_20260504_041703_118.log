@@ -1,0 +1,14 @@
+[2026-05-04 04:17:03.120] [00011E58] === Logging started ===
+[2026-05-04 04:17:03.127] [00011E58] Executing: "C:\Program Files\dotnet\dotnet.exe" build .\JarvisClean.csproj --no-restore, PID: 73304, PPID: 82608
+[2026-05-04 04:17:03.129] [00011E58] IsElevated: False
+[2026-05-04 04:17:03.129] [00011E58] Is64BitProcess: True
+[2026-05-04 04:17:03.129] [00011E58] RebootPending: False
+[2026-05-04 04:17:03.129] [00011E58] ProcessorArchitecture: amd64
+[2026-05-04 04:17:03.129] [00011E58] HostArchitecture: x64
+[2026-05-04 04:17:03.129] [00011E58] SdkDirectory: 10.0.203
+[2026-05-04 04:17:03.129] [00011E58] VerifySignatures: False
+[2026-05-04 04:17:03.129] [00011E58] SDK feature band: 10.0.200
+[2026-05-04 04:17:15.483] [00011E58] Shutting down
+[2026-05-04 04:17:15.484] [00011E58] Shutdown completed.
+[2026-05-04 04:17:15.484] [00011E58] Restart required: False
+[2026-05-04 04:17:15.484] [00011E58] === Logging ended ===

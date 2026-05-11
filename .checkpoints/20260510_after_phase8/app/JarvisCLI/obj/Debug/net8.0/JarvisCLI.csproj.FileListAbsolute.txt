@@ -1,0 +1,14 @@
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.GeneratedMSBuildEditorConfig.editorconfig
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.AssemblyInfoInputs.cache
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.AssemblyInfo.cs
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.csproj.CoreCompileInputs.cache
+F:\Jarvis-clean\app\JarvisCLI\bin\Debug\net8.0\JarvisCLI.exe
+F:\Jarvis-clean\app\JarvisCLI\bin\Debug\net8.0\JarvisCLI.deps.json
+F:\Jarvis-clean\app\JarvisCLI\bin\Debug\net8.0\JarvisCLI.runtimeconfig.json
+F:\Jarvis-clean\app\JarvisCLI\bin\Debug\net8.0\JarvisCLI.dll
+F:\Jarvis-clean\app\JarvisCLI\bin\Debug\net8.0\JarvisCLI.pdb
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.dll
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\refint\JarvisCLI.dll
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.pdb
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\JarvisCLI.genruntimeconfig.cache
+F:\Jarvis-clean\app\JarvisCLI\obj\Debug\net8.0\ref\JarvisCLI.dll

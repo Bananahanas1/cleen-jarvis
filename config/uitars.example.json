@@ -1,0 +1,5 @@
+{
+  "baseUrl": "https://your-ui-tars-compatible-endpoint/v1",
+  "apiKey": "DO_NOT_COMMIT_REAL_KEY",
+  "model": "your-ui-tars-model"
+}

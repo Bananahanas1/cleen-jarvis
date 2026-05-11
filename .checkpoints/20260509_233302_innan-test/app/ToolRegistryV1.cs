@@ -1,0 +1,202 @@
+﻿namespace JarvisClean;
+
+internal sealed class ToolDefinitionV1
+{
+    public string Name { get; init; } = string.Empty;
+    public CommandIntent Intent { get; init; } = CommandIntent.Unknown;
+    public CommandRisk Risk { get; init; } = CommandRisk.SafeRead;
+    public bool RequiresApproval { get; init; }
+    public string Description { get; init; } = string.Empty;
+    public string Example { get; init; } = string.Empty;
+    public List<string> RequiredArguments { get; init; } = new();
+}
+
+internal static class ToolRegistryV1
+{
+    public static IReadOnlyList<ToolDefinitionV1> Tools { get; } = new List<ToolDefinitionV1>
+    {
+        new()
+        {
+            Name = "help.show",
+            Intent = CommandIntent.Help,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar hjälp och kommandon.",
+            Example = "hjälp"
+        },
+
+        new()
+        {
+            Name = "memory.save",
+            Intent = CommandIntent.MemorySave,
+            Risk = CommandRisk.SafeRead,
+            Description = "Sparar ett minne efter validering.",
+            Example = "viktigt minne: text",
+            RequiredArguments = { "text" }
+        },
+
+        new()
+        {
+            Name = "memory.show",
+            Intent = CommandIntent.MemoryShow,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar aktivt lokalt minne.",
+            Example = "/minne visa"
+        },
+
+        new()
+        {
+            Name = "memory.show.important",
+            Intent = CommandIntent.MemoryImportantShow,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar viktiga minnen.",
+            Example = "/minne viktiga"
+        },
+
+        new()
+        {
+            Name = "memory.show.project",
+            Intent = CommandIntent.MemoryProjectShow,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar projektminnen.",
+            Example = "/minne projekt"
+        },
+
+        new()
+        {
+            Name = "memory.status",
+            Intent = CommandIntent.MemoryStatus,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar minnesstatus utan att skriva något.",
+            Example = "/minne status"
+        },
+
+        new()
+        {
+            Name = "memory.search",
+            Intent = CommandIntent.MemorySearch,
+            Risk = CommandRisk.SafeRead,
+            Description = "Söker i aktivt minne.",
+            Example = "sök minne: ollama",
+            RequiredArguments = { "query" }
+        },
+
+        new()
+        {
+            Name = "archive.search",
+            Intent = CommandIntent.MemoryArchiveSearch,
+            Risk = CommandRisk.SafeRead,
+            Description = "Söker i memory_archive.md.",
+            Example = "sök arkiv: röd",
+            RequiredArguments = { "query" }
+        },
+
+        new()
+        {
+            Name = "file.open",
+            Intent = CommandIntent.FileOpen,
+            Risk = CommandRisk.SafeUi,
+            Description = "Öppnar fil i Jarvis filpanel.",
+            Example = "öppna app/Program.cs",
+            RequiredArguments = { "path" }
+        },
+
+        new()
+        {
+            Name = "file.read",
+            Intent = CommandIntent.FileRead,
+            Risk = CommandRisk.SafeRead,
+            Description = "Läser en projektfil.",
+            Example = "läs fil: docs/PROJECT_INDEX.md",
+            RequiredArguments = { "path" }
+        },
+
+        new()
+        {
+            Name = "file.create.request",
+            Intent = CommandIntent.FileCreateRequest,
+            Risk = CommandRisk.WritesFile,
+            RequiresApproval = true,
+            Description = "Förbereder skapande av ny projektfil via pending approval.",
+            Example = "/fil skapa docs/test.md = text",
+            RequiredArguments = { "path", "text" }
+        },
+
+        new()
+        {
+            Name = "file.write.request",
+            Intent = CommandIntent.FileWriteRequest,
+            Risk = CommandRisk.WritesFile,
+            RequiresApproval = true,
+            Description = "Förbereder filskrivning. Ska senare gå via pending approval.",
+            Example = "skriv fil: docs/test.md = text",
+            RequiredArguments = { "path", "text" }
+        },
+
+        new()
+        {
+            Name = "terminal.preview",
+            Intent = CommandIntent.TerminalPreview,
+            Risk = CommandRisk.RunsTerminal,
+            RequiresApproval = true,
+            Description = "Förhandsgranskar terminalkommando innan körning.",
+            Example = "terminal preview: dotnet build",
+            RequiredArguments = { "command" }
+        },
+
+        new()
+        {
+            Name = "terminal.confirm",
+            Intent = CommandIntent.TerminalConfirm,
+            Risk = CommandRisk.RunsTerminal,
+            RequiresApproval = true,
+            Description = "Godkänner och kör ett pending terminalkommando.",
+            Example = "/terminal godkänn"
+        },
+
+        new()
+        {
+            Name = "terminal.cancel",
+            Intent = CommandIntent.TerminalCancel,
+            Risk = CommandRisk.SafeUi,
+            Description = "Avbryter ett pending terminalkommando.",
+            Example = "/terminal avbryt"
+        },
+
+        new()
+        {
+            Name = "terminal.show",
+            Intent = CommandIntent.TerminalShow,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar senaste terminaltranskriptet.",
+            Example = "/terminal visa"
+        },
+
+        new()
+        {
+            Name = "obsidian.status",
+            Intent = CommandIntent.ObsidianStatus,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar säker Obsidian-status. Skriver inte till vault.",
+            Example = "/obsidian status"
+        },
+
+        new()
+        {
+            Name = "overview.show",
+            Intent = CommandIntent.OverviewShow,
+            Risk = CommandRisk.SafeUi,
+            Description = "Öppnar Jarvis översiktspanel.",
+            Example = "/översikt"
+        }
+    };
+
+    public static ToolDefinitionV1? FindByIntent(CommandIntent intent)
+    {
+        return Tools.FirstOrDefault(tool => tool.Intent == intent);
+    }
+
+    public static ToolDefinitionV1? FindByName(string name)
+    {
+        return Tools.FirstOrDefault(tool => string.Equals(tool.Name, name, StringComparison.OrdinalIgnoreCase));
+    }
+}

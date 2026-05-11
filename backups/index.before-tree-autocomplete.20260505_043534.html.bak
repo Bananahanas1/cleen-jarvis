@@ -1,0 +1,449 @@
+﻿<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Jarvis</title>
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: #050910;
+      color: #dff7ff;
+      font-family: Consolas, monospace;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 300px 1fr 420px;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    .explorer, .editor, .chat {
+      border-right: 1px solid #193247;
+      background: #08111f;
+      min-height: 0;
+    }
+
+    .explorer {
+      padding: 12px;
+      overflow: hidden;
+    }
+
+    .editor {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: #06101d;
+    }
+
+    .chat {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      border-right: none;
+    }
+
+    h1, h2 {
+      margin: 0 0 10px 0;
+      color: #44d9ff;
+      font-size: 18px;
+    }
+
+    .top-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    button {
+      background: #102b3d;
+      color: #dff7ff;
+      border: 1px solid #44d9ff;
+      border-radius: 8px;
+      padding: 7px 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    button:hover { background: #16425e; }
+
+    .small {
+      color: #789;
+      font-size: 12px;
+      line-height: 1.4;
+    }
+
+    #folderPath {
+      color: #ffaa44;
+      font-size: 12px;
+      margin: 8px 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #fileList {
+      height: calc(100vh - 105px);
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 8px;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .file-row {
+      padding: 4px 6px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .file-row:hover {
+      background: rgba(68, 217, 255, 0.12);
+    }
+
+    #activeFileLabel {
+      color: #ffaa44;
+      font-size: 13px;
+      min-height: 18px;
+    }
+
+    #editorArea {
+      flex: 1;
+      width: 100%;
+      resize: none;
+      background: #03070d;
+      color: #dff7ff;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 12px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      line-height: 1.5;
+      outline: none;
+      white-space: pre;
+      overflow: auto;
+    }
+
+    .editor-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    #messages {
+      flex: 1;
+      overflow-y: auto;
+      background: #03070d;
+      border: 1px solid #193247;
+      border-radius: 10px;
+      padding: 10px;
+      white-space: pre-wrap;
+    }
+
+    .msg {
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 8px;
+    }
+
+    .user {
+      background: rgba(68, 217, 255, 0.12);
+      border-left: 3px solid #44d9ff;
+    }
+
+    .assistant {
+      background: rgba(80, 255, 150, 0.10);
+      border-left: 3px solid #50ff96;
+    }
+
+    .input-row {
+      display: flex;
+      gap: 8px;
+    }
+
+    #input {
+      flex: 1;
+      background: #03070d;
+      color: white;
+      border: 1px solid #24465f;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="explorer">
+      <div class="top-row">
+        <h1 style="flex:1;">Project Explorer</h1>
+        <button id="loadFilesBtn">Ladda</button>
+      </div>
+
+      <div id="folderPath">Mapp: projektrot</div>
+      <div id="fileList"></div>
+    </aside>
+
+    <main class="editor">
+      <div class="top-row">
+        <h2 style="flex:1;">Filpanel</h2>
+        <button id="copyEditorBtn">Kopiera</button>
+      </div>
+
+      <div id="activeFileLabel">Ingen fil öppen.</div>
+
+      <textarea id="editorArea" spellcheck="false" placeholder="Klicka på en fil i Project Explorer för att visa den här." readonly></textarea>
+
+      <div class="editor-actions">
+        <button id="editBtn" disabled>Edit-läge senare</button>
+        <button id="saveBtn" disabled>Spara efter godkännande senare</button>
+        <span class="small">Just nu är panelen säker read-only. Edit/spara byggs i nästa fas.</span>
+      </div>
+    </main>
+
+    <section class="chat">
+      <h2>Jarvis Chat</h2>
+
+      <div id="messages"></div>
+
+      <div class="input-row">
+        <input id="input" placeholder="Skriv till Jarvis..." autocomplete="off">
+        <button id="send">Skicka</button>
+      </div>
+
+      <div class="small">
+        Tips: pil upp/ner hämtar tidigare meddelanden. Filer öppnas i mittenpanelen.
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const messages = document.getElementById("messages");
+    const input = document.getElementById("input");
+    const send = document.getElementById("send");
+
+    const fileList = document.getElementById("fileList");
+    const folderPath = document.getElementById("folderPath");
+    const loadFilesBtn = document.getElementById("loadFilesBtn");
+
+    const editorArea = document.getElementById("editorArea");
+    const activeFileLabel = document.getElementById("activeFileLabel");
+    const copyEditorBtn = document.getElementById("copyEditorBtn");
+
+    const messageHistory = [];
+    let historyIndex = 0;
+    let currentFolder = "";
+
+    window.jarvisAddMessage = function(role, text) {
+      const div = document.createElement("div");
+      div.className = "msg " + (role === "user" ? "user" : "assistant");
+      div.textContent = (role === "user" ? "Du: " : "Jarvis: ") + String(text || "");
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    };
+
+    function postMessage(payload) {
+      if (window.chrome && window.chrome.webview) {
+        window.chrome.webview.postMessage(payload);
+      } else {
+        window.jarvisAddMessage("assistant", "Ingen C#-brygga hittades. Starta via Jarvis-appen.");
+      }
+    }
+
+    function requestFolder(path) {
+      currentFolder = path || "";
+      postMessage({
+        type: "jarvis_list_folder_for_ui",
+        path: currentFolder
+      });
+    }
+
+    loadFilesBtn.addEventListener("click", function() {
+      requestFolder("");
+    });
+
+    window.jarvisSetFolderItems = function(items, path) {
+      currentFolder = path || "";
+      folderPath.textContent = currentFolder ? "Mapp: " + currentFolder : "Mapp: projektrot";
+      fileList.innerHTML = "";
+
+      if (currentFolder) {
+        const back = document.createElement("div");
+        back.className = "file-row";
+        back.textContent = "⬅ ..";
+        back.style.color = "#ffaa44";
+        back.onclick = function() {
+          const parts = currentFolder.split(/[\\/]/).filter(Boolean);
+          parts.pop();
+          requestFolder(parts.join("/"));
+        };
+        fileList.appendChild(back);
+      }
+
+      if (!items || items.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "small";
+        empty.textContent = "Tom mapp eller inga tillåtna filer.";
+        fileList.appendChild(empty);
+        return;
+      }
+
+      items.forEach(function(item) {
+        const row = document.createElement("div");
+        row.className = "file-row";
+        row.textContent = (item.type === "folder" ? "📁 " : "📄 ") + item.name;
+        row.title = item.path;
+
+        row.onclick = function() {
+          if (item.type === "folder") {
+            requestFolder(item.path);
+            return;
+          }
+
+          postMessage({
+            type: "jarvis_open_file",
+            path: item.path
+          });
+        };
+
+        fileList.appendChild(row);
+      });
+    };
+
+    window.jarvisSetFileList = function(files) {
+      const items = (files || []).map(function(file) {
+        return {
+          type: "file",
+          name: String(file).split(/[\\/]/).pop(),
+          path: file
+        };
+      });
+
+      window.jarvisSetFolderItems(items, "");
+    };
+
+    window.jarvisSetEditorFile = function(path, content, readOnly) {
+      activeFileLabel.textContent = path ? ("Aktiv fil: " + path) : "Ingen fil öppen.";
+      editorArea.value = content || "";
+      editorArea.readOnly = readOnly !== false;
+      editorArea.scrollTop = 0;
+    };
+
+    copyEditorBtn.addEventListener("click", async function() {
+      try {
+        await navigator.clipboard.writeText(editorArea.value || "");
+        window.jarvisAddMessage("assistant", "Innehållet i filpanelen kopierades.");
+      } catch {
+        window.jarvisAddMessage("assistant", "Kunde inte kopiera från filpanelen.");
+      }
+    });
+
+    function rememberMessage(text) {
+      if (!text) return;
+      if (messageHistory[messageHistory.length - 1] !== text) {
+        messageHistory.push(text);
+      }
+      historyIndex = messageHistory.length;
+    }
+
+    function showPreviousMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.max(0, historyIndex - 1);
+      input.value = messageHistory[historyIndex];
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+
+    function showNextMessage() {
+      if (messageHistory.length === 0) return;
+      historyIndex = Math.min(messageHistory.length, historyIndex + 1);
+      input.value = historyIndex >= messageHistory.length ? "" : messageHistory[historyIndex];
+      setTimeout(() => input.setSelectionRange(input.value.length, input.value.length), 0);
+    }
+    // FORCE_FILE_OPEN_FROM_DASHBOARD_V5
+    function extractSmartFileOpenV5(text) {
+      const value = String(text || "").trim();
+      if (!value) return "";
+
+      const fileRegex = /([a-z0-9_\-\.]+(?:[\\/][a-z0-9_\-\.]+)*\.(md|txt|json|cs|html|css|js|ps1|csproj|sln|xml|yml|yaml|config|props|targets|editorconfig|gitignore|lock|log|csv|vbs))/i;
+      const match = value.match(fileRegex);
+
+      if (!match) return "";
+
+      const file = match[1];
+
+      const hasOpenIntent =
+        /\b(öppna|oppna|visa|läs|las|open|read)\b/i.test(value) ||
+        /\b(koden|kod|filen|fil)\b/i.test(value);
+
+      const onlyFileName = value.toLowerCase() === file.toLowerCase();
+
+      if (!hasOpenIntent && !onlyFileName) return "";
+
+      return file;
+    }
+
+    function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      rememberMessage(text);
+      input.value = "";
+      window.jarvisAddMessage("user", text);
+
+      const smartFileV5 = extractSmartFileOpenV5(text);
+
+      if (smartFileV5) {
+        postMessage({
+          type: "jarvis_open_file_smart_v5",
+          path: smartFileV5
+        });
+        return;
+      }
+
+      postMessage({
+        type: "jarvis_chat",
+        text: text
+      });
+    }
+    send.addEventListener("click", sendMessage);
+
+    input.addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        sendMessage();
+        return;
+      }
+
+      if (event.key === "ArrowUp") {
+        event.preventDefault();
+        showPreviousMessage();
+        return;
+      }
+
+      if (event.key === "ArrowDown") {
+        event.preventDefault();
+        showNextMessage();
+        return;
+      }
+    });
+
+    window.jarvisAddMessage("assistant", "Jarvis dashboard laddad.");
+  </script>
+</body>
+</html>
+
+
+

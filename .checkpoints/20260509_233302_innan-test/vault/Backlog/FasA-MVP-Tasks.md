@@ -1,0 +1,84 @@
+# Fas A MVP - Tasks
+
+Status: pending
+Owner: Jarvis-Team
+Priority: high
+
+- [ ] Baseline build and run: ensure dotnet build passes; verify UI loads.
+- [ ] Create initial test harnesses:
+  - Unit tests for CommandRouterV1 and CommandValidatorV1
+  - Basic integration tests around PendingApprovalV1 (mocked filesystem)
+- [ ] Documentation: add developer onboarding guide and MVP plan in docs
+- [ ] Verification-before-completion scaffold: define a short checklist to verify MVP before any publish
+- [ ] Habit automation: ensure the new reading-all-md habit is triggered before planning
+- [ ] Backlog sync: mirror Fas A MVP backlog into Obsidian vault structure
+
+## Acceptance criteria
+- Baseline builds and runs locally with no runtime errors.
+- Tests compile and pass locally (initial set).
+- Documentation updated with MVP scope and next steps.
+- A simple verification checklist exists and can be run before code changes are merged.
+- A simple habit-runner exists to chain md-reading before planning
+- [ ] Review: AGENTS.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\AGENTS.md) : AGENTS.md — Regler för AI-agenter (LastModified: 2026-05-04 04:08)
+- [ ] Review: README.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\app\README.md) : App (LastModified: 2026-05-04 04:10)
+- [ ] Review: BUILD_PLAN.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\BUILD_PLAN.md) : BUILD_PLAN.md — Jarvis-clean (LastModified: 2026-05-04 23:24)
+- [ ] Review: CHECKPOINT.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\CHECKPOINT.md) : Checkpoint 20260505_010249 (LastModified: 2026-05-05 01:02)
+- [ ] Review: CURRENT_STATE.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\CURRENT_STATE.md) : CURRENT_STATE.md — Jarvis (LastModified: 2026-05-05 00:52)
+- [ ] Review: README.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\dashboard\README.md) : Dashboard (LastModified: 2026-05-04 04:10)
+- [ ] Review: backup_before_approved_20260505_004836_docs_test-agent.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\change_archive\backup_before_approved_20260505_004836_docs_test-agent.md) : H (LastModified: 2026-05-05 00:48)
+- [ ] Review: PENDING_CHANGE_approved_20260505_004836.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\change_archive\PENDING_CHANGE_approved_20260505_004836.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:44)
+- [ ] Review: PENDING_CHANGE_cancelled_20260505_002526.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\change_archive\PENDING_CHANGE_cancelled_20260505_002526.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:22)
+- [ ] Review: PENDING_CHANGE_cancelled_20260505_004434.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\change_archive\PENDING_CHANGE_cancelled_20260505_004434.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:40)
+- [ ] Review: FUTURE_IDEAS.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\FUTURE_IDEAS.md) : FUTURE_IDEAS.md — Framtida idéer för Jarvis (LastModified: 2026-05-04 05:49)
+- [ ] Review: OFFLINE_CODEX_PLAN.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\OFFLINE_CODEX_PLAN.md) : OFFLINE_CODEX_PLAN.md — Lokal Codex-liknande kodagent (LastModified: 2026-05-05 01:00)
+- [ ] Review: PROJECT_INDEX.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\PROJECT_INDEX.md) : PROJECT_INDEX.md — Jarvis project index (LastModified: 2026-05-05 00:06)
+- [ ] Review: SESSION_LOG.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\SESSION_LOG.md) : SESSION_LOG.md (LastModified: 2026-05-05 00:49)
+- [ ] Review: SMART_MEMORY_PLAN.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\SMART_MEMORY_PLAN.md) : SMART_MEMORY_PLAN.md — Nästa minnessystem (LastModified: 2026-05-04 06:05)
+- [ ] Review: test-agent.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\docs\test-agent.md) : Test Agent (LastModified: 2026-05-05 00:48)
+- [ ] Review: MASTER_PLAN.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\MASTER_PLAN.md) : MASTER_PLAN.md — Jarvis långsiktig plan (LastModified: 2026-05-05 01:00)
+- [ ] Review: OFFLINE_PLAN.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\OFFLINE_PLAN.md) : Offline Plan — Jarvis utan internet (LastModified: 2026-05-04 03:54)
+- [ ] Review: README.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\README.md) : Jarvis-clean (LastModified: 2026-05-04 04:08)
+- [ ] Review: RELEASE_STATUS.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\RELEASE_STATUS.md) : RELEASE_STATUS.md — Jarvis (LastModified: 2026-05-04 05:35)
+- [ ] Review: README.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\tests\README.md) : Tests (LastModified: 2026-05-04 04:10)
+- [ ] Review: TODO_NEXT.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\TODO_NEXT.md) : TODO_NEXT.md — Nästa praktiska steg (LastModified: 2026-05-05 01:00)
+- [ ] Review: TODO_OFFLINE.md (source: F:\Jarvis-clean\.checkpoints\20260505_010249\TODO_OFFLINE.md) : TODO_OFFLINE.md (LastModified: 2026-05-04 04:08)
+- [ ] Review: AGENTS.md (source: F:\Jarvis-clean\AGENTS.md) : AGENTS.md — Regler för AI-agenter (LastModified: 2026-05-06 04:27)
+- [ ] Review: README.md (source: F:\Jarvis-clean\app\README.md) : App (LastModified: 2026-05-04 04:10)
+- [ ] Review: BUILD_PLAN.md (source: F:\Jarvis-clean\BUILD_PLAN.md) : BUILD_PLAN.md — Jarvis-clean (LastModified: 2026-05-05 23:28)
+- [ ] Review: CURRENT_STATE.md (source: F:\Jarvis-clean\CURRENT_STATE.md) : CURRENT_STATE.md — Jarvis (LastModified: 2026-05-06 05:12)
+- [ ] Review: README.md (source: F:\Jarvis-clean\dashboard\README.md) : Dashboard (LastModified: 2026-05-04 04:10)
+- [ ] Review: memory.md (source: F:\Jarvis-clean\data\memory.md) : Jarvis lokalt minne (LastModified: 2026-05-05 07:36)
+- [ ] Review: memory_archive.md (source: F:\Jarvis-clean\data\memory_archive.md) : Jarvis arkiverade minnen (LastModified: 2026-05-04 06:38)
+- [ ] Review: backup_before_approved_20260505_004836_docs_test-agent.md (source: F:\Jarvis-clean\docs\change_archive\backup_before_approved_20260505_004836_docs_test-agent.md) : H (LastModified: 2026-05-05 00:48)
+- [ ] Review: PENDING_CHANGE_approved_20260505_004836.md (source: F:\Jarvis-clean\docs\change_archive\PENDING_CHANGE_approved_20260505_004836.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:44)
+- [ ] Review: PENDING_CHANGE_cancelled_20260505_002526.md (source: F:\Jarvis-clean\docs\change_archive\PENDING_CHANGE_cancelled_20260505_002526.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:22)
+- [ ] Review: PENDING_CHANGE_cancelled_20260505_004434.md (source: F:\Jarvis-clean\docs\change_archive\PENDING_CHANGE_cancelled_20260505_004434.md) : PENDING_CHANGE.md — Föreslagen ändring (LastModified: 2026-05-05 00:40)
+- [ ] Review: CODEX_HANDOFF.md (source: F:\Jarvis-clean\docs\CODEX_HANDOFF.md) : CODEX_HANDOFF.md — Jarvis-clean handoff for Codex (LastModified: 2026-05-06 05:10)
+- [ ] Review: CODEX_START_PROMPT.md (source: F:\Jarvis-clean\docs\CODEX_START_PROMPT.md) : CODEX_START_PROMPT.md (LastModified: 2026-05-06 04:27)
+- [ ] Review: COMMAND_ROUTER_RESEARCH.md (source: F:\Jarvis-clean\docs\COMMAND_ROUTER_RESEARCH.md) : COMMAND_ROUTER_RESEARCH.md  Research for Jarvis CommandRouter V1 (LastModified: 2026-05-05 07:00)
+- [ ] Review: FREE_JARVIS_RESEARCH.md (source: F:\Jarvis-clean\docs\FREE_JARVIS_RESEARCH.md) : FREE_JARVIS_RESEARCH.md (LastModified: 2026-05-06 04:05)
+- [ ] Review: FUTURE_IDEAS.md (source: F:\Jarvis-clean\docs\FUTURE_IDEAS.md) : FUTURE_IDEAS.md — Framtida idéer för Jarvis (LastModified: 2026-05-04 05:49)
+- [ ] Review: JARVIS_LONG_TERM_VISION.md (source: F:\Jarvis-clean\docs\JARVIS_LONG_TERM_VISION.md) : JARVIS_LONG_TERM_VISION.md (LastModified: 2026-05-06 05:11)
+- [ ] Review: MVP-backlog.md (source: F:\Jarvis-clean\docs\MVP-backlog.md) : MVP Backlog (Fas A) (LastModified: 2026-05-06 05:24)
+- [ ] Review: OFFLINE_CODEX_PLAN.md (source: F:\Jarvis-clean\docs\OFFLINE_CODEX_PLAN.md) : OFFLINE_CODEX_PLAN.md — Lokal Codex-liknande kodagent (LastModified: 2026-05-05 23:44)
+- [ ] Review: pending-test.md (source: F:\Jarvis-clean\docs\pending-test.md) : H (LastModified: 2026-05-05 08:29)
+- [ ] Review: PROJECT_INDEX.md (source: F:\Jarvis-clean\docs\PROJECT_INDEX.md) : PROJECT_INDEX.md — Jarvis project index (LastModified: 2026-05-06 05:07)
+- [ ] Review: REFERENCE_PROJECTS.md (source: F:\Jarvis-clean\docs\REFERENCE_PROJECTS.md) : REFERENCE_PROJECTS.md  External inspiration sources (LastModified: 2026-05-06 04:06)
+- [ ] Review: SESSION_LOG.md (source: F:\Jarvis-clean\docs\SESSION_LOG.md) : SESSION_LOG.md (LastModified: 2026-05-06 05:12)
+- [ ] Review: SMART_MEMORY_PLAN.md (source: F:\Jarvis-clean\docs\SMART_MEMORY_PLAN.md) : SMART_MEMORY_PLAN.md — Nästa minnessystem (LastModified: 2026-05-04 06:05)
+- [ ] Review: test-create.md (source: F:\Jarvis-clean\docs\test-create.md) : H (LastModified: 2026-05-06 04:49)
+- [ ] Review: test-popup.md (source: F:\Jarvis-clean\docs\test-popup.md) : T (LastModified: 2026-05-06 04:37)
+- [ ] Review: test-review.md (source: F:\Jarvis-clean\docs\test-review.md) : R (LastModified: 2026-05-05 09:10)
+- [ ] Review: VISUAL_PANEL_PLAN.md (source: F:\Jarvis-clean\docs\VISUAL_PANEL_PLAN.md) : VISUAL_PANEL_PLAN.md (LastModified: 2026-05-06 05:08)
+- [ ] Review: READ_ALL_MD.md (source: F:\Jarvis-clean\habits\READ_ALL_MD.md) : Read All Markdown Habit — Procedure (LastModified: 2026-05-06 05:24)
+- [ ] Review: README.md (source: F:\Jarvis-clean\habits\README.md) : Habit: Läs alla markdown-filer innan planering (LastModified: 2026-05-06 05:24)
+- [ ] Review: MASTER_PLAN.md (source: F:\Jarvis-clean\MASTER_PLAN.md) : MASTER_PLAN.md — Jarvis långsiktig plan (LastModified: 2026-05-05 23:44)
+- [ ] Review: MD_READ_SUMMARY.md (source: F:\Jarvis-clean\MD_READ_SUMMARY.md) : MD Read Summary (LastModified: 2026-05-06 05:27)
+- [ ] Review: OFFLINE_PLAN.md (source: F:\Jarvis-clean\OFFLINE_PLAN.md) : Offline Plan — Jarvis utan internet (LastModified: 2026-05-04 03:54)
+- [ ] Review: README.md (source: F:\Jarvis-clean\README.md) : Jarvis-clean (LastModified: 2026-05-06 05:09)
+- [ ] Review: RELEASE_STATUS.md (source: F:\Jarvis-clean\RELEASE_STATUS.md) : RELEASE_STATUS.md — Jarvis (LastModified: 2026-05-06 05:10)
+- [ ] Review: README.md (source: F:\Jarvis-clean\tests\README.md) : Tests (LastModified: 2026-05-04 04:10)
+- [ ] Review: TODO_NEXT.md (source: F:\Jarvis-clean\TODO_NEXT.md) : TODO_NEXT.md — Nästa praktiska steg (LastModified: 2026-05-06 05:13)
+- [ ] Review: TODO_OFFLINE.md (source: F:\Jarvis-clean\TODO_OFFLINE.md) : TODO_OFFLINE.md (LastModified: 2026-05-04 04:08)
+- [ ] Review: FasA-MVP.md (source: F:\Jarvis-clean\vault\Backlog\FasA-MVP.md) : Fas A MVP (LastModified: 2026-05-06 05:31)
+- [ ] Review: README.md (source: F:\Jarvis-clean\vault\Backlog\README.md) : Vault Backlog (Jarvis-clean) (LastModified: 2026-05-06 05:31)
