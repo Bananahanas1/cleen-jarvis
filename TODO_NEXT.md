@@ -13,20 +13,21 @@ weather-animationer och andra stora future-features.
 
 ## Aktiv nästa-lista
 
-- [ ] Skapa job data model för background jobs.
-- [ ] Skapa enkel job queue och background worker.
-- [ ] Lägg till status/progress/log/result för jobs.
-- [ ] Lägg till `/jobb`, `/jobb status`, `/jobb lista`, `/jobb avbryt`.
-- [ ] Starta read-only project scan när användaren ber Jarvis läsa/analysera allt.
-- [ ] Svara direkt: "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden."
-- [ ] Skapa `data/project-index` med filmetadata, modified time och filhash.
+- [x] Skapa job data model för background jobs.
+- [x] Skapa enkel job queue och background worker.
+- [x] Lägg till status/progress/log/result för jobs.
+- [x] Lägg till `/jobb`, `/jobb status`, `/jobb start`, `/jobb avbryt`.
+- [x] Starta read-only project scan när användaren ber Jarvis läsa/analysera allt.
+- [x] Svara direkt: "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden."
+- [x] Skapa `data/project-index` med filmetadata, modified time och filhash.
 - [ ] Gör scan incremental: läs bara ändrade filer.
 - [ ] Lägg till summaries per fil och mapp.
 - [ ] Lägg till enkel RAG/smart context från projektindex.
 - [ ] Lägg till deep audit som background job och sparad rapport.
-- [ ] Dokumentera varje runtime-slice i `docs/SESSION_LOG.md`.
-- [ ] Kör relevanta tester och `dotnet build` efter runtime-ändringar.
-- [ ] Commit och push efter gröna build/test om repo-läget tillåter.
+- [ ] Fortsätt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till små services.
+- [x] Dokumentera denna runtime-slice i `docs/SESSION_LOG.md`.
+- [x] Kör relevanta tester och `dotnet build` efter denna runtime-ändring.
+- [x] Commit och push efter gröna build/test för denna slice.
 
 ## Produktroll
 

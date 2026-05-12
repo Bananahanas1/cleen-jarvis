@@ -24,6 +24,9 @@ internal enum CommandIntent
     FileWriteCancel,
     FolderOpen,
     ProjectIndex,
+    JobList,
+    JobStatus,
+    JobCancel,
     ModelShow,
     ModelList,
     ModelChange,
@@ -181,6 +184,17 @@ internal static class CommandRouterV1
             };
         }
 
+        if (IsProjectIndexRequest(command))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectIndex,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.index.start",
+                ShouldSendToOllama = false
+            };
+        }
+
         return new CommandResult
         {
             Intent = CommandIntent.NormalChat,
@@ -246,6 +260,20 @@ internal static class CommandRouterV1
 
         if (command == "fil" || command.StartsWith("fil "))
             return ParseFileSlashCommand(input[1..].Trim(), command);
+
+        if (command == "jobb" || command.StartsWith("jobb "))
+            return ParseJobSlashCommand(command);
+
+        if (command is "projekt index" or "projekt analysera" or "index projekt" or "skapa audit")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectIndex,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.index.start",
+                ShouldSendToOllama = false
+            };
+        }
 
         if (command == "terminal" || command.StartsWith("terminal "))
             return ParseTerminalSlashCommand(input[1..].Trim(), command);
@@ -426,6 +454,61 @@ internal static class CommandRouterV1
             ToolName = "slash.unknown",
             ShouldSendToOllama = false,
             ValidationErrors = { "Okänt slash-kommando: /" + input[1..].Trim() + "\nSkriv /hjälp för lokala kommandon." }
+        };
+    }
+
+    private static CommandResult ParseJobSlashCommand(string command)
+    {
+        if (command is "jobb" or "jobb lista" or "jobb list")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.JobList,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "jobs.list",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command == "jobb status")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.JobStatus,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "jobs.status",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "jobb start" or "jobb index" or "jobb projekt" or "jobb analysera")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectIndex,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.index.start",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "jobb avbryt" or "jobb cancel" or "jobb stop")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.JobCancel,
+                Risk = CommandRisk.SafeUi,
+                ToolName = "jobs.cancel",
+                ShouldSendToOllama = false
+            };
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.Unknown,
+            ToolName = "slash.jobs.unknown",
+            ShouldSendToOllama = false,
+            ValidationErrors = { "Okänt /jobb-kommando. Exempel: /jobb, /jobb status, /jobb start, /jobb avbryt" }
         };
     }
 
@@ -1019,5 +1102,16 @@ internal static class CommandRouterV1
             .Replace("ö", "o");
 
         return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    private static bool IsProjectIndexRequest(string command)
+    {
+        return command is
+            "las filerna" or
+            "analysera projektet" or
+            "las hela repo" or
+            "ga igenom allt" or
+            "forsta projektet" or
+            "skapa audit";
     }
 }

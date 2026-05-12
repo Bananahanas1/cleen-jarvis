@@ -2,6 +2,24 @@
 
 Senast uppdaterad: 2026-05-12
 
+## 2026-05-12 - Background Jobs / Project Index MVP första kodslice
+
+Första strukturerade runtime-slicen för Project Index + Background Jobs är på plats:
+
+- Ny modul `app/Jobs/` i stället för att lägga mer logik i `Program.cs`.
+- `BackgroundJobQueueV1` startar, listar, visar status och avbryter background jobs.
+- `ProjectIndexServiceV1` gör read-only scan av projektfiler, exkluderar generated mappar och skriver metadata till `data/project-index/index.json`.
+- Slash: `/jobb`, `/jobb status`, `/jobb start`, `/jobb avbryt`, `/projekt index`.
+- Naturligt språk: `analysera projektet`, `läs hela repo`, `gå igenom allt`, `förstå projektet`, `skapa audit`.
+- Jarvis svarar direkt och indexerar i bakgrunden.
+
+Verifiering:
+
+- Nytt test: `tests/background-jobs-architecture.test.js`.
+- C# routertest täcker `/jobb`, `/projekt index` och faktisk temp-indexering.
+- Full node-regression passerade.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors och känd `MSB3277`.
+
 ## Produktroll
 
 - `cleen-jarvis` är huvudprodukten.

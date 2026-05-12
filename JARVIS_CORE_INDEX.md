@@ -60,6 +60,8 @@ Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember
 - `app/Brain/BuilderMode.cs` - idé till plan med pending file-create.
 - `app/Brain/NaturalEditTool.cs` - naturlig edit till pending file-write.
 - `app/Desktop/*` - desktop-control, alltid via approval.
+- `app/Jobs/BackgroundJobQueueV1.cs` - background job queue/status/cancel.
+- `app/Jobs/ProjectIndexServiceV1.cs` - read-only project scan och metadataindex.
 - `dashboard/index.html` - UI.
 
 ## Routingregel

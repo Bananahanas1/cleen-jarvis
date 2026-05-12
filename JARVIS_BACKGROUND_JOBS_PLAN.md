@@ -170,9 +170,9 @@ Jarvis ska:
 
 Bygg i små steg:
 
-1. Job-modell + statuskommandon: `/jobb`, `/jobb status`, `/jobb avbryt`.
-2. Read-only background scan av `F:\Jarvis-clean`.
-3. Spara filmetadata och hashes.
+1. Job-modell + statuskommandon: `/jobb`, `/jobb status`, `/jobb avbryt`. **KLAR första pass 2026-05-12.**
+2. Read-only background scan av `F:\Jarvis-clean`. **KLAR första pass 2026-05-12.**
+3. Spara filmetadata och hashes. **KLAR första pass 2026-05-12.**
 4. Incremental scan.
 5. Enkel text-sökning i index.
 6. Fil- och mappsummary via Ollama med background progress.

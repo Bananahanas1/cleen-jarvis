@@ -265,6 +265,86 @@ var tests = new (string Name, Action Test)[]
         AssertCommandInvalid(result);
     }),
 
+    ("/jobb routes locally to job list", () =>
+    {
+        var result = CommandRouterV1.Parse("/jobb");
+
+        AssertEqual(CommandIntent.JobList, result.Intent, "intent");
+        AssertEqual("jobs.list", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "job list must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/jobb status routes locally", () =>
+    {
+        var result = CommandRouterV1.Parse("/jobb status");
+
+        AssertEqual(CommandIntent.JobStatus, result.Intent, "intent");
+        AssertEqual("jobs.status", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "job status must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/jobb avbryt routes locally", () =>
+    {
+        var result = CommandRouterV1.Parse("/jobb avbryt");
+
+        AssertEqual(CommandIntent.JobCancel, result.Intent, "intent");
+        AssertEqual("jobs.cancel", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "job cancel must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/projekt index starts background project index", () =>
+    {
+        var result = CommandRouterV1.Parse("/projekt index");
+
+        AssertEqual(CommandIntent.ProjectIndex, result.Intent, "intent");
+        AssertEqual("project.index.start", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "project index must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("natural analyze project starts background project index", () =>
+    {
+        var result = CommandRouterV1.Parse("analysera projektet");
+
+        AssertEqual(CommandIntent.ProjectIndex, result.Intent, "intent");
+        AssertEqual("project.index.start", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "project analysis must start locally before Ollama");
+        AssertCommandValid(result);
+    }),
+
+    ("ProjectIndexService writes index and skips generated folders", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-index-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            Directory.CreateDirectory(Path.Combine(tempRoot, "bin"));
+            File.WriteAllText(Path.Combine(tempRoot, "app", "Program.cs"), "class Demo {}\n");
+            File.WriteAllText(Path.Combine(tempRoot, "bin", "Generated.cs"), "class Generated {}\n");
+
+            var progressCalls = 0;
+            var result = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => progressCalls++,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertTrue(File.Exists(result.IndexPath), "index file should be written");
+            var json = File.ReadAllText(result.IndexPath);
+            AssertTrue(json.Contains("app/Program.cs"), "index should include source file");
+            AssertFalse(json.Contains("bin/Generated.cs"), "index should skip bin folder");
+            AssertTrue(json.Contains("Sha256"), "index should include file hash");
+            AssertTrue(progressCalls > 0, "index should report progress");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
     ("/terminal godkann stays local as terminal confirm", () =>
     {
         var result = CommandRouterV1.Parse("/terminal godkann");

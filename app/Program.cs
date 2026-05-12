@@ -221,6 +221,26 @@ public sealed class JarvisForm : Form
             : "Vault auto-kontext AV. Jarvis svarar utan vault-kontext (bara memory.md).";
     }
 
+    private static string ProjectIndexStartTool()
+    {
+        return BackgroundJobQueueV1.StartProjectIndexJob(ProjectRoot);
+    }
+
+    private static string JobStatusTool()
+    {
+        return BackgroundJobQueueV1.FormatStatus();
+    }
+
+    private static string JobListTool()
+    {
+        return BackgroundJobQueueV1.FormatList();
+    }
+
+    private static string JobCancelTool()
+    {
+        return BackgroundJobQueueV1.Cancel();
+    }
+
     private static string VaultSearchTool(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -618,6 +638,31 @@ public sealed class JarvisForm : Form
         {
             await AddAssistantMessage(ObsidianStatusTool());
             await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.ProjectIndex)
+        {
+            await AddAssistantMessage(ProjectIndexStartTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.JobStatus)
+        {
+            await AddAssistantMessage(JobStatusTool());
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.JobList)
+        {
+            await AddAssistantMessage(JobListTool());
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.JobCancel)
+        {
+            await AddAssistantMessage(JobCancelTool());
             return true;
         }
 
@@ -1288,6 +1333,18 @@ public sealed class JarvisForm : Form
         if (routedV1.Intent == CommandIntent.ObsidianStatus)
             return ObsidianStatusTool();
 
+        if (routedV1.Intent == CommandIntent.ProjectIndex)
+            return ProjectIndexStartTool();
+
+        if (routedV1.Intent == CommandIntent.JobStatus)
+            return JobStatusTool();
+
+        if (routedV1.Intent == CommandIntent.JobList)
+            return JobListTool();
+
+        if (routedV1.Intent == CommandIntent.JobCancel)
+            return JobCancelTool();
+
         if (routedV1.Intent == CommandIntent.MemorySearch)
             return SearchMemory("sök minne: " + routedV1.Arguments.GetValueOrDefault("query", ""));
 
@@ -1665,6 +1722,8 @@ public sealed class JarvisForm : Form
             "- /fil läs docs/PROJECT_INDEX.md",
             "- /fil skapa docs/test.md = text",
             "- /edit docs/test.md = beskriv ändringen",
+            "- /jobb | /jobb status | /jobb start | /jobb avbryt",
+            "- /projekt index   (startar Project Index i bakgrunden)",
             "- /terminal preview dotnet build",
             "- /terminal visa",
             "- /terminal godkänn",
@@ -1694,6 +1753,8 @@ public sealed class JarvisForm : Form
             "- leta efter röd i arkivet",
             "- öppna README.md",
             "- läs fil: docs/PROJECT_INDEX.md",
+            "- analysera projektet",
+            "- läs hela repo",
             "- bygg projektet men fråga först",
             "- desktop status",
             "- skärm",
@@ -6277,10 +6338,6 @@ public sealed class JarvisForm : Form
         );
     }
 }
-
-
-
-
 
 
 

@@ -187,6 +187,42 @@ internal static class ToolRegistryV1
             Risk = CommandRisk.SafeUi,
             Description = "Öppnar Jarvis översiktspanel.",
             Example = "/översikt"
+        },
+
+        new()
+        {
+            Name = "project.index.start",
+            Intent = CommandIntent.ProjectIndex,
+            Risk = CommandRisk.SafeRead,
+            Description = "Startar read-only projektindexering som bakgrundsjobb.",
+            Example = "/projekt index"
+        },
+
+        new()
+        {
+            Name = "jobs.list",
+            Intent = CommandIntent.JobList,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar bakgrundsjobb.",
+            Example = "/jobb"
+        },
+
+        new()
+        {
+            Name = "jobs.status",
+            Intent = CommandIntent.JobStatus,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar senaste bakgrundsjobbet.",
+            Example = "/jobb status"
+        },
+
+        new()
+        {
+            Name = "jobs.cancel",
+            Intent = CommandIntent.JobCancel,
+            Risk = CommandRisk.SafeUi,
+            Description = "Avbryter aktivt bakgrundsjobb.",
+            Example = "/jobb avbryt"
         }
     };
 
