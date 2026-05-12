@@ -54,6 +54,8 @@ Fungerar nu:
 - `visa terminal`, `vad stod i terminalen`, `senaste terminal`, `terminal output` och `/terminal visa` routas lokalt.
 - Generic `avbryt`, `avbryt allt`, `cancel` och `stoppa` är context-aware.
 - Known warning: WindowsBase/WebView2 version conflict warning. Build har 0 errors.
+- Project Index + Background Jobs MVP har incremental scan, `/projekt sök <query>`,
+  smal Project Index-kontext före vanlig Ollama-chat och `/projekt audit`.
 
 ## Viktig arkitektur
 
@@ -72,6 +74,7 @@ C#:
 - `app/CommandValidatorV1.cs` validerar CommandResult-objekt.
 - `app/ToolRegistryV1.cs` beskriver tool-metadata.
 - `app/PendingApprovalV1.cs` är gemensam approval-bas för riskabla actions.
+- `app/Jobs/*` bär background jobs, project index, index-sökning och audit.
 
 ## Routingregel
 
@@ -167,6 +170,7 @@ Senaste verifierade status enligt loggar:
 8. Add worker delegation later; workers read/summarize/propose only.
 9. Add local Ollama/Claude Code setup docs/scripts later.
 10. Keep real 3D later, optional and off by default.
+11. Next Project Index work: real pause/resume, chunk/map-reduce summaries and continued `Program.cs` service extraction.
 
 ## Do not regress
 

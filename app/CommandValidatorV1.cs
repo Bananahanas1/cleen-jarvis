@@ -16,6 +16,7 @@ internal static class CommandValidatorV1
             case CommandIntent.MemorySearch:
             case CommandIntent.MemoryArchiveSearch:
             case CommandIntent.MemoryForgetPrepare:
+            case CommandIntent.ProjectIndexSearch:
                 RequireArgument(command, "query", "Söktext saknas.", errors);
                 break;
 

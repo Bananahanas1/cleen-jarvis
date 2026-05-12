@@ -20,14 +20,20 @@ weather-animationer och andra stora future-features.
 - [x] Starta read-only project scan när användaren ber Jarvis läsa/analysera allt.
 - [x] Svara direkt: "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden."
 - [x] Skapa `data/project-index` med filmetadata, modified time och filhash.
-- [ ] Gör scan incremental: läs bara ändrade filer.
-- [ ] Lägg till summaries per fil och mapp.
-- [ ] Lägg till enkel RAG/smart context från projektindex.
-- [ ] Lägg till deep audit som background job och sparad rapport.
-- [ ] Fortsätt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till små services.
-- [x] Dokumentera denna runtime-slice i `docs/SESSION_LOG.md`.
+- [x] Gör scan incremental: återanvänd hash/summaries för oförändrade filer.
+- [x] Lägg till summaries per fil och mapp.
+- [x] Lägg till enkel sökning och RAG/smart context från projektindex.
+- [x] Lägg till deep audit som background job och sparad rapport.
+- [x] Dokumentera Project Index incremental/search/audit-slicen i `docs/SESSION_LOG.md`.
 - [x] Kör relevanta tester och `dotnet build` efter denna runtime-ändring.
+- [x] Publish/restart efter grön runtime-ändring.
 - [x] Commit och push efter gröna build/test för denna slice.
+
+## Nästa efter denna slice
+
+- [ ] Lägg till riktig pause/resume för background jobs.
+- [ ] Lägg till mer avancerad chunk/map-reduce summary vid stora filer.
+- [ ] Fortsätt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till små services.
 
 ## Produktroll
 

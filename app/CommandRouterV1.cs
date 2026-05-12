@@ -24,6 +24,8 @@ internal enum CommandIntent
     FileWriteCancel,
     FolderOpen,
     ProjectIndex,
+    ProjectIndexSearch,
+    ProjectAudit,
     JobList,
     JobStatus,
     JobCancel,
@@ -184,6 +186,29 @@ internal static class CommandRouterV1
             };
         }
 
+        if (TryParseProjectIndexSearch(raw, command, out var projectIndexQuery))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectIndexSearch,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.index.search",
+                Arguments = { ["query"] = projectIndexQuery },
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (IsProjectAuditRequest(command))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectAudit,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.audit.start",
+                ShouldSendToOllama = false
+            };
+        }
+
         if (IsProjectIndexRequest(command))
         {
             return new CommandResult
@@ -263,6 +288,34 @@ internal static class CommandRouterV1
 
         if (command == "jobb" || command.StartsWith("jobb "))
             return ParseJobSlashCommand(command);
+
+        if (command == "projekt sok" || command.StartsWith("projekt sok ") ||
+            command == "index sok" || command.StartsWith("index sok ") ||
+            command == "projektindex sok" || command.StartsWith("projektindex sok "))
+        {
+            var raw = input[1..].Trim();
+            var skipWords = command.StartsWith("projektindex sok") ? 2 : 2;
+            var query = TailAfterWordCount(raw, skipWords);
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectIndexSearch,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.index.search",
+                Arguments = { ["query"] = query },
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "projekt audit" or "projekt deep audit" or "skapa audit" or "audit projekt")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ProjectAudit,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "project.audit.start",
+                ShouldSendToOllama = false
+            };
+        }
 
         if (command is "projekt index" or "projekt analysera" or "index projekt" or "skapa audit")
         {
@@ -1111,7 +1164,33 @@ internal static class CommandRouterV1
             "analysera projektet" or
             "las hela repo" or
             "ga igenom allt" or
-            "forsta projektet" or
-            "skapa audit";
+            "forsta projektet";
+    }
+
+    private static bool IsProjectAuditRequest(string command)
+    {
+        return command is
+            "skapa audit" or
+            "gor audit" or
+            "gör audit" or
+            "projekt audit" or
+            "audit projekt" or
+            "deep audit";
+    }
+
+    private static bool TryParseProjectIndexSearch(string raw, string command, out string query)
+    {
+        query = "";
+
+        if (command == "sok i projektindex" || command.StartsWith("sok i projektindex "))
+            query = TailAfterWordCount(raw, 3);
+        else if (command == "sok projektindex" || command.StartsWith("sok projektindex "))
+            query = TailAfterWordCount(raw, 2);
+        else if (command == "projektindex sok" || command.StartsWith("projektindex sok "))
+            query = TailAfterWordCount(raw, 2);
+        else if (command == "hitta i projektindex" || command.StartsWith("hitta i projektindex "))
+            query = TailAfterWordCount(raw, 3);
+
+        return !string.IsNullOrWhiteSpace(query);
     }
 }

@@ -200,6 +200,25 @@ internal static class ToolRegistryV1
 
         new()
         {
+            Name = "project.index.search",
+            Intent = CommandIntent.ProjectIndexSearch,
+            Risk = CommandRisk.SafeRead,
+            Description = "Söker i lokalt Project Index utan att skicka hela projektet till LLM.",
+            Example = "/projekt sök CommandRouter",
+            RequiredArguments = { "query" }
+        },
+
+        new()
+        {
+            Name = "project.audit.start",
+            Intent = CommandIntent.ProjectAudit,
+            Risk = CommandRisk.SafeRead,
+            Description = "Startar en read-only audit som bakgrundsjobb och sparar rapport i data/jobs.",
+            Example = "/projekt audit"
+        },
+
+        new()
+        {
             Name = "jobs.list",
             Intent = CommandIntent.JobList,
             Risk = CommandRisk.SafeRead,

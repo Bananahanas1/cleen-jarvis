@@ -315,6 +315,48 @@ var tests = new (string Name, Action Test)[]
         AssertCommandValid(result);
     }),
 
+    ("/projekt audit starts local background audit", () =>
+    {
+        var result = CommandRouterV1.Parse("/projekt audit");
+
+        AssertEqual(CommandIntent.ProjectAudit, result.Intent, "intent");
+        AssertEqual("project.audit.start", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "project audit must start locally before Ollama");
+        AssertCommandValid(result);
+    }),
+
+    ("natural skapa audit starts local background audit", () =>
+    {
+        var result = CommandRouterV1.Parse("skapa audit");
+
+        AssertEqual(CommandIntent.ProjectAudit, result.Intent, "intent");
+        AssertEqual("project.audit.start", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "natural audit must start locally before Ollama");
+        AssertCommandValid(result);
+    }),
+
+    ("/projekt sök keeps query and searches local project index", () =>
+    {
+        var result = CommandRouterV1.Parse("/projekt sök Program.cs");
+
+        AssertEqual(CommandIntent.ProjectIndexSearch, result.Intent, "intent");
+        AssertEqual("project.index.search", result.ToolName, "tool");
+        AssertEqual("Program.cs", result.Arguments.GetValueOrDefault("query", ""), "query");
+        AssertFalse(result.ShouldSendToOllama, "project index search must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("natural project index search stays local", () =>
+    {
+        var result = CommandRouterV1.Parse("sök i projektindex Program.cs");
+
+        AssertEqual(CommandIntent.ProjectIndexSearch, result.Intent, "intent");
+        AssertEqual("project.index.search", result.ToolName, "tool");
+        AssertEqual("Program.cs", result.Arguments.GetValueOrDefault("query", ""), "query");
+        AssertFalse(result.ShouldSendToOllama, "natural project index search must stay local");
+        AssertCommandValid(result);
+    }),
+
     ("ProjectIndexService writes index and skips generated folders", () =>
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-index-test-" + Guid.NewGuid().ToString("N"));
@@ -337,6 +379,182 @@ var tests = new (string Name, Action Test)[]
             AssertFalse(json.Contains("bin/Generated.cs"), "index should skip bin folder");
             AssertTrue(json.Contains("Sha256"), "index should include file hash");
             AssertTrue(progressCalls > 0, "index should report progress");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
+    ("ProjectIndexService reuses unchanged entries and rehashes changed files", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-index-incremental-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            var sourcePath = Path.Combine(tempRoot, "app", "Program.cs");
+            File.WriteAllText(sourcePath, "class Demo {}\n");
+
+            var first = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertEqual(1, first.HashedFileCount, "first scan hashes source");
+            AssertEqual(0, first.ReusedFileCount, "first scan has no reusable entries");
+
+            var second = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertEqual(0, second.HashedFileCount, "second scan reuses unchanged file hash");
+            AssertEqual(1, second.ReusedFileCount, "second scan reuses source entry");
+            var json = File.ReadAllText(second.IndexPath);
+            AssertFalse(json.Contains("data/project-index/index.json"), "index must not index its own generated output");
+
+            Thread.Sleep(1100);
+            File.WriteAllText(sourcePath, "class Demo { void Run() {} }\n");
+            var third = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertEqual(1, third.HashedFileCount, "changed file is rehashed");
+            AssertEqual(0, third.ReusedFileCount, "changed file is not reused");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
+    ("ProjectIndexService skips local dependency caches like .nuget", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-index-nuget-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            Directory.CreateDirectory(Path.Combine(tempRoot, ".nuget", "packages", "demo"));
+            File.WriteAllText(Path.Combine(tempRoot, "app", "Program.cs"), "class Demo {}\n");
+            File.WriteAllText(Path.Combine(tempRoot, ".nuget", "packages", "demo", "Generated.cs"), "class DependencyCache {}\n");
+
+            var result = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            var json = File.ReadAllText(result.IndexPath);
+            AssertTrue(json.Contains("app/Program.cs"), "source file should remain indexed");
+            AssertFalse(json.Contains(".nuget"), "index should skip local .nuget cache");
+            AssertFalse(json.Contains("DependencyCache"), "index should skip dependency-cache symbols");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
+    ("ProjectIndexService writes summaries folder records and searchable JSONL", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-index-search-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            File.WriteAllText(
+                Path.Combine(tempRoot, "app", "Program.cs"),
+                "using System;\nclass DemoService { void Run() {} }\n// TODO: add tests\n");
+
+            var result = ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertTrue(Directory.Exists(Path.Combine(tempRoot, "data", "project-index", "files")), "file summary folder exists");
+            AssertTrue(Directory.Exists(Path.Combine(tempRoot, "data", "project-index", "folders")), "folder summary folder exists");
+            AssertTrue(File.Exists(Path.Combine(tempRoot, "data", "project-index", "search.jsonl")), "search JSONL exists");
+
+            var indexJson = File.ReadAllText(result.IndexPath);
+            AssertTrue(indexJson.Contains("DemoService"), "summary should include class names");
+            AssertTrue(indexJson.Contains("TODO"), "summary should include todos");
+
+            var searchReply = ProjectIndexSearchServiceV1.FormatSearchResults(tempRoot, "DemoService", 5);
+            AssertTrue(searchReply.Contains("app/Program.cs"), "search should find source file");
+            AssertTrue(searchReply.Contains("DemoService"), "search reply should include matched symbol/summary");
+
+            var context = ProjectIndexSearchServiceV1.BuildContextPrefix(tempRoot, "DemoService", 3);
+            AssertTrue(context.Contains("Projektindex-kontext"), "RAG context should have a clear heading");
+            AssertTrue(context.Contains("app/Program.cs"), "RAG context should include matching path");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
+    ("ProjectAuditService writes readable audit report from project index", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-audit-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            Directory.CreateDirectory(Path.Combine(tempRoot, "docs"));
+            File.WriteAllText(Path.Combine(tempRoot, "app", "Program.cs"), "class DemoService {}\n// TODO: improve audit\n");
+            File.WriteAllText(Path.Combine(tempRoot, "docs", "README.md"), "# Demo\n");
+
+            ProjectIndexServiceV1.BuildAsync(
+                tempRoot,
+                (_, _, _) => { },
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            var resultPath = Path.Combine(tempRoot, "data", "jobs", "audit-test", "result.md");
+            var result = ProjectAuditServiceV1.WriteAuditAsync(
+                tempRoot,
+                resultPath,
+                CancellationToken.None).GetAwaiter().GetResult();
+
+            AssertTrue(File.Exists(result.ReportPath), "audit report should be written");
+            var report = File.ReadAllText(result.ReportPath);
+            AssertTrue(report.Contains("Jarvis Project Audit"), "report should have title");
+            AssertTrue(report.Contains("DemoService"), "report should include symbols from index");
+            AssertTrue(report.Contains("TODO"), "report should include TODO section");
+            AssertTrue(report.Contains("app/Program.cs"), "report should include key files");
+        }
+        finally
+        {
+            if (Directory.Exists(tempRoot))
+                Directory.Delete(tempRoot, recursive: true);
+        }
+    }),
+
+    ("Background job status reports relative result paths that Jarvis can open", () =>
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "jarvis-job-result-path-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(tempRoot, "app"));
+            File.WriteAllText(Path.Combine(tempRoot, "app", "Program.cs"), "class DemoService {}\n");
+
+            var startReply = BackgroundJobQueueV1.StartProjectAuditJob(tempRoot);
+            AssertTrue(startReply.Contains("Jobb:"), "audit job should start");
+
+            string status = "";
+            for (var i = 0; i < 60; i++)
+            {
+                status = BackgroundJobQueueV1.FormatStatus();
+                if (status.Contains("[Completed]"))
+                    break;
+                Thread.Sleep(100);
+            }
+
+            AssertTrue(status.Contains("[Completed]"), "audit job should complete");
+            AssertFalse(status.Contains(tempRoot), "status must not show absolute project-root path");
+            AssertTrue(status.Contains("data/jobs/"), "status should show relative result path");
+            AssertTrue(status.Contains("result.md"), "status should point to result.md");
         }
         finally
         {

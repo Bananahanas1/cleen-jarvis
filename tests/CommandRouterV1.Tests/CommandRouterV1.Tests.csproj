@@ -13,6 +13,8 @@
     <Compile Include="..\..\app\Core\ModelCatalog.cs" Link="ModelCatalog.cs" />
     <Compile Include="..\..\app\Jobs\BackgroundJobQueueV1.cs" Link="BackgroundJobQueueV1.cs" />
     <Compile Include="..\..\app\Jobs\ProjectIndexServiceV1.cs" Link="ProjectIndexServiceV1.cs" />
+    <Compile Include="..\..\app\Jobs\ProjectIndexSearchServiceV1.cs" Link="ProjectIndexSearchServiceV1.cs" />
+    <Compile Include="..\..\app\Jobs\ProjectAuditServiceV1.cs" Link="ProjectAuditServiceV1.cs" />
     <Compile Include="..\..\app\Brain\NaturalEditTool.cs" Link="NaturalEditTool.cs" />
     <Compile Include="..\..\app\Brain\BuilderMode.cs" Link="BuilderMode.cs" />
     <Compile Include="..\..\app\Desktop\DesktopActionRequestV1.cs" Link="DesktopActionRequestV1.cs" />

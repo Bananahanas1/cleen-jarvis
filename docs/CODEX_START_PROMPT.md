@@ -53,6 +53,8 @@ Current true status:
 - `visa terminal` / `vad stod i terminalen` routing was fixed.
 - Generic `avbryt` is context-aware.
 - Known build warning remains WindowsBase/WebView2, but build has 0 errors.
+- Project Index + Background Jobs MVP lives in `app\Jobs\` with incremental scan,
+  `/projekt sök <query>`, Project Index RAG-context and `/projekt audit`.
 
 Very important rules:
 
@@ -101,6 +103,7 @@ dotnet build
 Useful tests when runtime code changes:
 
 ```powershell
+node F:\Jarvis-clean\tests\background-jobs-architecture.test.js
 node F:\Jarvis-clean\tests\dashboard-routing.test.js
 node F:\Jarvis-clean\tests\terminal-approval-safety.test.js
 node F:\Jarvis-clean\tests\approval-popup.test.js

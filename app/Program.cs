@@ -226,6 +226,16 @@ public sealed class JarvisForm : Form
         return BackgroundJobQueueV1.StartProjectIndexJob(ProjectRoot);
     }
 
+    private static string ProjectIndexSearchTool(string query)
+    {
+        return ProjectIndexSearchServiceV1.FormatSearchResults(ProjectRoot, query);
+    }
+
+    private static string ProjectAuditStartTool()
+    {
+        return BackgroundJobQueueV1.StartProjectAuditJob(ProjectRoot);
+    }
+
     private static string JobStatusTool()
     {
         return BackgroundJobQueueV1.FormatStatus();
@@ -644,6 +654,19 @@ public sealed class JarvisForm : Form
         if (routedV1.Intent == CommandIntent.ProjectIndex)
         {
             await AddAssistantMessage(ProjectIndexStartTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.ProjectIndexSearch)
+        {
+            await AddAssistantMessage(ProjectIndexSearchTool(routedV1.Arguments.GetValueOrDefault("query", "")));
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.ProjectAudit)
+        {
+            await AddAssistantMessage(ProjectAuditStartTool());
             await SendJarvisOverviewV1Async(showPanel: false);
             return true;
         }
@@ -1336,6 +1359,12 @@ public sealed class JarvisForm : Form
         if (routedV1.Intent == CommandIntent.ProjectIndex)
             return ProjectIndexStartTool();
 
+        if (routedV1.Intent == CommandIntent.ProjectIndexSearch)
+            return ProjectIndexSearchTool(routedV1.Arguments.GetValueOrDefault("query", ""));
+
+        if (routedV1.Intent == CommandIntent.ProjectAudit)
+            return ProjectAuditStartTool();
+
         if (routedV1.Intent == CommandIntent.JobStatus)
             return JobStatusTool();
 
@@ -1724,6 +1753,8 @@ public sealed class JarvisForm : Form
             "- /edit docs/test.md = beskriv ändringen",
             "- /jobb | /jobb status | /jobb start | /jobb avbryt",
             "- /projekt index   (startar Project Index i bakgrunden)",
+            "- /projekt sök <query>   (söker i lokalt Project Index)",
+            "- /projekt audit   (skapar sparad projekt-audit i bakgrunden)",
             "- /terminal preview dotnet build",
             "- /terminal visa",
             "- /terminal godkänn",
@@ -1797,6 +1828,8 @@ public sealed class JarvisForm : Form
             "- lista md filer",
             "- lista projektfiler",
             "- indexera projekt",
+            "- projekt sök CommandRouter",
+            "- skapa audit",
             "- aktiv fil",
             "- läs filen",
             "- läs fil: docs/PROJECT_INDEX.md",
@@ -5118,6 +5151,7 @@ public sealed class JarvisForm : Form
         {
             // Vault-kontext: läs topp 5 mest relevanta vault-noter och injicera i system-prompt.
             var vaultContext = VaultSearcher.BuildContextPrefix(text, k: 5);
+            var projectIndexContext = ProjectIndexSearchServiceV1.BuildContextPrefix(ProjectRoot, text, k: 4);
             _ = _instance?.SendVaultActiveNodesAsync();
             var memoryContext = BuildMemoryContext();
 
@@ -5129,6 +5163,7 @@ public sealed class JarvisForm : Form
             var systemContent =
                 "Du är Jarvis. Svara kort, tydligt och på svenska. Du kör lokalt via Ollama.\n\n" +
                 (string.IsNullOrEmpty(vaultContext) ? "" : vaultContext + "\n") +
+                (string.IsNullOrEmpty(projectIndexContext) ? "" : projectIndexContext + "\n") +
                 "Lokalt minne från memory.md:\n" + memoryContext;
 
             // Multi-turn: bygg messages = system + history + denna user-message
@@ -6338,9 +6373,6 @@ public sealed class JarvisForm : Form
         );
     }
 }
-
-
-
 
 
 

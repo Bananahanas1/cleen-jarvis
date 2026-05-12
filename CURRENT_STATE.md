@@ -20,6 +20,18 @@ Verifiering:
 - Full node-regression passerade.
 - `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors och känd `MSB3277`.
 
+## 2026-05-12 - Project Index incremental/search/audit slice
+
+Andra runtime-slicen byggde vidare på samma Jobs-arkitektur:
+
+- `ProjectIndexServiceV1` gör incremental scan och återanvänder hash/summaries för oförändrade filer.
+- Indexet skriver fil- och mappsammanfattningar till `data/project-index/files` och `data/project-index/folders`.
+- `data/project-index/search.jsonl` skapas för enkel lokal text/symbol/TODO-sökning.
+- Ny `ProjectIndexSearchServiceV1` ger `/projekt sök <query>` och smal RAG-kontext innan vanlig Ollama-chat.
+- Ny `ProjectAuditServiceV1` skapar en läsbar `result.md` från projektindex.
+- `/projekt audit` och `skapa audit` startar read-only audit som background job.
+- Background jobs skriver nu `log.md` och `result.md` under `data/jobs/<job-id>`.
+
 ## Produktroll
 
 - `cleen-jarvis` är huvudprodukten.
@@ -74,8 +86,8 @@ Det saknas inte fler stora idéer. Det saknas bättre:
 - produktordning
 - background jobs
 - projektindex
-- incremental scan
-- RAG/smart context
+- Program.cs-refaktor
+- bättre job pause/resume
 - build/test/push-loop
 
 ## GitHub-sync

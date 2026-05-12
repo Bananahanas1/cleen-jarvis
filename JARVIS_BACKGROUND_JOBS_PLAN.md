@@ -173,11 +173,17 @@ Bygg i små steg:
 1. Job-modell + statuskommandon: `/jobb`, `/jobb status`, `/jobb avbryt`. **KLAR första pass 2026-05-12.**
 2. Read-only background scan av `F:\Jarvis-clean`. **KLAR första pass 2026-05-12.**
 3. Spara filmetadata och hashes. **KLAR första pass 2026-05-12.**
-4. Incremental scan.
-5. Enkel text-sökning i index.
-6. Fil- och mappsummary via Ollama med background progress.
-7. RAG-context för vanlig chat.
-8. Audit-jobb som sparar rapport.
+4. Incremental scan. **KLAR första MVP-pass 2026-05-12: återanvänder oförändrade hash/summaries.**
+5. Enkel text-sökning i index. **KLAR första MVP-pass 2026-05-12: `/projekt sök <query>`.**
+6. Fil- och mappsummary. **KLAR första MVP-pass 2026-05-12: heuristisk lokal summary utan LLM.**
+7. RAG-context för vanlig chat. **KLAR första MVP-pass 2026-05-12: smal Project Index-kontext före Ollama.**
+8. Audit-jobb som sparar rapport. **KLAR första MVP-pass 2026-05-12: `/projekt audit` -> `data/jobs/<job-id>/result.md`.**
+
+Nästa förbättringar:
+
+- riktig pause/resume
+- chunk/map-reduce summary för stora filer
+- embeddings eller bättre rankning om enkel JSONL-sökning inte räcker
 
 ## Säkerhetsgränser
 

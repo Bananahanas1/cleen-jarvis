@@ -62,6 +62,8 @@ Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember
 - `app/Desktop/*` - desktop-control, alltid via approval.
 - `app/Jobs/BackgroundJobQueueV1.cs` - background job queue/status/cancel.
 - `app/Jobs/ProjectIndexServiceV1.cs` - read-only project scan och metadataindex.
+- `app/Jobs/ProjectIndexSearchServiceV1.cs` - lokal sökning och RAG-kontext från projektindex.
+- `app/Jobs/ProjectAuditServiceV1.cs` - sparad auditrapport från projektindex.
 - `dashboard/index.html` - UI.
 
 ## Routingregel
@@ -93,7 +95,8 @@ Nästa build ska vara:
 
 **Project Index + Background Jobs MVP**
 
-Målet är att Jarvis svarar snabbt och startar lång läsning/analys i bakgrunden.
+Målet är att Jarvis svarar snabbt, söker i lokalt index och startar lång
+läsning/analys i bakgrunden.
 Se [JARVIS_BACKGROUND_JOBS_PLAN.md](JARVIS_BACKGROUND_JOBS_PLAN.md).
 
 ## Vad som inte ska prioriteras nu

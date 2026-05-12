@@ -25,6 +25,11 @@ internal sealed class BackgroundJobRecordV1
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
 
+internal static class BackgroundJobPathsV1
+{
+    public static string ProjectRoot { get; set; } = "";
+}
+
 internal static class BackgroundJobQueueV1
 {
     private static readonly object Gate = new();
@@ -33,6 +38,7 @@ internal static class BackgroundJobQueueV1
 
     public static string StartProjectIndexJob(string projectRoot)
     {
+        BackgroundJobPathsV1.ProjectRoot = projectRoot;
         var id = DateTime.Now.ToString("yyyyMMdd-HHmmss");
         var job = new BackgroundJobRecordV1
         {
@@ -53,6 +59,35 @@ internal static class BackgroundJobQueueV1
         PersistStatus(projectRoot, job);
 
         return "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden.\n\n" +
+               "Jobb: " + id + "\n" +
+               "Status: /jobb status\n" +
+               "Avbryt: /jobb avbryt";
+    }
+
+    public static string StartProjectAuditJob(string projectRoot)
+    {
+        BackgroundJobPathsV1.ProjectRoot = projectRoot;
+        var id = DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-audit";
+        var job = new BackgroundJobRecordV1
+        {
+            Id = id,
+            Kind = "project-audit",
+            Title = "Project Audit",
+            Message = "Köad för projekt-audit."
+        };
+
+        var cts = new CancellationTokenSource();
+        lock (Gate)
+        {
+            Jobs.Add(job);
+            Cancellations[id] = cts;
+        }
+
+        _ = Task.Run(() => RunProjectAuditJobAsync(projectRoot, job, cts.Token));
+        PersistStatus(projectRoot, job);
+        AppendLog(projectRoot, job, "Audit-jobb köat.");
+
+        return "Jag börjar skapa en projekt-audit i bakgrunden. Du kan fortsätta skriva under tiden.\n\n" +
                "Jobb: " + id + "\n" +
                "Status: /jobb status\n" +
                "Avbryt: /jobb avbryt";
@@ -113,21 +148,73 @@ internal static class BackgroundJobQueueV1
             {
                 Update(job, BackgroundJobStateV1.Running, message, processed, total);
                 PersistStatus(projectRoot, job);
+                AppendLog(projectRoot, job, message);
             }, token);
 
             Update(job, BackgroundJobStateV1.Completed, "Projektindex klart: " + result.FileCount + " filer.", result.FileCount, result.FileCount);
-            job.ResultPath = result.IndexPath;
+            job.ResultPath = WriteJobResult(projectRoot, job,
+                "# Project Index Result\n\n" +
+                "- Index: `" + result.IndexPath + "`\n" +
+                "- Search index: `" + result.SearchIndexPath + "`\n" +
+                "- Filer: " + result.FileCount + "\n" +
+                "- Hashade: " + result.HashedFileCount + "\n" +
+                "- Återanvända: " + result.ReusedFileCount + "\n" +
+                "- Borttagna sedan förra scan: " + result.DeletedFileCount + "\n");
             PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projektindex klart.");
         }
         catch (OperationCanceledException)
         {
             Update(job, BackgroundJobStateV1.Cancelled, "Projektindexering avbröts.", job.ProcessedItems, job.TotalItems);
             PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projektindexering avbröts.");
         }
         catch (Exception ex)
         {
             Update(job, BackgroundJobStateV1.Failed, "Projektindexering failade: " + ex.Message, job.ProcessedItems, job.TotalItems);
             PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projektindexering failade: " + ex);
+        }
+    }
+
+    private static async Task RunProjectAuditJobAsync(string projectRoot, BackgroundJobRecordV1 job, CancellationToken token)
+    {
+        try
+        {
+            Update(job, BackgroundJobStateV1.Running, "Säkerställer färskt projektindex.", 0, 2);
+            PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Startar audit och säkerställer index.");
+
+            await ProjectIndexServiceV1.BuildAsync(projectRoot, (processed, total, message) =>
+            {
+                Update(job, BackgroundJobStateV1.Running, "Index: " + message, processed, Math.Max(total, 1) + 1);
+                PersistStatus(projectRoot, job);
+            }, token);
+
+            token.ThrowIfCancellationRequested();
+            Update(job, BackgroundJobStateV1.Running, "Skriver audit-rapport.", 1, 2);
+            PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Skriver audit-rapport.");
+
+            var resultPath = Path.Combine(projectRoot, "data", "jobs", job.Id, "result.md");
+            var audit = await ProjectAuditServiceV1.WriteAuditAsync(projectRoot, resultPath, token);
+
+            Update(job, BackgroundJobStateV1.Completed, "Projekt-audit klar: " + audit.FileCount + " filer, " + audit.TodoCount + " TODO/riskmarkörer.", 2, 2);
+            job.ResultPath = audit.ReportPath;
+            PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projekt-audit klar: " + audit.ReportPath);
+        }
+        catch (OperationCanceledException)
+        {
+            Update(job, BackgroundJobStateV1.Cancelled, "Projekt-audit avbröts.", job.ProcessedItems, job.TotalItems);
+            PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projekt-audit avbröts.");
+        }
+        catch (Exception ex)
+        {
+            Update(job, BackgroundJobStateV1.Failed, "Projekt-audit failade: " + ex.Message, job.ProcessedItems, job.TotalItems);
+            PersistStatus(projectRoot, job);
+            AppendLog(projectRoot, job, "Projekt-audit failade: " + ex);
         }
     }
 
@@ -146,7 +233,32 @@ internal static class BackgroundJobQueueV1
     private static string FormatJob(BackgroundJobRecordV1 job)
     {
         var progress = job.TotalItems > 0 ? $"{job.ProcessedItems}/{job.TotalItems}" : $"{job.ProcessedItems}";
-        return "- " + job.Id + " [" + job.State + "] " + job.Title + " (" + progress + ") - " + job.Message;
+        var result = string.IsNullOrWhiteSpace(job.ResultPath) ? "" : " Resultat: " + FormatPathForChat(job.ResultPath);
+        return "- " + job.Id + " [" + job.State + "] " + job.Title + " (" + progress + ") - " + job.Message + result;
+    }
+
+    internal static string FormatPathForChat(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return "";
+
+        var projectRoot = BackgroundJobPathsV1.ProjectRoot;
+        if (!string.IsNullOrWhiteSpace(projectRoot))
+        {
+            try
+            {
+                var full = Path.GetFullPath(path);
+                var root = Path.GetFullPath(projectRoot);
+                if (full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                    return Path.GetRelativePath(root, full).Replace('\\', '/');
+            }
+            catch
+            {
+                // Fall through to normalized path.
+            }
+        }
+
+        return path.Replace('\\', '/');
     }
 
     private static void PersistStatus(string projectRoot, BackgroundJobRecordV1 job)
@@ -167,5 +279,29 @@ internal static class BackgroundJobQueueV1
         {
             // Job-status får aldrig krascha Jarvis-chatten.
         }
+    }
+
+    private static void AppendLog(string projectRoot, BackgroundJobRecordV1 job, string message)
+    {
+        try
+        {
+            var dir = Path.Combine(projectRoot, "data", "jobs", job.Id);
+            Directory.CreateDirectory(dir);
+            var line = "- " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " [" + job.State + "] " + message + Environment.NewLine;
+            File.AppendAllText(Path.Combine(dir, "log.md"), line);
+        }
+        catch
+        {
+            // Jobblogg får aldrig krascha Jarvis-chatten.
+        }
+    }
+
+    private static string WriteJobResult(string projectRoot, BackgroundJobRecordV1 job, string markdown)
+    {
+        var dir = Path.Combine(projectRoot, "data", "jobs", job.Id);
+        Directory.CreateDirectory(dir);
+        var path = Path.Combine(dir, "result.md");
+        File.WriteAllText(path, markdown);
+        return path;
     }
 }
