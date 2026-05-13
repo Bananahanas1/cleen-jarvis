@@ -1,5 +1,31 @@
 # SESSION_LOG.md
 
+## 2026-05-13 - Desktop Autopilot Continue UI
+
+Andringar:
+
+- Oversiktspanelen har nu knappen `Fortsatt Autopilot` nar ett Desktop
+  Autopilot-uppdrag kan fortsatta.
+- C#-payloaden skickar `desktopAutopilotCanContinue` och fortsatt-kommandot till
+  dashboarden.
+- Efter godkand desktop-action far chatten en tydlig hint om nasta steg.
+- Desktop-runnern accepterar svenska `fortsatt`/`nasta`-varianter via
+  normalisering.
+- Amy-planen markerar Agent VM Sandbox som framtida sakrare vag for fri
+  desktop-agent.
+
+Verifiering:
+
+- TDD red: `tests/desktop-autopilot-continue-ui.test.js` failade forst pa
+  saknad knapp, payload och hint.
+- Green: riktat continue-UI-test, desktop-runner-test och autopilot-mode-test
+  passerade.
+- Full smoke passerade: 42 Node-testfiler, `CommandRouterV1.Tests`,
+  `dotnet build` och Markdown-langdkoll. Logg:
+  `data/test-runs/20260513-174124/summary.txt`.
+- Publish/start klart med kand `MSB3277`-varning. Observerad process:
+  `Jarvis.exe` PID 4692.
+
 ## 2026-05-13 - Brain Graph Force Sliders
 
 Andringar:

@@ -65,7 +65,13 @@ weather-animationer och andra stora future-features.
 - [x] Browser Autopilot Runner V1: oppna/sok/lasa URL via Opera-policy och blocka login/betalning/secrets/skicka/publicera.
 - [ ] Lagg till kontrollerad click/type for Browser Autopilot efter starkare sida/form-riskklassning.
 - [x] Desktop Autopilot Runner V1: foreslar ett UI-steg i taget via pending approval, med kill-switch, denylist och maxsteg.
-- [ ] Lagg till tydligare auto-continue UI efter godkand desktop-action.
+- [x] Desktop Autopilot auto-continue UI: Oversikt visar Fortsatt Autopilot nar desktop-uppdrag kan fortsatta efter godkand action.
+
+## Agent VM Sandbox riktning 2026-05-13
+
+- [ ] Utred Agent VM Sandbox for niva 4/5: egen Windows VM med snapshot/rollback, kill-switch och kontrollerad delad workspace.
+- [ ] Lat host-Jarvis behalla chat, paneler, minne och approval; lat fri desktop-agent koeras i VM nar uppdraget kraver hog riskfrihet.
+- [ ] Designa sync-regel: read-only import till VM och explicit export tillbaka till `F:\Jarvis-clean`.
 
 ## Hybrid AI router 2026-05-13
 

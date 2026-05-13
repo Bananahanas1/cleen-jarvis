@@ -126,8 +126,17 @@ internal static class DesktopAutopilotRunnerV1
 
     private static bool IsContinueAlias(string mission)
     {
-        var value = mission.Trim().ToLowerInvariant();
+        var value = NormalizeContinueAlias(mission);
         return value is "fortsatt" or "fortsatt steg" or "continue" or "next" or "nasta" or "nasta steg";
+    }
+
+    private static string NormalizeContinueAlias(string mission)
+    {
+        var value = (mission ?? "").Trim().ToLowerInvariant()
+            .Replace("å", "a")
+            .Replace("ä", "a")
+            .Replace("ö", "o");
+        return string.Join(" ", value.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static DesktopAutopilotRunV1 Block(string message)

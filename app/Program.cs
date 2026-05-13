@@ -25,6 +25,7 @@ public sealed class JarvisForm : Form
     private const string ProjectRoot = @"F:\Jarvis-clean";
     private const string DashboardPath = @"F:\Jarvis-clean\dashboard\index.html";
     private const string OllamaUrl = "http://127.0.0.1:11434/api/chat";
+    private const string DesktopAutopilotContinueCommandV1 = "/autopilot desktop fortsätt";
     private const string OllamaModel = "qwen2.5-coder:1.5b"; // legacy default; faktisk aktiv modell hålls i _activeModel.
 
     // Aktiv modell — kan ändras via /modell-kommandon. Sparas till config\model.txt så valet
@@ -1066,6 +1067,8 @@ public sealed class JarvisForm : Form
             ["workNow"] = BuildWorkMonitorOverviewLineV1(),
             ["modelProvider"] = BuildModelProviderOverviewLineV1(),
             ["autopilot"] = BuildAgentAutopilotOverviewLineV1(),
+            ["desktopAutopilotCanContinue"] = CanContinueDesktopAutopilotV1() ? "true" : "false",
+            ["desktopAutopilotContinueCommand"] = DesktopAutopilotContinueCommandV1,
             ["vault"] = BuildVaultOverviewLineV1(),
             ["desktop"] = "Desktop-control: " + (DesktopActionGate.Enabled ? "PÅ" : "AV") + "\n" + (_uiTarsBridge.IsAvailable() ? "UI-TARS source hittad" : "UI-TARS source saknas"),
             ["loop"] = "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember\nMonitor: aktiv. Riskabla writes/actions visas som pending.",
@@ -1090,6 +1093,13 @@ public sealed class JarvisForm : Form
     private static string BuildAgentAutopilotOverviewLineV1()
     {
         return AgentAutopilotModeV1.OverviewLine();
+    }
+
+    private static bool CanContinueDesktopAutopilotV1()
+    {
+        var state = AgentAutopilotModeV1.State;
+        return state.Level == AgentAutopilotLevelV1.DesktopAutopilot
+            && !string.IsNullOrWhiteSpace(state.Mission);
     }
 
     private static string BuildTaskOverviewLineV1()
@@ -4099,7 +4109,21 @@ public sealed class JarvisForm : Form
 
         var result = DesktopActionExecutor.Execute(action);
         PendingApprovalStoreV1.Clear();
-        return result;
+        return AppendDesktopAutopilotContinueHintV1(result);
+    }
+
+    private static string AppendDesktopAutopilotContinueHintV1(string result)
+    {
+        if (!CanContinueDesktopAutopilotV1())
+            return result;
+
+        RecordWorkMonitorV1(
+            "Desktop Autopilot",
+            "Desktop-action körd. Väntar på Fortsätt Autopilot eller " + DesktopAutopilotContinueCommandV1 + ".");
+
+        return result + "\n\n" +
+               "Desktop Autopilot: actionen är körd. Klicka Fortsätt Autopilot i Översikt eller skriv " +
+               DesktopAutopilotContinueCommandV1 + " för nästa pending steg.";
     }
 
     private static string CancelPendingDesktopActionTool()

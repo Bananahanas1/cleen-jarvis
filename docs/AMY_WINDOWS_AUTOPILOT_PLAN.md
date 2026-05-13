@@ -44,7 +44,9 @@ datorn.
 Autopilot ska startas per uppdrag:
 
 - Browser Autopilot: får söka, klicka och läsa i OperaGX/Opera inom uppdraget.
-- Desktop Autopilot: får styra whitelistade appar inom uppdraget.
+- Desktop Autopilot: får styra nästan alla normala appar inom uppdraget, men
+  med denylist för admin/system, credentials, betalningar, secrets och
+  destruktiva steg.
 - Build Agent: får ändra och testa kod i `F:\Jarvis-clean`.
 
 Allt utanför scope stoppas:
@@ -57,6 +59,24 @@ Allt utanför scope stoppas:
 - ingen publicering/skickning utan tydligt godkänt läge
 
 Jarvis ska alltid ha kill-switch och logg.
+
+## Agent VM Sandbox
+
+För riktigt fri desktop-agent är en egen Windows VM smartare än direkt kontroll
+av host-datorn. Det ska ses som framtida mål för Nivå 4/5 när uppdraget kräver
+mycket autonomi.
+
+Rekommenderad modell:
+
+- Host-Jarvis har chat, paneler, minne, approval och projektstatus.
+- Agent VM har egen Windows-session, egen browserprofil och egna appar.
+- Snapshot tas före farliga uppdrag och kan rullas tillbaka.
+- Delad mapp ska vara kontrollerad: read-only import och explicit export.
+- Kill-switch stoppar VM-agenten direkt.
+
+Vanlig Docker/Windows-container är inte huvudspåret för GUI-agent eftersom den
+inte ger en komplett vanlig Windows-desktop. En VM eller Windows Sandbox-lik
+miljö passar bättre för browser/desktop-autopilot.
 
 ## Background thinking/status
 
