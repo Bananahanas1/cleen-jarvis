@@ -394,10 +394,48 @@
       margin: 2px 0 10px 0;
     }
 
+    .monitor-panel-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 10px;
+      margin: 2px 0 12px 0;
+    }
+
+    .monitor-command-panel {
+      min-width: 0;
+      background: rgba(7, 19, 33, 0.72);
+      border: 1px solid #193247;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .monitor-panel-title {
+      color: #f4fbff;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .monitor-panel-desc {
+      color: #9bb2c3;
+      font-size: 11px;
+      line-height: 1.35;
+      min-height: 30px;
+      margin-bottom: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    .monitor-panel-actions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+      gap: 7px;
+    }
+
     .monitor-action {
       border-color: #2b6f78;
       color: #dff7ff;
       min-height: 32px;
+      width: 100%;
     }
 
     .monitor-action:disabled {
@@ -407,9 +445,9 @@
 
     .task-quick-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
-      margin: 0 0 10px 0;
+      margin: 0 0 8px 0;
       align-items: center;
     }
 
@@ -423,13 +461,15 @@
       padding: 0 10px;
       font-family: inherit;
       outline: none;
+      grid-column: 1 / -1;
     }
 
     .task-priority-btn {
-      min-width: 34px;
+      min-width: 0;
       height: 34px;
       padding: 0 9px;
       border-color: #2b6f78;
+      width: 100%;
     }
 
     .task-priority-btn.active {
@@ -885,25 +925,59 @@
             <div id="monitorSubtitleV1" class="monitor-subtitle">Ingen aktiv åtgärd ännu.</div>
           </div>
         </div>
-        <div class="monitor-actions">
-          <button class="monitor-action" type="button" data-command="/projekt index">Indexera</button>
-          <button class="monitor-action" type="button" data-command="/projekt audit">Audit</button>
-          <button class="monitor-action" type="button" data-command="/jobb status">Jobbstatus</button>
-          <button class="monitor-action" type="button" data-command="/task">Tasks</button>
-          <button class="monitor-action" type="button" data-command="/task status">Taskstatus</button>
-          <button class="monitor-action" type="button" data-command="/modell provider">Modellmotor</button>
-          <button class="monitor-action" type="button" data-command="/autopilot status">Autopilot</button>
-          <button class="monitor-action" type="button" data-command="/autopilot approval">Approval</button>
-          <button id="desktopAutopilotContinueBtn" class="monitor-action" type="button" data-command="/autopilot desktop fortsätt" style="display:none;">Fortsätt Autopilot</button>
-          <button class="monitor-action" type="button" data-command="/autopilot stop">Stoppa autopilot</button>
-          <button class="monitor-action" type="button" data-command="/terminal visa">Terminal</button>
-        </div>
-        <div class="task-quick-row">
-          <input id="taskQuickInput" placeholder="Ny task..." autocomplete="off">
-          <button class="task-priority-btn active" type="button" data-priority="orange" title="Normal prioritet">Orange</button>
-          <button class="task-priority-btn" type="button" data-priority="red" title="Hög prioritet">Röd</button>
-          <button class="task-priority-btn" type="button" data-priority="blue" title="Låg prioritet">Blå</button>
-          <button id="taskQuickAddBtn" class="monitor-action" type="button">Lägg till</button>
+        <div class="monitor-panel-grid">
+          <section class="monitor-command-panel" data-panel="project">
+            <div class="monitor-panel-title">Projekt</div>
+            <div class="monitor-panel-desc">Vad den gör: bygger index, kör audit och visar jobbstatus.</div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/projekt index">Indexera</button>
+              <button class="monitor-action" type="button" data-command="/projekt audit">Audit</button>
+              <button class="monitor-action" type="button" data-command="/jobb status">Jobbstatus</button>
+            </div>
+          </section>
+
+          <section class="monitor-command-panel" data-panel="tasks">
+            <div class="monitor-panel-title">Tasks</div>
+            <div class="monitor-panel-desc">Vad den gör: visar, följer och skapar tasks med pending approval.</div>
+            <div class="task-quick-row">
+              <input id="taskQuickInput" placeholder="Ny task..." autocomplete="off">
+              <button class="task-priority-btn active" type="button" data-priority="orange" title="Normal prioritet">Orange</button>
+              <button class="task-priority-btn" type="button" data-priority="red" title="Hög prioritet">Röd</button>
+              <button class="task-priority-btn" type="button" data-priority="blue" title="Låg prioritet">Blå</button>
+              <button id="taskQuickAddBtn" class="monitor-action" type="button">Lägg till</button>
+            </div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/task">Visa tasks</button>
+              <button class="monitor-action" type="button" data-command="/task status">Taskstatus</button>
+            </div>
+          </section>
+
+          <section id="desktopAutopilotPanelV1" class="monitor-command-panel" data-panel="autopilot">
+            <div class="monitor-panel-title">Autopilot</div>
+            <div class="monitor-panel-desc">Vad den gör: styr agentnivå, approval och nästa desktop-steg.</div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/autopilot status">Status</button>
+              <button class="monitor-action" type="button" data-command="/autopilot approval">Approval</button>
+              <button id="desktopAutopilotContinueBtn" class="monitor-action" type="button" data-command="/autopilot desktop fortsätt" style="display:none;">Fortsätt</button>
+              <button class="monitor-action" type="button" data-command="/autopilot stop">Stoppa</button>
+            </div>
+          </section>
+
+          <section class="monitor-command-panel" data-panel="model">
+            <div class="monitor-panel-title">Modell</div>
+            <div class="monitor-panel-desc">Vad den gör: visar om Jarvis använder lokal eller hybrid modellmotor.</div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/modell provider">Modellmotor</button>
+            </div>
+          </section>
+
+          <section class="monitor-command-panel" data-panel="terminal">
+            <div class="monitor-panel-title">Terminal</div>
+            <div class="monitor-panel-desc">Vad den gör: visar senaste terminalkörning utan att starta ny.</div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/terminal visa">Visa terminal</button>
+            </div>
+          </section>
         </div>
         <div class="visual-grid">
           <div class="visual-cell">

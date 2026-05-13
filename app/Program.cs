@@ -3975,11 +3975,40 @@ public sealed class JarvisForm : Form
         else if (level == AgentAutopilotLevelV1.DesktopAutopilot && desktopRun is not null)
         {
             RecordWorkMonitorV1("Desktop Autopilot", "Föreslår steg " + desktopRun.Step + ": " + desktopRun.Mission);
-            runnerResult = "\n\n" + desktopRun.Message + "\n\n" +
-                           await DesktopVisionRequestToolAsync(desktopRun.Instruction);
+            if (TryRunDesktopAutopilotLocalFallbackV1(desktopRun, out var localFallback))
+            {
+                runnerResult = "\n\n" + localFallback;
+            }
+            else
+            {
+                runnerResult = "\n\n" + desktopRun.Message + "\n\n" +
+                               await DesktopVisionRequestToolAsync(desktopRun.Instruction);
+            }
         }
 
         return message + runnerResult + "\n\n" + AgentAutopilotModeV1.Status();
+    }
+
+    private static bool TryRunDesktopAutopilotLocalFallbackV1(DesktopAutopilotRunV1 desktopRun, out string result)
+    {
+        result = "";
+        if (!SafeAppLauncher.TryResolveAllowedAppNameFromText(desktopRun.Mission, out var appName))
+            return false;
+
+        var launch = SafeAppLauncher.TryLaunch(appName);
+        RecordWorkMonitorV1(
+            "Desktop Autopilot",
+            "Lokal app-fallback: " + appName + " | " + (launch.Ok ? "klar" : "misslyckades"));
+        AgentAutopilotModeV1.Stop(out _);
+        DesktopActionGate.Disable();
+        DesktopAutopilotRunnerV1.Stop();
+
+        result = desktopRun.Message + "\n\n" +
+                 "Lokal säker app-fallback\n" +
+                 launch.Message + "\n\n" +
+                 "UI-TARS behövdes inte för detta enkla app-öppningssteg. " +
+                 "Desktop Autopilot stoppades eftersom uppdraget är klart.";
+        return true;
     }
 
     private static string AgentAutopilotStopTool()

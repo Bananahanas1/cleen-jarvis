@@ -123,6 +123,48 @@ public static class SafeAppLauncher
         return new LaunchResult(false, "Hittade inte " + name + " på någon av de förväntade sökvägarna.");
     }
 
+    public static bool TryResolveAllowedAppNameFromText(string text, out string appName)
+    {
+        appName = "";
+        var value = NormalizeLaunchTextV1(text);
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        foreach (var prefix in new[]
+        {
+            "oppna program ",
+            "open program ",
+            "starta program ",
+            "launch program ",
+            "oppna ",
+            "open ",
+            "starta ",
+            "launch "
+        })
+        {
+            if (value.StartsWith(prefix, StringComparison.Ordinal))
+            {
+                value = value[prefix.Length..].Trim();
+                break;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        foreach (var allowed in ListAllowed().OrderByDescending(x => x.Length))
+        {
+            var normalizedAllowed = NormalizeLaunchTextV1(allowed);
+            if (value == normalizedAllowed)
+            {
+                appName = allowed;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public static IReadOnlyList<string> ListAllowed()
     {
         return Whitelist.Keys
@@ -130,6 +172,20 @@ public static class SafeAppLauncher
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(k => k)
             .ToList();
+    }
+
+    private static string NormalizeLaunchTextV1(string text)
+    {
+        var normalized = (text ?? "").Trim().ToLowerInvariant()
+            .Replace("Ã¥", "a")
+            .Replace("Ã¤", "a")
+            .Replace("Ã¶", "o")
+            .Replace("å", "a")
+            .Replace("ä", "a")
+            .Replace("ö", "o")
+            .Replace(":", " ");
+
+        return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
     }
 
     private static void LogLaunch(string name, string path, int pid)

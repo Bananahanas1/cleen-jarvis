@@ -66,6 +66,8 @@ weather-animationer och andra stora future-features.
 - [ ] Lagg till kontrollerad click/type for Browser Autopilot efter starkare sida/form-riskklassning.
 - [x] Desktop Autopilot Runner V1: foreslar ett UI-steg i taget via pending approval, med kill-switch, denylist och maxsteg.
 - [x] Desktop Autopilot auto-continue UI: Oversikt visar Fortsatt Autopilot nar desktop-uppdrag kan fortsatta efter godkand action.
+- [x] Desktop Autopilot local app fallback: enkla uppdrag som `oppna notepad` gar via SafeAppLauncher innan UI-TARS kravs.
+- [x] Oversikt command panels: snabbknapparna ar grupperade i visuella paneler med kort forklaring.
 
 ## Agent VM Sandbox riktning 2026-05-13
 
