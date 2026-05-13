@@ -92,6 +92,56 @@ internal static class ToolRegistryV1
 
         new()
         {
+            Name = "task.list",
+            Intent = CommandIntent.TaskList,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar öppna tasks i prioriteringsordning.",
+            Example = "/task"
+        },
+
+        new()
+        {
+            Name = "task.status",
+            Intent = CommandIntent.TaskStatus,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar taskstatus och senaste task-ändring.",
+            Example = "/task status"
+        },
+
+        new()
+        {
+            Name = "task.add.request",
+            Intent = CommandIntent.TaskAddRequest,
+            Risk = CommandRisk.WritesFile,
+            RequiresApproval = true,
+            Description = "Förbereder ny task via pending approval.",
+            Example = "/task add Ring banken !red",
+            RequiredArguments = { "text" }
+        },
+
+        new()
+        {
+            Name = "task.complete.request",
+            Intent = CommandIntent.TaskCompleteRequest,
+            Risk = CommandRisk.WritesFile,
+            RequiresApproval = true,
+            Description = "Förbereder task som klar via pending approval.",
+            Example = "/task done T20260513...",
+            RequiredArguments = { "id" }
+        },
+
+        new()
+        {
+            Name = "task.search",
+            Intent = CommandIntent.TaskSearch,
+            Risk = CommandRisk.SafeRead,
+            Description = "Söker i lokala tasks.",
+            Example = "/task sök banken",
+            RequiredArguments = { "query" }
+        },
+
+        new()
+        {
             Name = "file.open",
             Intent = CommandIntent.FileOpen,
             Risk = CommandRisk.SafeUi,

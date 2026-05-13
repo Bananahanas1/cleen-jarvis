@@ -110,6 +110,66 @@ var tests = new (string Name, Action Test)[]
         AssertCommandInvalid(result);
     }),
 
+    ("/task add creates approval-backed task request", () =>
+    {
+        var result = CommandRouterV1.Parse("/task add Ring banken !red");
+
+        AssertEqual("TaskAddRequest", result.Intent.ToString(), "intent");
+        AssertEqual("task.add.request", result.ToolName, "tool");
+        AssertEqual("Ring banken !red", result.Arguments.GetValueOrDefault("text", ""), "text");
+        AssertTrue(result.RequiresApproval, "task add must require pending approval");
+        AssertFalse(result.ShouldSendToOllama, "task add must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/task sök keeps query and stays local", () =>
+    {
+        var result = CommandRouterV1.Parse("/task sök banken");
+
+        AssertEqual("TaskSearch", result.Intent.ToString(), "intent");
+        AssertEqual("task.search", result.ToolName, "tool");
+        AssertEqual("banken", result.Arguments.GetValueOrDefault("query", ""), "query");
+        AssertFalse(result.ShouldSendToOllama, "task search must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("TaskStoreV1 stores open tasks sorted by Amy priority", () =>
+    {
+        var storeType = Type.GetType("JarvisClean.TaskStoreV1")
+            ?? throw new InvalidOperationException("TaskStoreV1 type missing");
+        var add = storeType.GetMethod("Add", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TaskStoreV1.Add missing");
+        var listOpen = storeType.GetMethod("ListOpen", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TaskStoreV1.ListOpen missing");
+        var complete = storeType.GetMethod("Complete", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("TaskStoreV1.Complete missing");
+
+        var root = Path.Combine(Path.GetTempPath(), "jarvis-taskstore-test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var blue = add.Invoke(null, new object[] { root, "Städa skrivbord", "blue" });
+            add.Invoke(null, new object[] { root, "Ring banken", "red" });
+            add.Invoke(null, new object[] { root, "Kolla mail", "orange" });
+
+            var open = ((System.Collections.IEnumerable)listOpen.Invoke(null, new object[] { root, 10 })!).Cast<object>().ToList();
+            AssertEqual(3, open.Count, "open count");
+            AssertEqual("red", ReadStringProperty(open[0], "Priority"), "first priority");
+            AssertEqual("Ring banken", ReadStringProperty(open[0], "Title"), "first title");
+
+            var blueId = ReadStringProperty(blue!, "Id");
+            var done = (bool)complete.Invoke(null, new object[] { root, blueId })!;
+            AssertTrue(done, "complete blue task");
+
+            open = ((System.Collections.IEnumerable)listOpen.Invoke(null, new object[] { root, 10 })!).Cast<object>().ToList();
+            AssertEqual(2, open.Count, "open count after complete");
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }),
+
     ("/obsidian status routes locally to safe obsidian status", () =>
     {
         var result = CommandRouterV1.Parse("/obsidian status");
@@ -1195,4 +1255,11 @@ static void AssertCommandInvalid(CommandResult result)
     var errors = CommandValidatorV1.Validate(result);
     if (errors.Count == 0)
         throw new InvalidOperationException("expected invalid command");
+}
+
+static string ReadStringProperty(object target, string propertyName)
+{
+    var property = target.GetType().GetProperty(propertyName)
+        ?? throw new InvalidOperationException("missing property " + propertyName);
+    return property.GetValue(target)?.ToString() ?? "";
 }

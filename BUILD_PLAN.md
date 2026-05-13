@@ -293,3 +293,10 @@ Important: Octogent links must be stored without mcp_token. LLM Guy link is stil
 ## Future: Multi-root Project Explorer for F drive
 
 Jarvis Project Explorer should later support multiple roots: F:\Jarvis-clean, F:\New project, F:\AI\reference and other user-approved F-drive folders. Jarvis-clean can be writable only through pending approval. F:\New project must be read-only reference. Other F:\ folders should be read-only by default. Never give Jarvis unrestricted write access to the full F drive.
+
+## Future: Amy-style Windows Autopilot
+
+Amy-idén får byggas Jarvis-native, men med OperaGX/Opera som enda synliga
+browsermål och med scoped Autopilot i stället för permanent fri datormakt.
+Bakgrundsjobb och långa svar ska visa kort arbetsstatus, progress och
+token/context-estimat när det finns. Se `docs/AMY_WINDOWS_AUTOPILOT_PLAN.md`.

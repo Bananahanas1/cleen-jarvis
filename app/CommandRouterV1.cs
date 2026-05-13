@@ -15,6 +15,11 @@ internal enum CommandIntent
     MemoryArchiveSearch,
     MemoryForgetPrepare,
     MemoryForgetConfirm,
+    TaskList,
+    TaskStatus,
+    TaskAddRequest,
+    TaskCompleteRequest,
+    TaskSearch,
     FileOpen,
     FileRead,
     FileCreateRequest,
@@ -32,6 +37,8 @@ internal enum CommandIntent
     ModelShow,
     ModelList,
     ModelChange,
+    ModelProviderStatus,
+    ModelProviderMode,
     TerminalPreview,
     TerminalConfirm,
     TerminalCancel,
@@ -186,6 +193,9 @@ internal static class CommandRouterV1
             };
         }
 
+        if (TryParseNaturalTaskCommand(raw, command, out var taskCommand))
+            return taskCommand;
+
         if (TryParseProjectIndexSearch(raw, command, out var projectIndexQuery))
         {
             return new CommandResult
@@ -282,6 +292,9 @@ internal static class CommandRouterV1
 
         if (command == "minne" || command.StartsWith("minne "))
             return ParseMemorySlashCommand(input[1..].Trim(), command);
+
+        if (IsTaskCommand(command))
+            return ParseTaskSlashCommand(input[1..].Trim(), command);
 
         if (command == "fil" || command.StartsWith("fil "))
             return ParseFileSlashCommand(input[1..].Trim(), command);
@@ -470,6 +483,34 @@ internal static class CommandRouterV1
         }
 
         // /modell — modellprofil-katalogen från ModelCatalog.cs
+        if (command is "modell provider" or "modell providers" or "modell status" or "modell motor")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.ModelProviderStatus,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "model.provider.status",
+                ShouldSendToOllama = false
+            };
+        }
+        if (command.StartsWith("modell lage") || command.StartsWith("modell läge") ||
+            command.StartsWith("modell mode") || command is "modell auto" or "modell lokal")
+        {
+            var raw = input[1..].Trim();
+            var target =
+                command.StartsWith("modell lage") || command.StartsWith("modell läge") || command.StartsWith("modell mode")
+                    ? TailAfterWordCount(raw, 2)
+                    : TailAfterWordCount(raw, 1);
+            return new CommandResult
+            {
+                Intent = CommandIntent.ModelProviderMode,
+                Risk = CommandRisk.SafeUi,
+                ToolName = "model.provider.mode",
+                Arguments = { ["mode"] = target },
+                ShouldSendToOllama = false
+            };
+        }
+
         if (command == "modell" || command == "modell lista" || command == "modell visa" || command == "modeller")
         {
             return new CommandResult
@@ -1109,6 +1150,84 @@ internal static class CommandRouterV1
         };
     }
 
+    private static CommandResult ParseTaskSlashCommand(string body, string command)
+    {
+        if (command is "task" or "tasks" or "task lista" or "tasks lista" or "task list" or "tasks list" or
+            "uppgift" or "uppgifter" or "uppgift lista" or "uppgifter lista" or "todo" or "todo lista")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.TaskList,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "task.list",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "task status" or "tasks status" or "uppgift status" or "uppgifter status" or "todo status")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.TaskStatus,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "task.status",
+                ShouldSendToOllama = false
+            };
+        }
+
+        var addPrefixes = new[] { "task add", "task lagg till", "task skapa", "tasks add", "todo add", "todo lagg till", "uppgift add", "uppgift lagg till", "uppgifter add" };
+        if (TryGetMatchingPrefixWordCount(command, addPrefixes, out var addSkip))
+        {
+            var text = TailAfterWordCount(body, addSkip);
+            return new CommandResult
+            {
+                Intent = CommandIntent.TaskAddRequest,
+                Risk = CommandRisk.WritesFile,
+                ToolName = "task.add.request",
+                Arguments = { ["text"] = text },
+                RequiresApproval = true,
+                ShouldSendToOllama = false
+            };
+        }
+
+        var donePrefixes = new[] { "task done", "task klar", "task complete", "tasks done", "todo done", "uppgift klar", "uppgift done", "uppgifter klar" };
+        if (TryGetMatchingPrefixWordCount(command, donePrefixes, out var doneSkip))
+        {
+            var id = TailAfterWordCount(body, doneSkip);
+            return new CommandResult
+            {
+                Intent = CommandIntent.TaskCompleteRequest,
+                Risk = CommandRisk.WritesFile,
+                ToolName = "task.complete.request",
+                Arguments = { ["id"] = id },
+                RequiresApproval = true,
+                ShouldSendToOllama = false
+            };
+        }
+
+        var searchPrefixes = new[] { "task sok", "tasks sok", "todo sok", "uppgift sok", "uppgifter sok" };
+        if (TryGetMatchingPrefixWordCount(command, searchPrefixes, out var searchSkip))
+        {
+            var query = TailAfterWordCount(body, searchSkip);
+            return new CommandResult
+            {
+                Intent = CommandIntent.TaskSearch,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "task.search",
+                Arguments = { ["query"] = query },
+                ShouldSendToOllama = false
+            };
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.Unknown,
+            ToolName = "slash.task.unknown",
+            ShouldSendToOllama = false,
+            ValidationErrors = { "Okänt /task-kommando. Exempel: /task, /task add Ring banken !red, /task done T..., /task sök banken" }
+        };
+    }
+
     private static CommandResult ParseObsidianSlashCommand(string command)
     {
         if (command is "obsidian status" or "obsidian visa")
@@ -1192,5 +1311,96 @@ internal static class CommandRouterV1
             query = TailAfterWordCount(raw, 3);
 
         return !string.IsNullOrWhiteSpace(query);
+    }
+
+    private static bool IsTaskCommand(string command)
+    {
+        return command == "task" || command.StartsWith("task ") ||
+               command == "tasks" || command.StartsWith("tasks ") ||
+               command == "todo" || command.StartsWith("todo ") ||
+               command == "uppgift" || command.StartsWith("uppgift ") ||
+               command == "uppgifter" || command.StartsWith("uppgifter ");
+    }
+
+    private static bool TryParseNaturalTaskCommand(string raw, string command, out CommandResult result)
+    {
+        result = new CommandResult();
+
+        if (command is "visa tasks" or "visa task" or "visa uppgifter" or "mina tasks" or "mina uppgifter")
+        {
+            result = new CommandResult
+            {
+                Intent = CommandIntent.TaskList,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "task.list",
+                ShouldSendToOllama = false
+            };
+            return true;
+        }
+
+        if (StartsWithAny(command, "lagg till task", "lägg till task", "lagg till uppgift", "lägg till uppgift", "skapa task", "skapa uppgift"))
+        {
+            var skip = command.StartsWith("skapa") ? 2 : 3;
+            result = new CommandResult
+            {
+                Intent = CommandIntent.TaskAddRequest,
+                Risk = CommandRisk.WritesFile,
+                ToolName = "task.add.request",
+                Arguments = { ["text"] = TailAfterWordCount(raw, skip) },
+                RequiresApproval = true,
+                ShouldSendToOllama = false
+            };
+            return true;
+        }
+
+        if (StartsWithAny(command, "klar task", "klar uppgift", "markera task klar", "markera uppgift klar"))
+        {
+            var skip = command.StartsWith("markera") ? 3 : 2;
+            result = new CommandResult
+            {
+                Intent = CommandIntent.TaskCompleteRequest,
+                Risk = CommandRisk.WritesFile,
+                ToolName = "task.complete.request",
+                Arguments = { ["id"] = TailAfterWordCount(raw, skip) },
+                RequiresApproval = true,
+                ShouldSendToOllama = false
+            };
+            return true;
+        }
+
+        if (StartsWithAny(command, "sok task", "sök task", "sok uppgift", "sök uppgift", "hitta task", "hitta uppgift"))
+        {
+            result = new CommandResult
+            {
+                Intent = CommandIntent.TaskSearch,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "task.search",
+                Arguments = { ["query"] = TailAfterWordCount(raw, 2) },
+                ShouldSendToOllama = false
+            };
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool StartsWithAny(string command, params string[] prefixes)
+    {
+        return prefixes.Any(prefix => command == prefix || command.StartsWith(prefix + " ", StringComparison.Ordinal));
+    }
+
+    private static bool TryGetMatchingPrefixWordCount(string command, string[] prefixes, out int wordCount)
+    {
+        foreach (var prefix in prefixes.OrderByDescending(prefix => prefix.Length))
+        {
+            if (command == prefix || command.StartsWith(prefix + " ", StringComparison.Ordinal))
+            {
+                wordCount = prefix.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+                return true;
+            }
+        }
+
+        wordCount = 0;
+        return false;
     }
 }

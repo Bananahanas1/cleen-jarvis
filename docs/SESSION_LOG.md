@@ -1,5 +1,140 @@
 # SESSION_LOG.md
 
+## 2026-05-13 - HybridModelRouterV1 + ContextPackV1
+
+Utgangspunkt: anvandaren vill att sprakmodeller ska vara de man bollar ideer
+med och som hjalper Jarvis forsta naturligt sprak, men utan att modellerna far
+fri skriv-, terminal- eller desktopmakt.
+
+Andringar:
+
+- Skapade `app/Brain/ContextPackV1.cs`.
+- Skapade `app/Brain/HybridModelRouterV1.cs`.
+- `Program.cs` har nu hybrid chat fallback efter lokal router och safe tools.
+- Online providers kan anvandas via env vars: `GROQ_API_KEY`, `GEMINI_API_KEY`
+  och `GITHUB_TOKEN`.
+- `/modell provider` visar backendstatus.
+- `/modell lage lokal` och `/modell lage auto` styr lokal/auto-free.
+- Oversiktspanelen visar Modellmotor.
+
+Sakerhetslinje:
+
+- LLM ar radgivare/tolk, inte aktor.
+- Jarvis ager kontext, routing, validation, pending approval och tools.
+- Secrets sparas inte i repo eller status.
+
+Verifiering:
+
+- TDD red: `tests/hybrid-model-router-context.test.js` failade forst pa saknade
+  filer och kopplingar.
+- Green: `node F:\Jarvis-clean\tests\hybrid-model-router-context.test.js`
+  passerade.
+- Full node-regression passerade: 36 tester.
+- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj`
+  passerade.
+- Markdown-langdkontroll passerade: alla `.md` under 14 000 tecken.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
+  och kand `MSB3277`.
+- Publicerade till `F:\Jarvis-clean\dist` och startade Jarvis igen.
+- Observerad process: `Jarvis.exe` PID 28220, path `F:\Jarvis-clean\dist\Jarvis.exe`.
+- Notering: kombinerat publish/start-kommando returnerade exit code 1 efter
+  startdelen, men publish-output var lyckad och processen verifierades separat.
+
+## 2026-05-13 - Panel-first monitor och TaskStoreV1
+
+Utgångspunkt: användaren vill inte behöva minnas många kommandon. Jarvis ska
+visa vad som händer live när den jobbar, kodar, skapar saker eller kör
+bakgrundsjobb.
+
+Ändringar:
+
+- Ny `app/Tasks/TaskStoreV1.cs` med lokala tasks i `data/tasks/tasks.json`.
+- Nya task-intents: lista, status, add, done och sök.
+- Task-skrivningar går via `PendingApprovalTypeV1.TaskChange`.
+- Översiktspanelen visar nu livearbete, bakgrundsjobb, tasks, pending,
+  terminal/build och en mini-agent som animeras när arbete pågår.
+- Panelen har snabbknappar för index, audit, jobbstatus, tasks och terminal.
+- Panelen har även snabb task-input med röd/orange/blå prioritet; den skickar
+  `/task add ...` och går fortfarande via pending approval.
+- `Program.cs` registrerar livearbete när Jarvis tänker, skapar pending filer,
+  gör kodförslag, kör terminal eller ändrar tasks.
+- Ny regression: `tests/tasks-monitor-panel.test.js`.
+
+Verifiering:
+
+- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj` passerade.
+- Full node-regression passerade: 35 tester.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
+  och känd `MSB3277`.
+
+## 2026-05-13 - Background status och token/context-estimat
+
+Utgångspunkt: användaren vill att Jarvis ska säga mer medan den tänker eller
+jobbar i bakgrunden, inklusive token/context när det går.
+
+Ändringar:
+
+- Ny `app/Brain/ContextBudgetEstimatorV1.cs`.
+- Vanliga Ollama-svar visar nu ungefärligt `ctx≈...` och `svar≈...`.
+- Background jobs sparar `CurrentStep`, `LastAction`, `NextAction` och
+  `ContextEstimateTokens`.
+- `/jobb status` visar steg, token/context-estimat och nästa handling.
+- Startmeddelanden för project index/audit säger att token/context rapporteras
+  när jobbet börjar.
+- Ny regression: `tests/background-status-token.test.js`.
+
+Verifiering:
+
+- `node F:\Jarvis-clean\tests\background-status-token.test.js` passerade.
+- `node F:\Jarvis-clean\tests\background-jobs-architecture.test.js` passerade.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
+  och känd `MSB3277`.
+
+## 2026-05-13 - BrowserPolicyV1 runtime
+
+Utgångspunkt: användaren vill att Jarvis inte ska använda andra synliga
+browsers än OperaGX/Opera, men godkände rekommendationen att intern
+agent-automation får använda isolerad Playwright Chromium när det är tekniskt
+bättre.
+
+Ändringar:
+
+- Ny `app/Desktop/BrowserPolicyV1.cs`.
+- `SafeAppLauncher` har inte längre Chrome, Edge eller Firefox som synliga
+  launch-mål.
+- `open browser`, `webbläsare`, `opera gx` och `operagx` routas till Opera.
+- Explicit Chrome, Edge, Firefox och Chromium blockeras som synliga launch-mål.
+- Webbsök/helptext säger Google i OperaGX/Opera.
+- `python/jarvis_web_agent.py` dokumenterar isolerad Playwright Chromium som
+  intern automation engine.
+- Ny regression: `tests/browser-policy.test.js`.
+
+Verifiering:
+
+- `node F:\Jarvis-clean\tests\browser-policy.test.js` passerade.
+- `node F:\Jarvis-clean\tests\b1-b2-c1-d2.test.js` passerade.
+- `node F:\Jarvis-clean\tests\help-text.test.js` passerade.
+- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj` passerade.
+
+## 2026-05-13 - Amy Windows Autopilot designbeslut
+
+Utgangspunkt: anvandaren vill att Jarvis pa sikt ska kunna allt Amy kan, men
+Windows-native och med agentkraft som kan ta beslut inom godkant scope.
+
+Andringar:
+
+- Skapade `docs/AMY_WINDOWS_AUTOPILOT_PLAN.md`.
+- Dokumenterade att framtida browserfloden ska vara OperaGX/Opera-only.
+- Dokumenterade scoped Autopilot: Browser Autopilot, Desktop Autopilot och
+  Build Agent utan permanent fri makt over hela datorn.
+- Dokumenterade att background jobs/langre svar ska visa kort status, progress
+  och token/context-estimat nar det finns.
+- Uppdaterade `BUILD_PLAN.md` och `TODO_NEXT.md` med beslutet.
+
+Verifiering:
+
+- Docs-only andring. Ingen runtime, build eller publish kordes.
+
 ## 2026-05-12 - Project Index incremental search audit slice
 
 Utgångspunkt: fortsätt hela Jarvis-planen, men prioritera Project Index +

@@ -10,7 +10,8 @@ internal enum PendingApprovalTypeV1
     FileUndo,
     TerminalRun,
     DesktopAction,
-    MemorySave
+    MemorySave,
+    TaskChange
 }
 
 internal sealed class PendingApprovalV1

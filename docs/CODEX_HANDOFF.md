@@ -46,6 +46,10 @@ Fungerar nu:
 - PendingApproval V1 hanterar file write, append, delete, undo och terminal preview/approval.
 - PendingApproval V1 hanterar även source-implementerad file create och file-panel pending save.
 - Dashboard smart-open har guardrails så router-only/risky commands inte blir file-open.
+- Browser-policy finns i `app/Desktop/BrowserPolicyV1.cs`: synlig browser är
+  OperaGX/Opera. Chrome, Edge, Firefox och Chromium är blockerade som synliga
+  launch-mål. Isolerad Playwright Chromium får användas som intern automation
+  engine.
 - Gamla smart-open V3/V4/V5/V6/V7-implementationer har rensats till en canonical smart-open path.
 - Terminal preview/approval använder popup och PendingApproval.
 - Full terminaloutput går till Terminal-panelen; chatten får kort sammanfattning.
@@ -56,6 +60,12 @@ Fungerar nu:
 - Known warning: WindowsBase/WebView2 version conflict warning. Build har 0 errors.
 - Project Index + Background Jobs MVP har incremental scan, `/projekt sök <query>`,
   smal Project Index-kontext före vanlig Ollama-chat och `/projekt audit`.
+- Ollama-chat och background jobs visar ungefärligt token/context-estimat:
+  `ctx≈...`, `svar≈...` samt `Token/context` i `/jobb status`.
+- Översiktspanelen är nu panel-first monitor: livearbete, jobs, tasks, pending,
+  terminal/build och mini-agent syns utan att användaren behöver fråga.
+- `app/Tasks/TaskStoreV1.cs` finns. Lokala task writes går via PendingApproval
+  `TaskChange` och sparas i `data/tasks/tasks.json`.
 
 ## Viktig arkitektur
 
@@ -75,6 +85,8 @@ C#:
 - `app/ToolRegistryV1.cs` beskriver tool-metadata.
 - `app/PendingApprovalV1.cs` är gemensam approval-bas för riskabla actions.
 - `app/Jobs/*` bär background jobs, project index, index-sökning och audit.
+- `app/Brain/ContextBudgetEstimatorV1.cs` ger ungefärliga token/context-estimat
+  för chat och background status.
 
 ## Routingregel
 
@@ -127,6 +139,8 @@ Fortsätt inte om från `/hjälp` och `/status`. Bygg vidare från aktuellt läg
 - File write, append, delete och undo kräver PendingApproval.
 - Terminal run kräver preview och approval.
 - Externa tools och framtida UI/browser automation ska kräva safety checks, approval, verification och report.
+- Framtida browser automation ska följa BrowserPolicyV1: OperaGX/Opera synligt,
+  isolerad Playwright Chromium internt.
 - Workers/LLM får aldrig skriva direkt. De får läsa, sammanfatta och föreslå.
 - Real 3D/Obsidian-sync/NeuroLink ska vara valfritt och off by default tills safety/workspace är stabilt.
 

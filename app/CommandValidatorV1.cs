@@ -17,7 +17,18 @@ internal static class CommandValidatorV1
             case CommandIntent.MemoryArchiveSearch:
             case CommandIntent.MemoryForgetPrepare:
             case CommandIntent.ProjectIndexSearch:
+            case CommandIntent.TaskSearch:
                 RequireArgument(command, "query", "Söktext saknas.", errors);
+                break;
+
+            case CommandIntent.TaskAddRequest:
+                RequireArgument(command, "text", "Task-text saknas.", errors);
+                RequireApproval(command, "Task-skrivning måste kräva pending/godkännande.", errors);
+                break;
+
+            case CommandIntent.TaskCompleteRequest:
+                RequireArgument(command, "id", "Task-id saknas.", errors);
+                RequireApproval(command, "Task-ändring måste kräva pending/godkännande.", errors);
                 break;
 
             case CommandIntent.FileOpen:

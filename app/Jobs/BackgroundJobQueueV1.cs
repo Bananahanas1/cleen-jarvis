@@ -20,6 +20,10 @@ internal sealed class BackgroundJobRecordV1
     public int TotalItems { get; set; }
     public int ProcessedItems { get; set; }
     public string Message { get; set; } = string.Empty;
+    public string CurrentStep { get; set; } = string.Empty;
+    public string LastAction { get; set; } = string.Empty;
+    public string NextAction { get; set; } = string.Empty;
+    public int ContextEstimateTokens { get; set; }
     public string ResultPath { get; set; } = string.Empty;
     public DateTime StartedAt { get; init; } = DateTime.Now;
     public DateTime UpdatedAt { get; set; } = DateTime.Now;
@@ -45,7 +49,10 @@ internal static class BackgroundJobQueueV1
             Id = id,
             Kind = "project-index",
             Title = "Project Index scan",
-            Message = "Köad för projektindexering."
+            Message = "Köad för projektindexering.",
+            CurrentStep = "köad",
+            LastAction = "Jobb skapat.",
+            NextAction = "starta indexering"
         };
 
         var cts = new CancellationTokenSource();
@@ -60,6 +67,7 @@ internal static class BackgroundJobQueueV1
 
         return "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden.\n\n" +
                "Jobb: " + id + "\n" +
+               "Token/context: n/a tills jobbet börjar rapportera.\n" +
                "Status: /jobb status\n" +
                "Avbryt: /jobb avbryt";
     }
@@ -73,7 +81,10 @@ internal static class BackgroundJobQueueV1
             Id = id,
             Kind = "project-audit",
             Title = "Project Audit",
-            Message = "Köad för projekt-audit."
+            Message = "Köad för projekt-audit.",
+            CurrentStep = "köad",
+            LastAction = "Jobb skapat.",
+            NextAction = "säkerställa projektindex"
         };
 
         var cts = new CancellationTokenSource();
@@ -89,6 +100,7 @@ internal static class BackgroundJobQueueV1
 
         return "Jag börjar skapa en projekt-audit i bakgrunden. Du kan fortsätta skriva under tiden.\n\n" +
                "Jobb: " + id + "\n" +
+               "Token/context: n/a tills jobbet börjar rapportera.\n" +
                "Status: /jobb status\n" +
                "Avbryt: /jobb avbryt";
     }
@@ -103,6 +115,28 @@ internal static class BackgroundJobQueueV1
             return "Inga bakgrundsjobb har startats ännu.";
 
         return FormatJob(latest);
+    }
+
+    public static BackgroundJobRecordV1? LatestSnapshot()
+    {
+        lock (Gate)
+            return Jobs.LastOrDefault();
+    }
+
+    public static string FormatMonitorLine()
+    {
+        var latest = LatestSnapshot();
+        if (latest is null)
+            return "Inga bakgrundsjobb startade.";
+
+        var progress = latest.TotalItems > 0 ? $"{latest.ProcessedItems}/{latest.TotalItems}" : $"{latest.ProcessedItems}";
+        var step = string.IsNullOrWhiteSpace(latest.CurrentStep) ? "bakgrundsjobb" : latest.CurrentStep;
+        var next = string.IsNullOrWhiteSpace(latest.NextAction) ? "väntar" : latest.NextAction;
+        return latest.Title + " [" + latest.State + "] " + progress + "\n" +
+               "Steg: " + step + "\n" +
+               "Nu: " + latest.Message + "\n" +
+               "Nästa: " + next + "\n" +
+               "Token/context: " + FormatContextEstimate(latest.ContextEstimateTokens);
     }
 
     public static string FormatList()
@@ -227,14 +261,81 @@ internal static class BackgroundJobQueueV1
             job.ProcessedItems = processed;
             job.TotalItems = total;
             job.UpdatedAt = DateTime.Now;
+            UpdateWorkStatus(job, state, message);
         }
+    }
+
+    private static void UpdateWorkStatus(BackgroundJobRecordV1 job, BackgroundJobStateV1 state, string message)
+    {
+        job.CurrentStep = InferCurrentStep(job.Kind, message);
+        job.LastAction = string.IsNullOrWhiteSpace(message) ? job.LastAction : message;
+        job.NextAction = InferNextAction(job.Kind, state, message);
+        job.ContextEstimateTokens = ContextBudgetEstimatorV1.EstimateLocalJobContextTokens(
+            job.Kind,
+            job.ProcessedItems,
+            message);
+    }
+
+    private static string InferCurrentStep(string kind, string message)
+    {
+        var lower = (message ?? string.Empty).ToLowerInvariant();
+
+        if (lower.Contains("indexerar") || lower.Contains("skannar"))
+            return "indexerar filer";
+        if (lower.Contains("audit"))
+            return "projekt-audit";
+        if (lower.Contains("rapport"))
+            return "skriver rapport";
+        if (lower.Contains("klart"))
+            return "klart";
+        if (lower.Contains("avbr"))
+            return "avbrutet";
+        if (lower.Contains("fail"))
+            return "fel";
+
+        return kind switch
+        {
+            "project-audit" => "projekt-audit",
+            "project-index" => "projektindex",
+            _ => "bakgrundsjobb"
+        };
+    }
+
+    private static string InferNextAction(string kind, BackgroundJobStateV1 state, string message)
+    {
+        if (state == BackgroundJobStateV1.Completed)
+            return "visa resultat eller starta nästa uppgift";
+        if (state == BackgroundJobStateV1.Cancelled)
+            return "vänta på nytt kommando";
+        if (state == BackgroundJobStateV1.Failed)
+            return "läs logg och felsök";
+
+        var lower = (message ?? string.Empty).ToLowerInvariant();
+        if (lower.Contains("rapport"))
+            return "spara result.md";
+        if (kind == "project-audit")
+            return "skriva audit-rapport";
+        if (kind == "project-index")
+            return "uppdatera sökindex";
+
+        return "fortsätta jobbet";
     }
 
     private static string FormatJob(BackgroundJobRecordV1 job)
     {
         var progress = job.TotalItems > 0 ? $"{job.ProcessedItems}/{job.TotalItems}" : $"{job.ProcessedItems}";
         var result = string.IsNullOrWhiteSpace(job.ResultPath) ? "" : " Resultat: " + FormatPathForChat(job.ResultPath);
-        return "- " + job.Id + " [" + job.State + "] " + job.Title + " (" + progress + ") - " + job.Message + result;
+        var step = string.IsNullOrWhiteSpace(job.CurrentStep) ? "bakgrundsjobb" : job.CurrentStep;
+        var next = string.IsNullOrWhiteSpace(job.NextAction) ? "fortsätta" : job.NextAction;
+        return "- " + job.Id + " [" + job.State + "] " + job.Title + " (" + progress + ") - " + job.Message + result +
+               "\n  Steg: " + step +
+               " | Token/context: " + FormatContextEstimate(job.ContextEstimateTokens) +
+               " | Nästa: " + next;
+    }
+
+    private static string FormatContextEstimate(int tokens)
+    {
+        return tokens <= 0 ? "n/a" : "ca " + ContextBudgetEstimatorV1.FormatCompact(tokens);
     }
 
     internal static string FormatPathForChat(string path)

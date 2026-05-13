@@ -30,6 +30,7 @@ public sealed class JarvisForm : Form
     // Aktiv modell — kan ändras via /modell-kommandon. Sparas till config\model.txt så valet
     // överlever omstart. Default = OllamaModel om inget sparat val finns.
     private static string _activeModel = OllamaModel;
+    private static HybridModelModeV1 _hybridModelMode = HybridModelModeV1.LocalOnly;
     private const int TerminalRunTimeoutMs = 120000;
     private const int TerminalOutputPreviewMaxLength = 2800;
     private const int TerminalOutputPreviewHeadLength = 1600;
@@ -53,6 +54,8 @@ public sealed class JarvisForm : Form
     private sealed record BuildStatusV1(string Command, int ExitCode, bool TimedOut, DateTime FinishedAt);
     // MemoryChangeV1: senaste skrivning till data\memory.md. Driver Översikt-cellen "Senaste minnesförändring".
     private sealed record MemoryChangeV1(string Operation, string Preview, DateTime ChangedAt);
+    private sealed record TaskChangeStatusV1(string Operation, string Preview, DateTime ChangedAt);
+    private sealed record WorkMonitorEventV1(string Phase, string Detail, DateTime ChangedAt);
 
     private static FileChangeReviewV1? LatestFileChangeReviewV1;
     private static FileUndoSnapshotV1? LatestFileUndoV1;
@@ -61,6 +64,8 @@ public sealed class JarvisForm : Form
     private int SentTerminalPanelVersionV1;
     private static BuildStatusV1? LatestBuildStatusV1;
     private static MemoryChangeV1? LatestMemoryChangeV1;
+    private static TaskChangeStatusV1? LatestTaskChangeV1;
+    private static WorkMonitorEventV1 LatestWorkMonitorV1 = new("Idle", "Jarvis väntar på nästa uppgift.", DateTime.Now);
 
     // Brain och Explorer är inbyggda paneler i mittpanelen — inte separata Forms.
     // (Refaktor 2026-05-10 efter användarfeedback "ETT program, inga lösa fönster".)
@@ -98,6 +103,14 @@ public sealed class JarvisForm : Form
             }
         }
         catch { /* default till OllamaModel */ }
+
+        try
+        {
+            var modePath = Path.Combine(ProjectRoot, "config", HybridModelRouterV1.ModeConfigFileName);
+            if (File.Exists(modePath))
+                _hybridModelMode = HybridModelRouterV1.ParseMode(File.ReadAllText(modePath));
+        }
+        catch { /* default till lokal Ollama */ }
 
         Load += OnLoad;
         FormClosing += OnMainFormClosing;
@@ -196,6 +209,33 @@ public sealed class JarvisForm : Form
         return "Aktiv modell: " + profile.Name + " [" + profile.Role + "]\n" + profile.Description;
     }
 
+    private static string HybridProviderStatusTool()
+    {
+        return HybridModelRouterV1.FormatStatus(_hybridModelMode, GetActiveOllamaModel());
+    }
+
+    private static string SetHybridModelModeTool(string target)
+    {
+        var value = (target ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(value))
+            return "Skriv: /modell lÃ¤ge lokal eller /modell lÃ¤ge auto";
+
+        _hybridModelMode = HybridModelRouterV1.ParseMode(value);
+
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(ProjectRoot, "config"));
+            File.WriteAllText(
+                Path.Combine(ProjectRoot, "config", HybridModelRouterV1.ModeConfigFileName),
+                HybridModelRouterV1.PersistedValue(_hybridModelMode));
+        }
+        catch { /* persist Ã¤r best-effort */ }
+
+        RecordWorkMonitorV1("Modellmotor", "HybridModelRouterV1 lÃ¤ge: " + HybridModelRouterV1.ModeLabel(_hybridModelMode));
+        return "Modellmotor lÃ¤ge Ã¤ndrat till: " + HybridModelRouterV1.ModeLabel(_hybridModelMode) +
+               "\n\n" + HybridProviderStatusTool();
+    }
+
     // === Vault-tools (BR2/BR6: Vault som AI-kontext) ===
     private static string VaultStatusTool()
     {
@@ -223,6 +263,7 @@ public sealed class JarvisForm : Form
 
     private static string ProjectIndexStartTool()
     {
+        RecordWorkMonitorV1("Startar index", "Project Index körs i bakgrunden och syns i monitorpanelen.");
         return BackgroundJobQueueV1.StartProjectIndexJob(ProjectRoot);
     }
 
@@ -233,6 +274,7 @@ public sealed class JarvisForm : Form
 
     private static string ProjectAuditStartTool()
     {
+        RecordWorkMonitorV1("Startar audit", "Project Audit körs i bakgrunden och syns i monitorpanelen.");
         return BackgroundJobQueueV1.StartProjectAuditJob(ProjectRoot);
     }
 
@@ -248,7 +290,75 @@ public sealed class JarvisForm : Form
 
     private static string JobCancelTool()
     {
+        RecordWorkMonitorV1("Avbryter jobb", "Jarvis skickar avbryt till senaste aktiva bakgrundsjobb.");
         return BackgroundJobQueueV1.Cancel();
+    }
+
+    private static string TaskListTool()
+    {
+        var tasks = TaskStoreV1.ListOpen(ProjectRoot, 20);
+        return "Öppna tasks:\n" + TaskStoreV1.FormatList(tasks);
+    }
+
+    private static string TaskStatusTool()
+    {
+        return TaskStoreV1.FormatStatus(ProjectRoot) + "\n\nSenaste task-ändring:\n" + BuildTaskChangeOverviewLineV1();
+    }
+
+    private static string TaskSearchTool(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+            return "Skriv: /task sök <text>.";
+
+        var hits = TaskStoreV1.Search(ProjectRoot, query, 20);
+        return "Task-träffar för \"" + query + "\":\n" +
+               TaskStoreV1.FormatList(hits, "Inga task-träffar.");
+    }
+
+    private static string TaskAddRequestTool(string raw)
+    {
+        if (!TaskStoreV1.TryParseAddInput(raw, out var title, out var priority))
+            return "Skriv: /task add <text> !red|!orange|!blue.";
+
+        if (LooksLikeActualSecret(title))
+            return "Jag sparade inte tasken eftersom den verkar innehålla en faktisk hemlighet, token, API-nyckel eller ett lösenord.";
+
+        if (PendingApprovalStoreV1.HasPending)
+            return "Det finns redan en pending åtgärd. Godkänn eller avbryt den först.";
+
+        PendingApprovalStoreV1.Set(new PendingApprovalV1
+        {
+            Type = PendingApprovalTypeV1.TaskChange,
+            Target = TaskStoreV1.DefaultRelativePath,
+            Content = TaskStoreV1.CreatePendingAddJson(title, priority)
+        });
+
+        RecordWorkMonitorV1("Task väntar", "Ny task väntar på godkännande: [" + priority + "] " + title);
+        return "Pending task skapad. Inget har skrivits ännu.\n\n" +
+               "Task: [" + priority + "] " + title + "\n" +
+               "Godkänn i popupen eller skriv /avbryt.";
+    }
+
+    private static string TaskCompleteRequestTool(string id)
+    {
+        id = (id ?? "").Trim();
+        if (string.IsNullOrWhiteSpace(id))
+            return "Skriv: /task done <id>.";
+
+        if (PendingApprovalStoreV1.HasPending)
+            return "Det finns redan en pending åtgärd. Godkänn eller avbryt den först.";
+
+        PendingApprovalStoreV1.Set(new PendingApprovalV1
+        {
+            Type = PendingApprovalTypeV1.TaskChange,
+            Target = TaskStoreV1.DefaultRelativePath,
+            Content = TaskStoreV1.CreatePendingCompleteJson(id)
+        });
+
+        RecordWorkMonitorV1("Task väntar", "Markera task klar väntar på godkännande: " + id);
+        return "Pending task-ändring skapad. Inget har skrivits ännu.\n\n" +
+               "Markera klar: " + id + "\n" +
+               "Godkänn i popupen eller skriv /avbryt.";
     }
 
     private static string VaultSearchTool(string query)
@@ -686,6 +796,44 @@ public sealed class JarvisForm : Form
         if (routedV1.Intent == CommandIntent.JobCancel)
         {
             await AddAssistantMessage(JobCancelTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.TaskList)
+        {
+            await AddAssistantMessage(TaskListTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.TaskStatus)
+        {
+            await AddAssistantMessage(TaskStatusTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.TaskSearch)
+        {
+            await AddAssistantMessage(TaskSearchTool(routedV1.Arguments.GetValueOrDefault("query", "")));
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.TaskAddRequest)
+        {
+            await AddAssistantMessage(TaskAddRequestTool(routedV1.Arguments.GetValueOrDefault("text", "")));
+            await ShowOrHidePendingApprovalPopupV1Async();
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.TaskCompleteRequest)
+        {
+            await AddAssistantMessage(TaskCompleteRequestTool(routedV1.Arguments.GetValueOrDefault("id", "")));
+            await ShowOrHidePendingApprovalPopupV1Async();
+            await SendJarvisOverviewV1Async(showPanel: false);
             return true;
         }
 
@@ -886,11 +1034,48 @@ public sealed class JarvisForm : Form
             ["obsidian"] = BuildObsidianOverviewLineV1(),
             ["buildStatus"] = BuildBuildStatusOverviewLineV1(),
             ["memoryChange"] = BuildMemoryChangeOverviewLineV1(),
+            ["tasks"] = BuildTaskOverviewLineV1(),
+            ["taskChange"] = BuildTaskChangeOverviewLineV1(),
+            ["jobs"] = BackgroundJobQueueV1.FormatMonitorLine(),
+            ["workNow"] = BuildWorkMonitorOverviewLineV1(),
+            ["modelProvider"] = BuildModelProviderOverviewLineV1(),
             ["vault"] = BuildVaultOverviewLineV1(),
             ["desktop"] = "Desktop-control: " + (DesktopActionGate.Enabled ? "PÅ" : "AV") + "\n" + (_uiTarsBridge.IsAvailable() ? "UI-TARS source hittad" : "UI-TARS source saknas"),
-            ["loop"] = "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember\nAuto-agent: av. Jarvis tänker när du ber honom eller när ett lokalt state uppdateras.",
-            ["architecture"] = "Fas 1: säkrare kärna. Fas 2: developer workspace. Fas 3: svensk NL-routing till validerade intents. 3D/Obsidian/NeuroLink blir paneler ovanpå detta."
+            ["loop"] = "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember\nMonitor: aktiv. Riskabla writes/actions visas som pending.",
+            ["architecture"] = "Panel-first: du ska kunna se arbete, tasks, pending och bakgrundsjobb utan att memorera kommandon."
         };
+    }
+
+    private static string BuildWorkMonitorOverviewLineV1()
+    {
+        var work = LatestWorkMonitorV1;
+        return work.Phase + " " + work.ChangedAt.ToString("HH:mm:ss") + "\n" + work.Detail;
+    }
+
+    private static string BuildModelProviderOverviewLineV1()
+    {
+        var decision = HybridModelRouterV1.Pick("", _hybridModelMode, GetActiveOllamaModel());
+        return HybridModelRouterV1.ModeLabel(_hybridModelMode) + "\n" +
+               decision.DisplayName + " | " + decision.Model + "\n" +
+               decision.Reason;
+    }
+
+    private static string BuildTaskOverviewLineV1()
+    {
+        var status = TaskStoreV1.Status(ProjectRoot);
+        var top = TaskStoreV1.ListOpen(ProjectRoot, 4);
+        var list = TaskStoreV1.FormatList(top, "Inga öppna tasks.");
+        return "Öppna: " + status.Open + " | Klara: " + status.Done + " | R/O/B: " + status.Red + "/" + status.Orange + "/" + status.Blue + "\n" + list;
+    }
+
+    private static string BuildTaskChangeOverviewLineV1()
+    {
+        if (LatestTaskChangeV1 is null)
+            return "Ingen task-ändring ännu.";
+
+        var change = LatestTaskChangeV1;
+        var preview = string.IsNullOrWhiteSpace(change.Preview) ? "(ingen preview)" : change.Preview;
+        return change.Operation + " " + change.ChangedAt.ToString("yyyy-MM-dd HH:mm:ss") + "\n" + preview;
     }
 
     private static string BuildVaultOverviewLineV1()
@@ -1042,6 +1227,18 @@ public sealed class JarvisForm : Form
             };
         }
 
+        if (pending.Type == PendingApprovalTypeV1.TaskChange)
+        {
+            return new Dictionary<string, string>
+            {
+                ["type"] = pending.Type.ToString(),
+                ["title"] = "Godkänn task-ändring",
+                ["description"] = "Jarvis vill uppdatera den lokala tasklistan.",
+                ["meta"] = "Typ: task\nMål: " + target + "\nSkapad: " + pending.CreatedAt,
+                ["preview"] = BuildPendingApprovalPreviewV1(pending.Content)
+            };
+        }
+
         return new Dictionary<string, string>
         {
             ["type"] = pending.Type.ToString(),
@@ -1087,6 +1284,9 @@ public sealed class JarvisForm : Form
         if (pending.Type == PendingApprovalTypeV1.DesktopAction)
             return ApprovePendingDesktopActionTool();
 
+        if (pending.Type == PendingApprovalTypeV1.TaskChange)
+            return ApprovePendingTaskChangeTool();
+
         return "Den här pending-typen stöds inte av popupen ännu: " + pending.Type;
     }
 
@@ -1117,8 +1317,54 @@ public sealed class JarvisForm : Form
         if (pending.Type == PendingApprovalTypeV1.DesktopAction)
             return CancelPendingDesktopActionTool();
 
+        if (pending.Type == PendingApprovalTypeV1.TaskChange)
+            return CancelPendingTaskChangeTool();
+
         PendingApprovalStoreV1.Clear();
         return "Pending åtgärd avbröts.";
+    }
+
+    private static string ApprovePendingTaskChangeTool()
+    {
+        var pending = PendingApprovalStoreV1.Get();
+        if (pending is null || pending.Type != PendingApprovalTypeV1.TaskChange)
+            return "Det finns ingen pending task-ändring.";
+
+        if (!TaskStoreV1.TryReadPendingChange(pending.Content, out var change, out var error))
+            return "Kunde inte läsa pending task-ändring: " + error;
+
+        if (change.Action.Equals("add", StringComparison.OrdinalIgnoreCase))
+        {
+            var item = TaskStoreV1.Add(ProjectRoot, change.Title, change.Priority);
+            PendingApprovalStoreV1.Clear();
+            RecordTaskChangeV1("skapad", "[" + item.Priority + "] " + item.Title);
+            RecordWorkMonitorV1("Task sparad", item.Id + " [" + item.Priority + "] " + item.Title);
+            return "Godkänt. Task skapad:\n" + TaskStoreV1.FormatList(new[] { item });
+        }
+
+        if (change.Action.Equals("complete", StringComparison.OrdinalIgnoreCase))
+        {
+            var ok = TaskStoreV1.Complete(ProjectRoot, change.Id);
+            PendingApprovalStoreV1.Clear();
+            if (!ok)
+            {
+                RecordWorkMonitorV1("Task saknas", "Kunde inte markera task klar: " + change.Id);
+                return "Jag hittade ingen öppen task med id: " + change.Id;
+            }
+
+            RecordTaskChangeV1("klar", change.Id);
+            RecordWorkMonitorV1("Task klar", change.Id + " markerad som klar.");
+            return "Godkänt. Task markerad som klar: " + change.Id;
+        }
+
+        return "Okänd task-action: " + change.Action;
+    }
+
+    private static string CancelPendingTaskChangeTool()
+    {
+        PendingApprovalStoreV1.Clear();
+        RecordWorkMonitorV1("Task avbruten", "Pending task-ändring avbröts.");
+        return "Pending task-ändring avbröts.";
     }
 
     private static bool IsGenericCancelCommand(string input)
@@ -1374,6 +1620,21 @@ public sealed class JarvisForm : Form
         if (routedV1.Intent == CommandIntent.JobCancel)
             return JobCancelTool();
 
+        if (routedV1.Intent == CommandIntent.TaskList)
+            return TaskListTool();
+
+        if (routedV1.Intent == CommandIntent.TaskStatus)
+            return TaskStatusTool();
+
+        if (routedV1.Intent == CommandIntent.TaskSearch)
+            return TaskSearchTool(routedV1.Arguments.GetValueOrDefault("query", ""));
+
+        if (routedV1.Intent == CommandIntent.TaskAddRequest)
+            return TaskAddRequestTool(routedV1.Arguments.GetValueOrDefault("text", ""));
+
+        if (routedV1.Intent == CommandIntent.TaskCompleteRequest)
+            return TaskCompleteRequestTool(routedV1.Arguments.GetValueOrDefault("id", ""));
+
         if (routedV1.Intent == CommandIntent.MemorySearch)
             return SearchMemory("sök minne: " + routedV1.Arguments.GetValueOrDefault("query", ""));
 
@@ -1457,6 +1718,12 @@ public sealed class JarvisForm : Form
             if (string.IsNullOrWhiteSpace(url)) return "Skriv: /läs <url>. Exempel: /läs https://example.com";
             return await WebSearcher.FetchTextAsync(url, 4000);
         }
+
+        if (routedV1.Intent == CommandIntent.ModelProviderStatus)
+            return HybridProviderStatusTool();
+
+        if (routedV1.Intent == CommandIntent.ModelProviderMode)
+            return SetHybridModelModeTool(routedV1.Arguments.GetValueOrDefault("mode", ""));
 
         if (routedV1.Intent == CommandIntent.ModelCatalogList)
             return ListModelCatalogTool();
@@ -1708,6 +1975,17 @@ public sealed class JarvisForm : Form
         }
 
         // MODEL_CONFIG_TOOLS_CHECK: model commands must stay local.
+        if (CommandIs(command, "modell provider", "modell providers", "modell status", "modell motor", "modellmotor"))
+            return HybridProviderStatusTool();
+
+        if (CommandStartsWith(command, "modell lage", "modell lÃ¤ge", "modell mode") || CommandIs(command, "modell auto", "modell lokal"))
+        {
+            var modeTarget = CommandIs(command, "modell auto", "modell lokal")
+                ? ExtractValue(text, 1)
+                : ExtractValue(text, 2);
+            return SetHybridModelModeTool(modeTarget);
+        }
+
         if (CommandIs(command, "visa modell", "modell", "aktuell modell"))
             return ShowModelTool();
 
@@ -1727,7 +2005,7 @@ public sealed class JarvisForm : Form
         if (CommandStartsWith(command, "foresla rubrik har", "föreslå rubrik här", "foresla rubrik här"))
             return ProposeHeadingForActiveFileTool(text);
 
-        return await AskOllamaAsync(text);
+        return await AskHybridModelAsync(text);
     }
 
     private static string BuildHelp()
@@ -1747,6 +2025,7 @@ public sealed class JarvisForm : Form
             "- /minne projekt",
             "- /minne sök röd",
             "- /minne arkiv sök röd",
+            "- /task | /task status | /task add <text> !red | /task done <id> | /task sök <q>",
             "- /fil öppna README.md",
             "- /fil läs docs/PROJECT_INDEX.md",
             "- /fil skapa docs/test.md = text",
@@ -1755,6 +2034,7 @@ public sealed class JarvisForm : Form
             "- /projekt index   (startar Project Index i bakgrunden)",
             "- /projekt sök <query>   (söker i lokalt Project Index)",
             "- /projekt audit   (skapar sparad projekt-audit i bakgrunden)",
+            "- /modell provider | /modell lÃ¤ge lokal | /modell lÃ¤ge auto",
             "- /terminal preview dotnet build",
             "- /terminal visa",
             "- /terminal godkänn",
@@ -1771,9 +2051,9 @@ public sealed class JarvisForm : Form
             "- /modell   (lista profiler) eller /modell byt <namn>",
             "- /bygg <idé> | /bygg svar <svar> | /bygg plan | /bygg status | /bygg avbryt",
             "- /vault status | /vault sök <q> | /vault skapa <namn> = <text> | /vault på | /vault av",
-            "- /sök <query>   (web-sök via DuckDuckGo, offline-graceful)",
+            "- /sök <query>   (web-sök via Google i OperaGX/Opera, offline-graceful)",
             "- /läs <url>     (hämta+sammanfatta sida)",
-            "- /öppna program <namn>   (whitelist: notepad/vscode/chrome/spotify/...)",
+            "- /öppna program <namn>   (whitelist: notepad/vscode/opera/operagx/spotify/...)",
             "- /historik | /glöm samtal   (multi-turn context)",
             "",
             "Naturligt språk som också hålls lokalt:",
@@ -1821,6 +2101,13 @@ public sealed class JarvisForm : Form
             "- sök arkiv: text",
             "- glöm minne: text",
             "- bekräfta glöm 1",
+            "",
+            "Tasks:",
+            "- /task",
+            "- /task add Ring banken !red",
+            "- /task done <id>",
+            "- /task sök banken",
+            "- använd Översiktspanelens knappar om du inte vill minnas kommandon",
             "",
             "Filer och Project Explorer:",
             "- lista filer",
@@ -2254,6 +2541,8 @@ public sealed class JarvisForm : Form
             "- C#-brygga: aktiv\n" +
             "- Smart Memory: aktivt, memory.md\n" +
             "- Översiktspanel: aktiv\n" +
+            "- Monitorpanel: aktiv\n" +
+            "- Tasks: " + TaskStoreV1.Status(ProjectRoot).Open + " öppna\n" +
             "- Obsidian: " + (string.IsNullOrWhiteSpace(ReadConfiguredObsidianVaultPathV1()) ? "inte konfigurerat" : "konfigurerat read-only") + "\n" +
             "- Felstavnings-tolerans: aktiv\n" +
             "- Ollama-modell: " + GetActiveOllamaModel() + "\n" +
@@ -2266,6 +2555,10 @@ public sealed class JarvisForm : Form
     {
         return
             "Öppnade Jarvis Översikt.\n\n" +
+            "Livearbete:\n" + BuildWorkMonitorOverviewLineV1() + "\n\n" +
+            "Modellmotor:\n" + BuildModelProviderOverviewLineV1() + "\n\n" +
+            "Bakgrundsjobb:\n" + BackgroundJobQueueV1.FormatMonitorLine() + "\n\n" +
+            "Tasks:\n" + BuildTaskOverviewLineV1() + "\n\n" +
             BuildMemoryOverviewLineV1() + "\n\n" +
             BuildObsidianOverviewLineV1() + "\n\n" +
             "Jarvis-loop:\n" +
@@ -3853,6 +4146,7 @@ public sealed class JarvisForm : Form
             Content = proposedContent,
             RequiresUserApproval = true
         });
+        RecordWorkMonitorV1("Kodförslag väntar", "NaturalEditTool skapade pending edit för " + relativePath);
 
         return
             "NaturalEditTool skapade en pending edit-preview. Inget har skrivits till disk ännu.\n" +
@@ -3915,6 +4209,7 @@ public sealed class JarvisForm : Form
             Content = text,
             RequiresUserApproval = true
         });
+        RecordWorkMonitorV1("Filskrivning väntar", (append ? "Append" : "Write") + " pending för " + relativePath.Replace("\\", "/"));
 
         var preview = BuildPendingApprovalPreviewV1(text);
 
@@ -3972,6 +4267,7 @@ public sealed class JarvisForm : Form
             Content = text,
             RequiresUserApproval = true
         });
+        RecordWorkMonitorV1("Filskapande väntar", "Ny fil pending: " + relativePath);
 
         return
             "Pending filskapande skapad. Inget har skrivits till disk ännu.\n" +
@@ -4006,6 +4302,7 @@ public sealed class JarvisForm : Form
             Content = content ?? "",
             RequiresUserApproval = true
         });
+        RecordWorkMonitorV1("Editor sparar", "Filpanelen skapade pending save för " + relativePath);
 
         return
             "Pending sparning från filpanelen skapad. Inget har skrivits till disk ännu.\n" +
@@ -4279,6 +4576,7 @@ public sealed class JarvisForm : Form
             InvalidateVaultIndexIfTargetIsVaultPathV1(pending.Target);
             SetActiveFile(pending.Target);
             PendingApprovalStoreV1.Clear();
+            RecordWorkMonitorV1("Fil ändrad", changeKind + ": " + pending.Target.Replace("\\", "/"));
 
             return pending.Type switch
             {
@@ -4502,6 +4800,7 @@ public sealed class JarvisForm : Form
             Content = command,
             RequiresUserApproval = true
         });
+        RecordWorkMonitorV1("Terminal väntar", "Pending terminalkommando: " + command);
 
         return
             "Pending terminalkörning skapad. Inget har körts ännu.\n" +
@@ -4561,6 +4860,7 @@ public sealed class JarvisForm : Form
             return "Terminalarbetsmappen finns inte: " + fullWorkingDir;
 
         PendingApprovalStoreV1.Clear();
+        RecordWorkMonitorV1("Terminal kör", command);
 
         try
         {
@@ -4606,6 +4906,7 @@ public sealed class JarvisForm : Form
                 var timedOutError = errorBuilder.ToString();
                 var timedOutSummary = BuildTerminalRunSummary(-1, timedOutOutput, timedOutError);
                 StoreLatestTerminalPanelV1(command, fullWorkingDir, -1, timedOut: true, timedOutSummary, timedOutOutput, timedOutError);
+                RecordWorkMonitorV1("Terminal timeout", command);
 
                 return
                     "Terminal stoppad efter 120 sekunder.\n\n" +
@@ -4620,6 +4921,7 @@ public sealed class JarvisForm : Form
             var error = errorBuilder.ToString();
             var summary = BuildTerminalRunSummary(process.ExitCode, output, error);
             StoreLatestTerminalPanelV1(command, fullWorkingDir, process.ExitCode, timedOut: false, summary, output, error);
+            RecordWorkMonitorV1("Terminal klar", command + " | exit " + process.ExitCode);
 
             return BuildTerminalRunResult(command, process.ExitCode, summary);
         }
@@ -4637,6 +4939,7 @@ public sealed class JarvisForm : Form
             return "Det finns inget pending terminalkommando att avbryta.";
 
         PendingApprovalStoreV1.Clear();
+        RecordWorkMonitorV1("Terminal avbruten", "Pending terminalkörning avbröts.");
         return "Pending terminalkörning avbröts. Inget kördes.";
     }
 
@@ -4744,6 +5047,21 @@ public sealed class JarvisForm : Form
         var clean = (preview ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
         if (clean.Length > 80) clean = clean.Substring(0, 80) + "...";
         LatestMemoryChangeV1 = new MemoryChangeV1(operation ?? "skriv", clean, DateTime.Now);
+    }
+
+    private static void RecordTaskChangeV1(string operation, string preview)
+    {
+        var clean = (preview ?? "").Replace("\r", " ").Replace("\n", " ").Trim();
+        if (clean.Length > 80) clean = clean.Substring(0, 80) + "...";
+        LatestTaskChangeV1 = new TaskChangeStatusV1(operation ?? "task", clean, DateTime.Now);
+    }
+
+    private static void RecordWorkMonitorV1(string phase, string detail)
+    {
+        var cleanPhase = string.IsNullOrWhiteSpace(phase) ? "Arbete" : phase.Trim();
+        var cleanDetail = string.IsNullOrWhiteSpace(detail) ? "Jarvis arbetar." : detail.Replace("\r", " ").Trim();
+        if (cleanDetail.Length > 220) cleanDetail = cleanDetail.Substring(0, 220) + "...";
+        LatestWorkMonitorV1 = new WorkMonitorEventV1(cleanPhase, cleanDetail, DateTime.Now);
     }
 
     private static string BuildTerminalRunResult(string command, int exitCode, string summary)
@@ -5145,6 +5463,152 @@ public sealed class JarvisForm : Form
             return "Kunde inte ansluta till Ollama. Starta Ollama och försök igen.";
         }
     }
+    private static async Task<string> AskHybridModelAsync(string text)
+    {
+        var decision = HybridModelRouterV1.Pick(text, _hybridModelMode, GetActiveOllamaModel());
+        if (decision.Provider == HybridProviderKindV1.Ollama)
+        {
+            var localText = text;
+            return await AskOllamaAsync(localText);
+        }
+
+        var pack = BuildContextPackForHybridV1(text);
+        // Du får inte utföra lokala actions: online-modellen ar bara radgivare/tolk.
+        RecordWorkMonitorV1("TÃ¤nker", "Backend: " + decision.DisplayName + " | " + decision.Model + " | ctxâ‰ˆ" + ContextBudgetEstimatorV1.FormatCompact(ContextBudgetEstimatorV1.EstimateTokens(pack.ToAdvisorSystemPrompt(decision.DisplayName))));
+
+        try
+        {
+            return decision.Provider switch
+            {
+                HybridProviderKindV1.Groq => await AskOpenAiCompatibleProviderAsync(decision, "https://api.groq.com/openai/v1/chat/completions", HybridModelRouterV1.GetApiKey(decision.Provider), pack, bearerPrefix: "Bearer "),
+                HybridProviderKindV1.GitHubModels => await AskOpenAiCompatibleProviderAsync(decision, "https://models.github.ai/inference/chat/completions", HybridModelRouterV1.GetApiKey(decision.Provider), pack, bearerPrefix: "Bearer "),
+                HybridProviderKindV1.Gemini => await AskGeminiProviderAsync(decision, HybridModelRouterV1.GetApiKey(decision.Provider), pack),
+                _ => await AskOllamaAsync(text)
+            };
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            RecordWorkMonitorV1("Fallback", decision.DisplayName + " misslyckades. Faller tillbaka till Ollama.");
+            var local = await AskOllamaAsync(text);
+            return "[fallback " + decision.DisplayName + " -> Ollama] " + local;
+        }
+    }
+
+    private static ContextPackV1 BuildContextPackForHybridV1(string userText)
+    {
+        var projectContext = ProjectIndexSearchServiceV1.BuildContextPrefix(ProjectRoot, userText, k: 4);
+        var terminalContext = LatestTerminalPanelV1 is null
+            ? ""
+            : "Kommando: " + LatestTerminalPanelV1.Command + "\nExit: " + LatestTerminalPanelV1.ExitCode + "\nTimeout: " + LatestTerminalPanelV1.TimedOut + "\n" + LatestTerminalPanelV1.Summary;
+
+        return ContextPackV1.Build(
+            userRequest: userText,
+            memoryContext: BuildMemoryContext(),
+            projectContext: projectContext,
+            terminalContext: terminalContext,
+            taskContext: BuildTaskOverviewLineV1(),
+            activeFileContext: BuildActiveFileContextPackV1());
+    }
+
+    private static string BuildActiveFileContextPackV1()
+    {
+        var active = GetActiveFile();
+        if (string.IsNullOrWhiteSpace(active))
+            return "";
+
+        try
+        {
+            var full = Path.GetFullPath(Path.Combine(ProjectRoot, active));
+            var root = Path.GetFullPath(ProjectRoot);
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase) || !File.Exists(full))
+                return "Aktiv fil: " + active + "\n(Ingen sÃ¤ker filpreview kunde lÃ¤sas.)";
+
+            var content = File.ReadAllText(full);
+            return "Aktiv fil: " + active + "\n" + ContextPackV1.LimitSection(content, 2200);
+        }
+        catch
+        {
+            return "Aktiv fil: " + active + "\n(Kunde inte lÃ¤sa preview.)";
+        }
+    }
+
+    private static async Task<string> AskOpenAiCompatibleProviderAsync(HybridModelDecisionV1 decision, string url, string apiKey, ContextPackV1 pack, string bearerPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new HttpRequestException("API key saknas.");
+
+        ConversationHistory.AddUser(pack.UserRequest);
+        var messages = new List<object> { new { role = "system", content = pack.ToAdvisorSystemPrompt(decision.DisplayName) } };
+        messages.AddRange(ConversationHistory.AsOllamaMessages());
+
+        var payload = JsonSerializer.Serialize(new
+        {
+            model = decision.Model,
+            messages,
+            temperature = 0.2,
+            max_tokens = 1200
+        });
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.TryAddWithoutValidation("Authorization", bearerPrefix + apiKey);
+        request.Content = new StringContent(payload, Encoding.UTF8, "application/json");
+
+        using var response = await Http.SendAsync(request);
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+        var reply = json.RootElement
+            .GetProperty("choices")[0]
+            .GetProperty("message")
+            .GetProperty("content")
+            .GetString();
+
+        if (string.IsNullOrWhiteSpace(reply))
+            return decision.DisplayName + " svarade tomt.";
+
+        var trimmed = reply.Trim();
+        ConversationHistory.AddAssistant(trimmed);
+        var outputTokenEstimate = ContextBudgetEstimatorV1.EstimateTokens(trimmed);
+        RecordWorkMonitorV1("Svar klart", "Backend: " + decision.DisplayName + " | svarâ‰ˆ" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate));
+        return "[" + decision.DisplayName + " " + decision.Model + " svarâ‰ˆ" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate) + "] " + trimmed;
+    }
+
+    private static async Task<string> AskGeminiProviderAsync(HybridModelDecisionV1 decision, string apiKey, ContextPackV1 pack)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new HttpRequestException("Gemini API key saknas.");
+
+        ConversationHistory.AddUser(pack.UserRequest);
+        var systemPrompt = pack.ToAdvisorSystemPrompt(decision.DisplayName);
+        var url = "https://generativelanguage.googleapis.com/v1beta/models/" + Uri.EscapeDataString(decision.Model) + ":generateContent?key=" + Uri.EscapeDataString(apiKey);
+        var payload = JsonSerializer.Serialize(new
+        {
+            systemInstruction = new { parts = new[] { new { text = systemPrompt } } },
+            contents = new[] { new { role = "user", parts = new[] { new { text = pack.UserRequest } } } },
+            generationConfig = new { temperature = 0.2, maxOutputTokens = 1200 }
+        });
+
+        using var response = await Http.PostAsync(url, new StringContent(payload, Encoding.UTF8, "application/json"));
+        response.EnsureSuccessStatusCode();
+        using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+
+        var reply = json.RootElement
+            .GetProperty("candidates")[0]
+            .GetProperty("content")
+            .GetProperty("parts")[0]
+            .GetProperty("text")
+            .GetString();
+
+        if (string.IsNullOrWhiteSpace(reply))
+            return decision.DisplayName + " svarade tomt.";
+
+        var trimmed = reply.Trim();
+        ConversationHistory.AddAssistant(trimmed);
+        var outputTokenEstimate = ContextBudgetEstimatorV1.EstimateTokens(trimmed);
+        RecordWorkMonitorV1("Svar klart", "Backend: " + decision.DisplayName + " | svarâ‰ˆ" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate));
+        return "[" + decision.DisplayName + " " + decision.Model + " svarâ‰ˆ" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate) + "] " + trimmed;
+    }
+
     private static async Task<string> AskOllamaAsync(string text)
     {
         try
@@ -5179,6 +5643,9 @@ public sealed class JarvisForm : Form
                 messages = messages
             };
 
+            var inputTokenEstimate = ContextBudgetEstimatorV1.EstimateMessages(messages);
+            RecordWorkMonitorV1("Tänker", "Modell: " + chosenModel + " | ctx≈" + ContextBudgetEstimatorV1.FormatCompact(inputTokenEstimate));
+
             using var response = await Http.PostAsJsonAsync(OllamaUrl, payload);
 
             if (!response.IsSuccessStatusCode)
@@ -5193,10 +5660,15 @@ public sealed class JarvisForm : Form
                 if (!string.IsNullOrWhiteSpace(reply))
                 {
                     var trimmed = reply.Trim();
+                    var outputTokenEstimate = ContextBudgetEstimatorV1.EstimateTokens(trimmed);
                     // Spara assistant-svar i historiken för multi-turn-context
                     ConversationHistory.AddAssistant(trimmed);
+                    RecordWorkMonitorV1("Svar klart", "Modell: " + chosenModel + " | svar≈" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate));
                     // Prepend modell-badge så användaren ser vilken modell som svarade
-                    return ModelRouter.BadgeForModel(chosenModel) + " " + trimmed;
+                    return ModelRouter.BadgeForModel(chosenModel) +
+                           " [ctx≈" + ContextBudgetEstimatorV1.FormatCompact(inputTokenEstimate) +
+                           ", svar≈" + ContextBudgetEstimatorV1.FormatCompact(outputTokenEstimate) +
+                           "] " + trimmed;
                 }
             }
 
@@ -6373,31 +6845,3 @@ public sealed class JarvisForm : Form
         );
     }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,9 +1,13 @@
 ﻿"""
 Jarvis Web Agent - Playwright-based browser automation (no Gemini dependency)
 Ported from ada_v2/backend/web_agent.py
+
+Browser policy:
+- Visible user browser: OperaGX/Opera only, handled by C# SafeAppLauncher.
+- Internal automation engine: isolated Playwright Chromium.
+- Do not point this agent at Chrome, Edge, Firefox, or the user's Opera profile.
 """
 
-import asyncio
 import base64
 from typing import Optional
 
@@ -13,9 +17,11 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
+INTERNAL_AUTOMATION_ENGINE = "isolated Playwright Chromium"
+
 
 class JarvisWebAgent:
-    """Async browser automation agent using Playwright."""
+    """Async browser automation agent using isolated Playwright Chromium."""
 
     def __init__(self, headless: bool = True):
         self.headless = headless

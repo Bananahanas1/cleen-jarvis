@@ -319,6 +319,119 @@
       line-height: 1.5;
     }
 
+    .monitor-hero {
+      display: grid;
+      grid-template-columns: 78px minmax(0, 1fr);
+      gap: 12px;
+      align-items: center;
+      border: 1px solid #2b6f78;
+      border-radius: 8px;
+      background: #071522;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+
+    .mini-agent {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      border: 2px solid #44d9ff;
+      background: radial-gradient(circle at 50% 38%, #163b54 0%, #08111f 58%, #03070d 100%);
+      position: relative;
+      box-shadow: 0 0 18px rgba(68,217,255,0.24);
+    }
+
+    .mini-agent::before,
+    .mini-agent::after {
+      content: "";
+      position: absolute;
+      top: 25px;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #50ff96;
+      box-shadow: 0 0 10px #50ff96;
+      animation: agentBlink 2.4s infinite;
+    }
+
+    .mini-agent::before { left: 18px; }
+    .mini-agent::after { right: 18px; }
+
+    .mini-agent.active {
+      animation: agentWork 1.4s infinite ease-in-out;
+      border-color: #ffaa44;
+    }
+
+    @keyframes agentWork {
+      0%, 100% { transform: translateY(0); box-shadow: 0 0 14px rgba(255,170,68,0.20); }
+      50% { transform: translateY(-4px); box-shadow: 0 0 24px rgba(255,170,68,0.42); }
+    }
+
+    @keyframes agentBlink {
+      0%, 88%, 100% { transform: scaleY(1); }
+      92% { transform: scaleY(0.18); }
+    }
+
+    .monitor-title {
+      color: #f4fbff;
+      font-size: 18px;
+      line-height: 1.2;
+      margin-bottom: 4px;
+    }
+
+    .monitor-subtitle {
+      color: #a9bdc8;
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .monitor-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 2px 0 10px 0;
+    }
+
+    .monitor-action {
+      border-color: #2b6f78;
+      color: #dff7ff;
+      min-height: 32px;
+    }
+
+    .task-quick-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+      gap: 8px;
+      margin: 0 0 10px 0;
+      align-items: center;
+    }
+
+    #taskQuickInput {
+      min-width: 0;
+      height: 34px;
+      background: #03070d;
+      border: 1px solid #2b6f78;
+      border-radius: 8px;
+      color: #dff7ff;
+      padding: 0 10px;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .task-priority-btn {
+      min-width: 34px;
+      height: 34px;
+      padding: 0 9px;
+      border-color: #2b6f78;
+    }
+
+    .task-priority-btn.active {
+      border-color: #50ff96;
+      background: #1c4d6b;
+    }
+
     .panel-button.active {
       background: #1c4d6b;
       border-color: #50ff96;
@@ -740,9 +853,52 @@
       <div id="visualPanel">
         <div>
           <div class="visual-kicker">Jarvis Översikt</div>
-          <h3 class="visual-title">Minne, Obsidian och säker arbetsloop</h3>
+          <h3 class="visual-title">Monitor, tasks och säker arbetsloop</h3>
+        </div>
+        <div class="monitor-hero">
+          <div id="miniAgentV1" class="mini-agent" title="Jarvis arbetar när den lyser och rör sig."></div>
+          <div>
+            <div id="monitorTitleV1" class="monitor-title">Jarvis väntar.</div>
+            <div id="monitorSubtitleV1" class="monitor-subtitle">Ingen aktiv åtgärd ännu.</div>
+          </div>
+        </div>
+        <div class="monitor-actions">
+          <button class="monitor-action" type="button" data-command="/projekt index">Indexera</button>
+          <button class="monitor-action" type="button" data-command="/projekt audit">Audit</button>
+          <button class="monitor-action" type="button" data-command="/jobb status">Jobbstatus</button>
+          <button class="monitor-action" type="button" data-command="/task">Tasks</button>
+          <button class="monitor-action" type="button" data-command="/task status">Taskstatus</button>
+          <button class="monitor-action" type="button" data-command="/modell provider">Modellmotor</button>
+          <button class="monitor-action" type="button" data-command="/terminal visa">Terminal</button>
+        </div>
+        <div class="task-quick-row">
+          <input id="taskQuickInput" placeholder="Ny task..." autocomplete="off">
+          <button class="task-priority-btn active" type="button" data-priority="orange" title="Normal prioritet">Orange</button>
+          <button class="task-priority-btn" type="button" data-priority="red" title="Hög prioritet">Röd</button>
+          <button class="task-priority-btn" type="button" data-priority="blue" title="Låg prioritet">Blå</button>
+          <button id="taskQuickAddBtn" class="monitor-action" type="button">Lägg till</button>
         </div>
         <div class="visual-grid">
+          <div class="visual-cell">
+            <div class="visual-label">Livearbete</div>
+            <div id="visualWorkNowState" class="visual-value">Jarvis väntar.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Bakgrundsjobb</div>
+            <div id="visualJobsState" class="visual-value">Inga bakgrundsjobb startade.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Tasks</div>
+            <div id="visualTasksState" class="visual-value">Inga öppna tasks.</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Modellmotor</div>
+            <div id="visualModelProviderState" class="visual-value">Lokal Ollama</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Senaste task-ändring</div>
+            <div id="visualTaskChangeState" class="visual-value">Ingen task-ändring ännu.</div>
+          </div>
           <div class="visual-cell">
             <div class="visual-label">Aktiv fil</div>
             <div id="visualActiveFile" class="visual-value">Ingen aktiv fil.</div>
@@ -930,6 +1086,16 @@
     const visualLatestChange = document.getElementById("visualLatestChange");
     const visualPendingState = document.getElementById("visualPendingState");
     const visualTerminalState = document.getElementById("visualTerminalState");
+    const miniAgentV1 = document.getElementById("miniAgentV1");
+    const monitorTitleV1 = document.getElementById("monitorTitleV1");
+    const monitorSubtitleV1 = document.getElementById("monitorSubtitleV1");
+    const visualWorkNowState = document.getElementById("visualWorkNowState");
+    const visualJobsState = document.getElementById("visualJobsState");
+    const visualTasksState = document.getElementById("visualTasksState");
+    const visualModelProviderState = document.getElementById("visualModelProviderState");
+    const visualTaskChangeState = document.getElementById("visualTaskChangeState");
+    const taskQuickInput = document.getElementById("taskQuickInput");
+    const taskQuickAddBtn = document.getElementById("taskQuickAddBtn");
     const visualMemoryState = document.getElementById("visualMemoryState");
     const visualMemoryChangeState = document.getElementById("visualMemoryChangeState");
     const visualBuildStatusState = document.getElementById("visualBuildStatusState");
@@ -978,6 +1144,7 @@
     let editorSaveBlockedV1 = false;
     let workspacePanelModeV1 = "files";
     let jarvisOverviewPayloadV1 = null;
+    let taskQuickPriorityV1 = "orange";
 
     window.jarvisAddMessage = function(role, text) {
       const div = document.createElement("div");
@@ -1050,6 +1217,24 @@
       }
 
       const overview = jarvisOverviewPayloadV1 || {};
+      const workNow = String(overview.workNow || overview.WorkNow || "Jarvis väntar.");
+      const jobs = String(overview.jobs || overview.Jobs || "Inga bakgrundsjobb startade.");
+      const tasks = String(overview.tasks || overview.Tasks || "Inga öppna tasks.");
+      const modelProvider = String(overview.modelProvider || overview.ModelProvider || "Lokal Ollama");
+      const taskChange = String(overview.taskChange || overview.TaskChange || "Ingen task-ändring ännu.");
+      if (visualWorkNowState) visualWorkNowState.textContent = workNow;
+      if (visualJobsState) visualJobsState.textContent = jobs;
+      if (visualTasksState) visualTasksState.textContent = tasks;
+      if (visualModelProviderState) visualModelProviderState.textContent = modelProvider;
+      if (visualTaskChangeState) visualTaskChangeState.textContent = taskChange;
+      const isBusy = /running|kör|jobbar|index|audit|tänker|pending|väntar på godkännande|skriver/i.test(workNow + "\n" + jobs);
+      if (miniAgentV1 && miniAgentV1.classList && typeof miniAgentV1.classList.toggle === "function") {
+        miniAgentV1.classList.toggle("active", isBusy);
+      } else if (miniAgentV1) {
+        miniAgentV1.className = isBusy ? "mini-agent active" : "mini-agent";
+      }
+      if (monitorTitleV1) monitorTitleV1.textContent = isBusy ? "Jarvis arbetar." : "Jarvis väntar.";
+      if (monitorSubtitleV1) monitorSubtitleV1.textContent = workNow + "\n\n" + jobs;
       visualMemoryState.textContent = String(overview.memory || overview.Memory || "Minnesstatus laddas.");
       visualMemoryChangeState.textContent = String(overview.memoryChange || overview.MemoryChange || "Ingen minnesförändring ännu.");
       visualBuildStatusState.textContent = String(overview.buildStatus || overview.BuildStatus || "Ingen byggstatus ännu.");
@@ -1267,6 +1452,65 @@
     document.getElementById("showBrainBtn")?.addEventListener("click", function() {
       window.jarvisShowBrainPanelV1();
     });
+
+    if (document.querySelectorAll) {
+      document.querySelectorAll("[data-command]").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          const command = String(btn.getAttribute("data-command") || "").trim();
+          if (!command) return;
+          window.jarvisAddMessage("user", command);
+          postMessage({ type: "jarvis_chat", text: command });
+        });
+      });
+    }
+
+    function setTaskQuickPriorityV1(priority) {
+      taskQuickPriorityV1 = String(priority || "orange").trim() || "orange";
+      if (!document.querySelectorAll) return;
+      document.querySelectorAll(".task-priority-btn").forEach(function(btn) {
+        const active = String(btn.getAttribute("data-priority") || "") === taskQuickPriorityV1;
+        if (btn.classList && typeof btn.classList.toggle === "function") {
+          btn.classList.toggle("active", active);
+        } else {
+          btn.className = active ? "task-priority-btn active" : "task-priority-btn";
+        }
+      });
+    }
+
+    function submitTaskQuickV1() {
+      const title = String((taskQuickInput && taskQuickInput.value) || "").trim();
+      if (!title) {
+        window.jarvisAddMessage("assistant", "Skriv en task först.");
+        if (taskQuickInput && taskQuickInput.focus) taskQuickInput.focus();
+        return;
+      }
+
+      const command = "/task add " + title + " !" + taskQuickPriorityV1;
+      window.jarvisAddMessage("user", command);
+      postMessage({ type: "jarvis_chat", text: command });
+      if (taskQuickInput) taskQuickInput.value = "";
+    }
+
+    if (document.querySelectorAll) {
+      document.querySelectorAll(".task-priority-btn").forEach(function(btn) {
+        btn.addEventListener("click", function() {
+          setTaskQuickPriorityV1(btn.getAttribute("data-priority") || "orange");
+        });
+      });
+    }
+
+    if (taskQuickAddBtn) {
+      taskQuickAddBtn.addEventListener("click", submitTaskQuickV1);
+    }
+
+    if (taskQuickInput) {
+      taskQuickInput.addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          submitTaskQuickV1();
+        }
+      });
+    }
 
     terminalCloseBtn.addEventListener("click", function() {
       terminalPanel.style.display = "none";
@@ -2474,6 +2718,12 @@
         "/minne sök ",
         "/minne arkiv sök ",
         "/obsidian status",
+        // Tasks
+        "/task",
+        "/task status",
+        "/task add ",
+        "/task done ",
+        "/task sök ",
         // Filer
         "/fil öppna ",
         "/fil läs ",

@@ -1,6 +1,6 @@
 # TODO_NEXT.md - nästa praktiska steg
 
-Senast uppdaterad: 2026-05-12
+Senast uppdaterad: 2026-05-13
 
 ## Huvudprioritet
 
@@ -32,8 +32,39 @@ weather-animationer och andra stora future-features.
 ## Nästa efter denna slice
 
 - [ ] Lägg till riktig pause/resume för background jobs.
+- [x] Lägg till background status-events: steg, progress, senaste handling och token/context-estimat där det går.
 - [ ] Lägg till mer avancerad chunk/map-reduce summary vid stora filer.
+- [x] Lägg till `BrowserPolicyV1`: OperaGX/Opera som enda synliga browsermål och isolerad Playwright Chromium som intern automation engine.
+- [ ] Använd `BrowserPolicyV1` när framtida Browser Autopilot byggs.
 - [ ] Fortsätt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till små services.
+
+## Amy Windows Autopilot beslut 2026-05-13
+
+- [x] Dokumenterade att Amy-idén ska porteras Windows-native, inte kopieras från macOS.
+- [x] Dokumenterade OperaGX/Opera-only browser policy.
+- [x] Dokumenterade scoped Autopilot i stället för permanent fri datormakt.
+- [x] Dokumenterade att bakgrundsarbete ska visa kort arbetsstatus och token/context-estimat när möjligt.
+- [x] Skapade `docs/AMY_WINDOWS_AUTOPILOT_PLAN.md`.
+
+## Amy parity runtime 2026-05-13
+
+- [x] Synlig browser-policy: OperaGX/Opera only.
+- [x] Intern browser-agent-motor: isolerad Playwright Chromium.
+- [x] Token/context-estimat i vanliga Ollama-svar.
+- [x] Steg, nästa handling och token/context-estimat i `/jobb status`.
+- [x] Lokal TaskStore V1 med röd/orange/blå prioritet och pending approval för task-skrivning.
+- [x] Panel-first monitor i Översikt: livearbete, bakgrundsjobb, tasks, pending, terminal och mini-agent.
+- [x] Snabb task-input i Översikt så tasks kan skapas visuellt utan att minnas `/task add`.
+
+## Hybrid AI router 2026-05-13
+
+- [x] Skapa `ContextPackV1` sa Jarvis sjalv ager arbetskontexten.
+- [x] Skapa `HybridModelRouterV1` med lokal Ollama och auto gratis/online-lage.
+- [x] Stod env-konfig for Groq, Gemini och GitHub Models utan att spara secrets.
+- [x] Visa Modellmotor i Oversiktspanelen.
+- [ ] Lagg till UI-falt for att valja lokal/auto utan kommando.
+- [ ] Lagg till strict JSON-intent-tolk for nar Jarvis inte forstar naturligt sprak.
+- [ ] Utvardera gratis providers praktiskt med sma testprompts nar nycklar finns.
 
 ## Produktroll
 

@@ -1,6 +1,52 @@
 # CURRENT_STATE.md - Jarvis
 
-Senast uppdaterad: 2026-05-12
+Senast uppdaterad: 2026-05-13
+
+## 2026-05-13 - BrowserPolicyV1
+
+Jarvis har nu en tydlig browser-policy:
+
+- Synlig browser för användaren är OperaGX/Opera.
+- Chrome, Edge, Firefox och Chromium är blockerade som synliga launch-mål.
+- Intern agent-automation får använda isolerad Playwright Chromium när det är
+  tekniskt säkrare eller stabilare.
+- `SafeAppLauncher` och WebSearcher följer policyn.
+- Regression finns i `tests/browser-policy.test.js`.
+
+## 2026-05-13 - Background status/token
+
+Jarvis visar nu mer Amy-lik arbetsstatus:
+
+- Vanliga Ollama-svar får ungefärligt `ctx≈...` och `svar≈...`.
+- Background jobs sparar och visar steg, senaste handling, nästa handling och
+  token/context-estimat.
+- `/jobb status` är mer informativt medan Jarvis jobbar.
+- Regression finns i `tests/background-status-token.test.js`.
+
+## 2026-05-13 - Panel-first monitor och tasks
+
+Jarvis har nu första panel-first-slicen:
+
+- Översiktspanelen visar livearbete, bakgrundsjobb, tasks, pending, terminal och mini-agent.
+- Snabbknappar i panelen startar index, audit, jobbstatus, tasks och terminalstatus.
+- Snabb task-input i panelen skapar pending tasks med röd/orange/blå prioritet.
+- `TaskStoreV1` sparar lokala tasks i `data/tasks/tasks.json`.
+- Task-skrivningar går via `PendingApprovalV1` med `TaskChange`.
+- Prioritet följer Amy-idén: röd, orange och blå.
+- Regression finns i `tests/tasks-monitor-panel.test.js` och C# routertest.
+
+## 2026-05-13 - HybridModelRouterV1 for gratis/online-iden
+
+Forsta sakra hybrid-slicen ar pa plats:
+
+- `ContextPackV1` bygger avgransad kontext fran minne, project index, tasks,
+  aktiv fil och senaste terminalsummary.
+- `HybridModelRouterV1` har lagena lokal Ollama och auto gratis/online.
+- Online providers lases bara fran env vars: `GROQ_API_KEY`, `GEMINI_API_KEY`
+  och `GITHUB_TOKEN`. Inga nycklar sparas i repo eller status.
+- Sprakmodellen ar radgivare/tolk: den far inte kora tools, skriva filer,
+  klicka eller kora terminal. Jarvis utfor via lokala tools och pending approval.
+- Oversiktspanelen visar nu Modellmotor.
 
 ## 2026-05-12 - Background Jobs / Project Index MVP första kodslice
 

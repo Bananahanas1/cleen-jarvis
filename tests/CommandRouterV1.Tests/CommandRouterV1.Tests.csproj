@@ -15,6 +15,8 @@
     <Compile Include="..\..\app\Jobs\ProjectIndexServiceV1.cs" Link="ProjectIndexServiceV1.cs" />
     <Compile Include="..\..\app\Jobs\ProjectIndexSearchServiceV1.cs" Link="ProjectIndexSearchServiceV1.cs" />
     <Compile Include="..\..\app\Jobs\ProjectAuditServiceV1.cs" Link="ProjectAuditServiceV1.cs" />
+    <Compile Include="..\..\app\Brain\ContextBudgetEstimatorV1.cs" Link="ContextBudgetEstimatorV1.cs" />
+    <Compile Include="..\..\app\Tasks\TaskStoreV1.cs" Link="TaskStoreV1.cs" />
     <Compile Include="..\..\app\Brain\NaturalEditTool.cs" Link="NaturalEditTool.cs" />
     <Compile Include="..\..\app\Brain\BuilderMode.cs" Link="BuilderMode.cs" />
     <Compile Include="..\..\app\Desktop\DesktopActionRequestV1.cs" Link="DesktopActionRequestV1.cs" />

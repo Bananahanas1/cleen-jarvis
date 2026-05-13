@@ -55,6 +55,15 @@ Current true status:
 - Known build warning remains WindowsBase/WebView2, but build has 0 errors.
 - Project Index + Background Jobs MVP lives in `app\Jobs\` with incremental scan,
   `/projekt sök <query>`, Project Index RAG-context and `/projekt audit`.
+- BrowserPolicy V1 exists: visible browser target is OperaGX/Opera only. Chrome,
+  Edge, Firefox and Chromium are blocked as visible launch targets. Isolated
+  Playwright Chromium is allowed only as an internal automation engine.
+- ContextBudgetEstimator V1 exists: normal Ollama replies include approximate
+  `ctx≈...` and `svar≈...`; `/jobb status` includes `Token/context`.
+- Panel-first monitor exists in Översikt: livearbete, background jobs, tasks,
+  pending approval, terminal/build and mini-agent are visible without asking.
+- TaskStore V1 exists: local tasks use red/orange/blue priority and writes go
+  through PendingApproval `TaskChange`.
 
 Very important rules:
 
@@ -65,10 +74,12 @@ Very important rules:
 5. Only normal chat and reasoning should go to Ollama.
 6. File write, append, delete, undo, terminal run, external tools and future UI automation must require safety checks and pending approval.
 7. Workers/agents must never write directly. They may read, summarize and propose only.
-8. Keep changes small and build/test after important steps.
-9. Update docs after each successful runtime change.
-10. Do not publish/restart for docs-only work.
-11. After runtime code/dashboard changes pass relevant tests and `dotnet build`, publish/restart Jarvis-clean so the user can test immediately.
+8. Browser automation must follow BrowserPolicy V1: OperaGX/Opera visible,
+   isolated Playwright Chromium internal.
+9. Keep changes small and build/test after important steps.
+10. Update docs after each successful runtime change.
+11. Do not publish/restart for docs-only work.
+12. After runtime code/dashboard changes pass relevant tests and `dotnet build`, publish/restart Jarvis-clean so the user can test immediately.
 
 Current next work:
 
@@ -104,7 +115,10 @@ Useful tests when runtime code changes:
 
 ```powershell
 node F:\Jarvis-clean\tests\background-jobs-architecture.test.js
+node F:\Jarvis-clean\tests\background-status-token.test.js
+node F:\Jarvis-clean\tests\browser-policy.test.js
 node F:\Jarvis-clean\tests\dashboard-routing.test.js
+node F:\Jarvis-clean\tests\tasks-monitor-panel.test.js
 node F:\Jarvis-clean\tests\terminal-approval-safety.test.js
 node F:\Jarvis-clean\tests\approval-popup.test.js
 node F:\Jarvis-clean\tests\help-text.test.js

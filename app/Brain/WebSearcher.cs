@@ -3,13 +3,13 @@ using System.Text.RegularExpressions;
 
 namespace JarvisClean;
 
-// Web-sök via Google + Opera (per användarens val 2026-05-10).
-// /sök <q> → bygger Google-search-URL och öppnar i Opera (ingen scraping).
+// Web-sök via Google + OperaGX/Opera (per användarens browser-policy).
+// /sök <q> -> bygger Google-search-URL och öppnar i OperaGX/Opera (ingen scraping).
 // /läs <url> → hämtar sidan och returnerar text för Jarvis att läsa/sammanfatta.
 //
 // Säkerhet:
 // - InternetProbe-koll innan request — offline → tydligt fel istället för hängning
-// - Opera är whitelistad i SafeAppLauncher
+// - Synlig browser är alltid OperaGX/Opera via SafeAppLauncher
 // - Fetch har 12s timeout
 public static class WebSearcher
 {
@@ -19,8 +19,8 @@ public static class WebSearcher
         Http.DefaultRequestHeaders.UserAgent.ParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64) Jarvis-clean");
     }
 
-    // Bygger Google-search-URL och öppnar i Opera. Ingen scraping = ingen risk för
-    // CAPTCHA, blockning, eller stale data. Användaren ser SERP direkt i sin webbläsare.
+    // Bygger Google-search-URL och öppnar i OperaGX/Opera. Ingen scraping = ingen risk för
+    // CAPTCHA, blockning eller stale data. Användaren ser SERP direkt i rätt browser.
     public static string OpenSearchInOpera(string query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -28,8 +28,8 @@ public static class WebSearcher
         var url = "https://www.google.com/search?q=" + Uri.EscapeDataString(query);
         var res = SafeAppLauncher.TryOpenUrlInOpera(url);
         return res.Ok
-            ? "Sökning öppnad i Opera: " + query + "\nURL: " + url
-            : "Kunde inte öppna Opera: " + res.Message;
+            ? "Sökning öppnad i " + BrowserPolicyV1.DisplayName + ": " + query + "\nURL: " + url
+            : "Kunde inte öppna " + BrowserPolicyV1.DisplayName + ": " + res.Message;
     }
 
     public static async Task<string> FetchTextAsync(string url, int maxChars = 4000)
