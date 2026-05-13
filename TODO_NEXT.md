@@ -64,7 +64,8 @@ weather-animationer och andra stora future-features.
 - [x] Visa Autopilot i Oversiktspanelen.
 - [x] Browser Autopilot Runner V1: oppna/sok/lasa URL via Opera-policy och blocka login/betalning/secrets/skicka/publicera.
 - [ ] Lagg till kontrollerad click/type for Browser Autopilot efter starkare sida/form-riskklassning.
-- [ ] Bygg Desktop Autopilot-runner som kan kora flera steg under samma uppdrag, fortfarande med kill-switch och denylist.
+- [x] Desktop Autopilot Runner V1: foreslar ett UI-steg i taget via pending approval, med kill-switch, denylist och maxsteg.
+- [ ] Lagg till tydligare auto-continue UI efter godkand desktop-action.
 
 ## Hybrid AI router 2026-05-13
 

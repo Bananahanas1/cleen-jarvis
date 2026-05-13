@@ -62,6 +62,9 @@ Jarvis har nu en central autopilot-niva for Amy-kraften:
   `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`,
   `/autopilot build <uppdrag>` och `/autopilot stop`.
 - Oversiktspanelen visar Autopilot-status.
+- Browser Autopilot Runner V1 kan oppna/soka/lasa URL via Opera-policy.
+- Desktop Autopilot Runner V1 foreslar ett UI-TARS-steg i taget och varje
+  click/type/hotkey gar fortfarande via pending approval.
 
 ## 2026-05-12 - Background Jobs / Project Index MVP första kodslice
 

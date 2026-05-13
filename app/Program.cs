@@ -3927,6 +3927,19 @@ public sealed class JarvisForm : Form
         if (!AgentAutopilotModeV1.TryParseLevel(mode, out var level))
             return "Okänt autopilot-läge. Skriv /autopilot status.";
 
+        DesktopAutopilotRunV1? desktopRun = null;
+        if (level == AgentAutopilotLevelV1.DesktopAutopilot)
+        {
+            if (PendingApprovalStoreV1.HasPending)
+                return "Det finns redan en pending åtgärd. Godkänn eller avbryt den innan Desktop Autopilot föreslår nästa steg.";
+
+            desktopRun = DesktopAutopilotRunnerV1.StartOrContinue(mission);
+            if (!desktopRun.Ok)
+                return desktopRun.Message;
+
+            mission = desktopRun.Mission;
+        }
+
         var message = AgentAutopilotModeV1.SetMode(level, mission, out var changed);
         if (!changed)
             return message;
@@ -3936,6 +3949,7 @@ public sealed class JarvisForm : Form
             if (PendingApprovalStoreV1.Get()?.Type == PendingApprovalTypeV1.DesktopAction)
                 PendingApprovalStoreV1.Clear();
             DesktopActionGate.Disable();
+            DesktopAutopilotRunnerV1.Stop();
         }
 
         if (level is AgentAutopilotLevelV1.Approval or AgentAutopilotLevelV1.DesktopAutopilot)
@@ -3947,6 +3961,12 @@ public sealed class JarvisForm : Form
         {
             RecordWorkMonitorV1("Browser Autopilot", "Startar browser-runner: " + mission);
             runnerResult = "\n\n" + await BrowserAutopilotRunnerV1.StartAsync(mission);
+        }
+        else if (level == AgentAutopilotLevelV1.DesktopAutopilot && desktopRun is not null)
+        {
+            RecordWorkMonitorV1("Desktop Autopilot", "Föreslår steg " + desktopRun.Step + ": " + desktopRun.Mission);
+            runnerResult = "\n\n" + desktopRun.Message + "\n\n" +
+                           await DesktopVisionRequestToolAsync(desktopRun.Instruction);
         }
 
         return message + runnerResult + "\n\n" + AgentAutopilotModeV1.Status();
@@ -3960,6 +3980,7 @@ public sealed class JarvisForm : Form
             PendingApprovalStoreV1.Clear();
 
         DesktopActionGate.Disable();
+        DesktopAutopilotRunnerV1.Stop();
         RecordWorkMonitorV1("Autopilot stoppad", "Safe-läge aktivt. Desktop-control AV.");
         return message + "\n\n" + DesktopActionGate.Status();
     }
