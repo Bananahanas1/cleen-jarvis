@@ -1,5 +1,23 @@
 # SESSION_LOG.md
 
+## 2026-05-13 - Full System Smoke Test
+
+Andringar:
+
+- Skapade `tests/run-full-smoke.ps1`.
+- Skapade `docs/FULL_SYSTEM_TEST.md` med manuell testchecklista.
+- Skapade `tests/full-smoke-runner.test.js` sa test-runnern bevakas.
+- Uppdaterade `tests/README.md` med kort kommando.
+
+Verifiering:
+
+- TDD red: `tests/full-smoke-runner.test.js` failade forst pa saknad runner/guide.
+- Green: `tests/full-smoke-runner.test.js` passerade.
+- Full smoke-scriptet passerade: 40 Node-testfiler, `CommandRouterV1.Tests`,
+  `dotnet build` och Markdown-langdkoll.
+- Logg: `data/test-runs/20260513-171921/summary.txt`.
+- Docs/test-only: ingen publish/restart behovdes.
+
 ## 2026-05-13 - Agent Autopilot Modes V1
 
 Utgangspunkt: femniva-modellen skulle goras konkret. Desktop-kravet andrades

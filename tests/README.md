@@ -1,8 +1,10 @@
-﻿# Tests
+# Tests
 
-Här kommer tester ligga senare.
+Stort lokalt smoke/regression-test:
 
-Första testerna ska kontrollera:
-- safe dashboard finns
-- calculator fungerar
-- Ollama svarar offline
+```powershell
+powershell -ExecutionPolicy Bypass -File F:\Jarvis-clean\tests\run-full-smoke.ps1
+```
+
+Det kör alla Node-tester, `CommandRouterV1.Tests`, `dotnet build` och MD-längdkoll.
+Se även `docs/FULL_SYSTEM_TEST.md` för manuell Jarvis-checklista.

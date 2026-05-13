@@ -77,6 +77,12 @@ weather-animationer och andra stora future-features.
 - [ ] Lagg till strict JSON-intent-tolk for nar Jarvis inte forstar naturligt sprak.
 - [ ] Utvardera gratis providers praktiskt med sma testprompts nar nycklar finns.
 
+## Full system test 2026-05-13
+
+- [x] Skapa `tests/run-full-smoke.ps1` for stort lokalt regressionstest.
+- [x] Skapa `docs/FULL_SYSTEM_TEST.md` med manuell Jarvis-checklista.
+- [x] Bevaka smoke-runnern med `tests/full-smoke-runner.test.js`.
+
 ## Produktroll
 
 - `cleen-jarvis` är huvudprodukt.
