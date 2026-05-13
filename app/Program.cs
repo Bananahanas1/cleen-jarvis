@@ -122,6 +122,7 @@ public sealed class JarvisForm : Form
     // När main-fönstret stängs ska Python-servern stoppas så vi inte läcker python.exe i bakgrunden.
     private void OnMainFormClosing(object? sender, FormClosingEventArgs e)
     {
+        AgentAutopilotModeV1.Stop(out _);
         DesktopActionGate.Disable();
         try { _uiTarsBridge.StopAsync().GetAwaiter().GetResult(); } catch { }
         try { _neuroLinkedBridge.StopAsync().GetAwaiter().GetResult(); } catch { }
@@ -143,6 +144,7 @@ public sealed class JarvisForm : Form
     {
         if (m.Msg == WmHotkeyV1 && m.WParam.ToInt32() == DesktopKillHotkeyIdV1)
         {
+            AgentAutopilotModeV1.Stop(out _);
             DesktopActionGate.Disable();
             if (PendingApprovalStoreV1.Get()?.Type == PendingApprovalTypeV1.DesktopAction)
                 PendingApprovalStoreV1.Clear();
@@ -895,6 +897,30 @@ public sealed class JarvisForm : Form
             return true;
         }
 
+        if (routedV1.Intent == CommandIntent.AutopilotStatus)
+        {
+            await AddAssistantMessage(AgentAutopilotStatusTool());
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.AutopilotSetMode)
+        {
+            await AddAssistantMessage(AgentAutopilotSetTool(
+                routedV1.Arguments.GetValueOrDefault("mode", ""),
+                routedV1.Arguments.GetValueOrDefault("mission", "")));
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.AutopilotStop)
+        {
+            await AddAssistantMessage(AgentAutopilotStopTool());
+            await ShowOrHidePendingApprovalPopupV1Async();
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return true;
+        }
+
         if (routedV1.Intent == CommandIntent.DesktopStatus)
         {
             await AddAssistantMessage(DesktopStatusTool());
@@ -1039,6 +1065,7 @@ public sealed class JarvisForm : Form
             ["jobs"] = BackgroundJobQueueV1.FormatMonitorLine(),
             ["workNow"] = BuildWorkMonitorOverviewLineV1(),
             ["modelProvider"] = BuildModelProviderOverviewLineV1(),
+            ["autopilot"] = BuildAgentAutopilotOverviewLineV1(),
             ["vault"] = BuildVaultOverviewLineV1(),
             ["desktop"] = "Desktop-control: " + (DesktopActionGate.Enabled ? "PÅ" : "AV") + "\n" + (_uiTarsBridge.IsAvailable() ? "UI-TARS source hittad" : "UI-TARS source saknas"),
             ["loop"] = "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember\nMonitor: aktiv. Riskabla writes/actions visas som pending.",
@@ -1058,6 +1085,11 @@ public sealed class JarvisForm : Form
         return HybridModelRouterV1.ModeLabel(_hybridModelMode) + "\n" +
                decision.DisplayName + " | " + decision.Model + "\n" +
                decision.Reason;
+    }
+
+    private static string BuildAgentAutopilotOverviewLineV1()
+    {
+        return AgentAutopilotModeV1.OverviewLine();
     }
 
     private static string BuildTaskOverviewLineV1()
@@ -1694,6 +1726,17 @@ public sealed class JarvisForm : Form
             return "Samtals-historik rensad. Jarvis har glömt tidigare turns (memory.md och vault är oförändrade).";
         }
 
+        if (routedV1.Intent == CommandIntent.AutopilotStatus)
+            return AgentAutopilotStatusTool();
+
+        if (routedV1.Intent == CommandIntent.AutopilotSetMode)
+            return AgentAutopilotSetTool(
+                routedV1.Arguments.GetValueOrDefault("mode", ""),
+                routedV1.Arguments.GetValueOrDefault("mission", ""));
+
+        if (routedV1.Intent == CommandIntent.AutopilotStop)
+            return AgentAutopilotStopTool();
+
         if (routedV1.Intent == CommandIntent.ProgramLaunch)
         {
             var app = routedV1.Arguments.GetValueOrDefault("app", "");
@@ -2039,6 +2082,7 @@ public sealed class JarvisForm : Form
             "- /terminal visa",
             "- /terminal godkänn",
             "- /terminal avbryt",
+            "- /autopilot status | /autopilot approval | /autopilot browser <uppdrag> | /autopilot desktop <uppdrag> | /autopilot build <uppdrag> | /autopilot stop",
             "- /desktop status | /desktop på | /desktop av",
             "- /desktop tars start | /desktop tars stop",
             "- /skärm",
@@ -2557,6 +2601,7 @@ public sealed class JarvisForm : Form
             "Öppnade Jarvis Översikt.\n\n" +
             "Livearbete:\n" + BuildWorkMonitorOverviewLineV1() + "\n\n" +
             "Modellmotor:\n" + BuildModelProviderOverviewLineV1() + "\n\n" +
+            "Autopilot:\n" + BuildAgentAutopilotOverviewLineV1() + "\n\n" +
             "Bakgrundsjobb:\n" + BackgroundJobQueueV1.FormatMonitorLine() + "\n\n" +
             "Tasks:\n" + BuildTaskOverviewLineV1() + "\n\n" +
             BuildMemoryOverviewLineV1() + "\n\n" +
@@ -3867,6 +3912,49 @@ public sealed class JarvisForm : Form
     private static string DesktopStatusTool()
     {
         return DesktopActionGate.Status() + "\n\n" + _uiTarsBridge.Status();
+    }
+
+    private static string AgentAutopilotStatusTool()
+    {
+        return AgentAutopilotModeV1.Status() + "\n\n" +
+               "Browser-policy: " + BrowserPolicyV1.DisplayName + " synligt, " +
+               BrowserPolicyV1.InternalAutomationEngine + " internt.\n" +
+               "Desktop-policy: BroadDesktopControl för nästan alla normala appar, men denylist och pending approval gäller.";
+    }
+
+    private static string AgentAutopilotSetTool(string mode, string mission)
+    {
+        if (!AgentAutopilotModeV1.TryParseLevel(mode, out var level))
+            return "Okänt autopilot-läge. Skriv /autopilot status.";
+
+        var message = AgentAutopilotModeV1.SetMode(level, mission, out var changed);
+        if (!changed)
+            return message;
+
+        if (level is AgentAutopilotLevelV1.Safe or AgentAutopilotLevelV1.BrowserAutopilot or AgentAutopilotLevelV1.BuildAgent)
+        {
+            if (PendingApprovalStoreV1.Get()?.Type == PendingApprovalTypeV1.DesktopAction)
+                PendingApprovalStoreV1.Clear();
+            DesktopActionGate.Disable();
+        }
+
+        if (level is AgentAutopilotLevelV1.Approval or AgentAutopilotLevelV1.DesktopAutopilot)
+            _ = DesktopActionGate.Enable();
+
+        RecordWorkMonitorV1("Autopilot", AgentAutopilotModeV1.Label(level) + (string.IsNullOrWhiteSpace(mission) ? "" : " | " + mission));
+        return message + "\n\n" + AgentAutopilotModeV1.Status();
+    }
+
+    private static string AgentAutopilotStopTool()
+    {
+        var message = AgentAutopilotModeV1.Stop(out _);
+
+        if (PendingApprovalStoreV1.Get()?.Type == PendingApprovalTypeV1.DesktopAction)
+            PendingApprovalStoreV1.Clear();
+
+        DesktopActionGate.Disable();
+        RecordWorkMonitorV1("Autopilot stoppad", "Safe-läge aktivt. Desktop-control AV.");
+        return message + "\n\n" + DesktopActionGate.Status();
     }
 
     private static string DesktopEnableTool()

@@ -1,5 +1,36 @@
 # SESSION_LOG.md
 
+## 2026-05-13 - Agent Autopilot Modes V1
+
+Utgangspunkt: anvandaren fragade om femniva-modellen var klar och bad att den
+skulle goras klar. Anvandaren justerade sedan desktop-kravet: inte liten
+whitelist, utan nastan allt normalt app-arbete.
+
+Andringar:
+
+- Skapade `app/Agents/AgentAutopilotModeV1.cs`.
+- Lade till nivaerna Safe, Approval, Browser Autopilot, Desktop Autopilot och
+  Build Agent.
+- Desktop Autopilot ar BroadDesktopControl for nastan alla normala appar, men
+  med denylist, scope och Ctrl+Shift+Alt+J kill-switch.
+- Browser Autopilot haller OperaGX/Opera som synlig browser och isolerad
+  Chromium endast som intern automation engine.
+- Lade till `/autopilot status`, `/autopilot approval`,
+  `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`,
+  `/autopilot build <uppdrag>` och `/autopilot stop`.
+- Oversiktspanelen visar Autopilot-status.
+
+Verifiering:
+
+- TDD red: `tests/autopilot-modes.test.js` failade forst pa 18 saknade delar.
+- Green: `tests/autopilot-modes.test.js` passerade.
+- Full node-regression passerade: 37 tester.
+- `CommandRouterV1.Tests` passerade med autopilot-routerfall.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
+  och kand `MSB3277`.
+- Publicerade/startade om. Observerad process: `Jarvis.exe` PID 15628,
+  path `F:\Jarvis-clean\dist\Jarvis.exe`.
+
 ## 2026-05-13 - HybridModelRouterV1 + ContextPackV1
 
 Utgangspunkt: anvandaren vill att sprakmodeller ska vara de man bollar ideer

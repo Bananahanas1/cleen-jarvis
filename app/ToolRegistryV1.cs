@@ -241,6 +241,34 @@ internal static class ToolRegistryV1
 
         new()
         {
+            Name = "autopilot.status",
+            Intent = CommandIntent.AutopilotStatus,
+            Risk = CommandRisk.SafeRead,
+            Description = "Visar Agent Autopilot Modes V1 och aktivt scope.",
+            Example = "/autopilot status"
+        },
+
+        new()
+        {
+            Name = "autopilot.mode",
+            Intent = CommandIntent.AutopilotSetMode,
+            Risk = CommandRisk.SafeUi,
+            Description = "Sätter säker autopilotnivå för ett tydligt uppdrag.",
+            Example = "/autopilot desktop organisera fönster",
+            RequiredArguments = { "mode" }
+        },
+
+        new()
+        {
+            Name = "autopilot.stop",
+            Intent = CommandIntent.AutopilotStop,
+            Risk = CommandRisk.SafeUi,
+            Description = "Stoppar autopilot och stänger desktop-control.",
+            Example = "/autopilot stop"
+        },
+
+        new()
+        {
             Name = "project.index.start",
             Intent = CommandIntent.ProjectIndex,
             Risk = CommandRisk.SafeRead,

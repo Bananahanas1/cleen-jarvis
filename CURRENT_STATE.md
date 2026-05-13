@@ -48,6 +48,21 @@ Forsta sakra hybrid-slicen ar pa plats:
   klicka eller kora terminal. Jarvis utfor via lokala tools och pending approval.
 - Oversiktspanelen visar nu Modellmotor.
 
+## 2026-05-13 - Agent Autopilot Modes V1
+
+Jarvis har nu en central autopilot-niva for Amy-kraften:
+
+- Niva 1 Safe: lasa, soka, analysera och oppna sakert.
+- Niva 2 Approval: riskmoment blir pending approval.
+- Niva 3 Browser Autopilot: OperaGX/Opera synligt, isolerad Chromium internt.
+- Niva 4 Desktop Autopilot: BroadDesktopControl for nastan alla normala appar,
+  men denylist, scope och kill-switch galler.
+- Niva 5 Build Agent: jobbar i `F:\Jarvis-clean`, aldrig i `F:\New project`.
+- Slash: `/autopilot status`, `/autopilot approval`,
+  `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`,
+  `/autopilot build <uppdrag>` och `/autopilot stop`.
+- Oversiktspanelen visar Autopilot-status.
+
 ## 2026-05-12 - Background Jobs / Project Index MVP första kodslice
 
 Första strukturerade runtime-slicen för Project Index + Background Jobs är på plats:

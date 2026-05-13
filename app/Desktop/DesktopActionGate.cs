@@ -33,6 +33,7 @@ internal static class DesktopActionGate
         var foreground = GetForegroundDescription();
         return "Desktop-control: " + (Enabled ? "PÅ" : "AV") + "\n" +
                "UI-actions kräver pending approval.\n" +
+               "BroadDesktopControl: styr nastan alla normala appar; denylist blockerar admin/system/credential/password.\n" +
                "Rate limit: " + MaxActionsPerMinute + "/min, minst " + MinMillisecondsBetweenActions + " ms mellan actions.\n" +
                "Foreground: " + foreground;
     }

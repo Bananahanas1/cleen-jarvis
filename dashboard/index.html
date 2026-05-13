@@ -869,6 +869,9 @@
           <button class="monitor-action" type="button" data-command="/task">Tasks</button>
           <button class="monitor-action" type="button" data-command="/task status">Taskstatus</button>
           <button class="monitor-action" type="button" data-command="/modell provider">Modellmotor</button>
+          <button class="monitor-action" type="button" data-command="/autopilot status">Autopilot</button>
+          <button class="monitor-action" type="button" data-command="/autopilot approval">Approval</button>
+          <button class="monitor-action" type="button" data-command="/autopilot stop">Stoppa autopilot</button>
           <button class="monitor-action" type="button" data-command="/terminal visa">Terminal</button>
         </div>
         <div class="task-quick-row">
@@ -894,6 +897,10 @@
           <div class="visual-cell">
             <div class="visual-label">Modellmotor</div>
             <div id="visualModelProviderState" class="visual-value">Lokal Ollama</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Autopilot</div>
+            <div id="visualAutopilotState" class="visual-value">Nivå 1 Safe</div>
           </div>
           <div class="visual-cell">
             <div class="visual-label">Senaste task-ändring</div>
@@ -1093,6 +1100,7 @@
     const visualJobsState = document.getElementById("visualJobsState");
     const visualTasksState = document.getElementById("visualTasksState");
     const visualModelProviderState = document.getElementById("visualModelProviderState");
+    const visualAutopilotState = document.getElementById("visualAutopilotState");
     const visualTaskChangeState = document.getElementById("visualTaskChangeState");
     const taskQuickInput = document.getElementById("taskQuickInput");
     const taskQuickAddBtn = document.getElementById("taskQuickAddBtn");
@@ -1221,11 +1229,13 @@
       const jobs = String(overview.jobs || overview.Jobs || "Inga bakgrundsjobb startade.");
       const tasks = String(overview.tasks || overview.Tasks || "Inga öppna tasks.");
       const modelProvider = String(overview.modelProvider || overview.ModelProvider || "Lokal Ollama");
+      const autopilot = String(overview.autopilot || overview.Autopilot || "Nivå 1 Safe");
       const taskChange = String(overview.taskChange || overview.TaskChange || "Ingen task-ändring ännu.");
       if (visualWorkNowState) visualWorkNowState.textContent = workNow;
       if (visualJobsState) visualJobsState.textContent = jobs;
       if (visualTasksState) visualTasksState.textContent = tasks;
       if (visualModelProviderState) visualModelProviderState.textContent = modelProvider;
+      if (visualAutopilotState) visualAutopilotState.textContent = autopilot;
       if (visualTaskChangeState) visualTaskChangeState.textContent = taskChange;
       const isBusy = /running|kör|jobbar|index|audit|tänker|pending|väntar på godkännande|skriver/i.test(workNow + "\n" + jobs);
       if (miniAgentV1 && miniAgentV1.classList && typeof miniAgentV1.classList.toggle === "function") {

@@ -69,6 +69,16 @@ internal static class CommandValidatorV1
                 RequireApproval(command, "Builder-plan måste sparas via pending/godkännande.", errors);
                 break;
 
+            case CommandIntent.AutopilotSetMode:
+                RequireArgument(command, "mode", "Autopilot-läge saknas.", errors);
+                if (command.Arguments.TryGetValue("mode", out var mode) &&
+                    AgentAutopilotModeV1.TryParseLevel(mode, out var level) &&
+                    AgentAutopilotModeV1.RequiresMission(level))
+                {
+                    RequireArgument(command, "mission", "Autopilot-uppdrag saknas.", errors);
+                }
+                break;
+
             case CommandIntent.DesktopVisionRequest:
                 RequireArgument(command, "instruction", "Desktop-instruktion saknas.", errors);
                 RequireApproval(command, "Desktop vision-action måste kräva pending/godkännande.", errors);

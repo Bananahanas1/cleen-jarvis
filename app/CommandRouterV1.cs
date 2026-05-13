@@ -39,6 +39,9 @@ internal enum CommandIntent
     ModelChange,
     ModelProviderStatus,
     ModelProviderMode,
+    AutopilotStatus,
+    AutopilotSetMode,
+    AutopilotStop,
     TerminalPreview,
     TerminalConfirm,
     TerminalCancel,
@@ -180,6 +183,12 @@ internal static class CommandRouterV1
                 ToolName = "obsidian.status",
                 ShouldSendToOllama = false
             };
+        }
+
+        if (command == "autopilot" || command.StartsWith("autopilot ") ||
+            command == "agentlage" || command.StartsWith("agentlage "))
+        {
+            return ParseAutopilotSlashCommand(raw, command);
         }
 
         if (command is "minnesstatus" or "minne status")
@@ -343,6 +352,10 @@ internal static class CommandRouterV1
 
         if (command == "terminal" || command.StartsWith("terminal "))
             return ParseTerminalSlashCommand(input[1..].Trim(), command);
+
+        if (command == "autopilot" || command.StartsWith("autopilot ") ||
+            command == "agentlage" || command.StartsWith("agentlage "))
+            return ParseAutopilotSlashCommand(input[1..].Trim(), command);
 
         if (command == "desktop" || command.StartsWith("desktop "))
             return ParseDesktopSlashCommand(input[1..].Trim(), command);
@@ -603,6 +616,77 @@ internal static class CommandRouterV1
             ToolName = "slash.jobs.unknown",
             ShouldSendToOllama = false,
             ValidationErrors = { "Okänt /jobb-kommando. Exempel: /jobb, /jobb status, /jobb start, /jobb avbryt" }
+        };
+    }
+
+    private static CommandResult ParseAutopilotSlashCommand(string body, string command)
+    {
+        // AgentAutopilotModeV1 parses BrowserAutopilot, DesktopAutopilot and BuildAgent.
+        if (command is "autopilot" or "autopilot status" or "agentlage" or "agentlage status")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.AutopilotStatus,
+                Risk = CommandRisk.SafeRead,
+                ToolName = "autopilot.status",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "autopilot stop" or "autopilot av" or "agentlage stop" or "agentlage av")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.AutopilotStop,
+                Risk = CommandRisk.SafeUi,
+                ToolName = "autopilot.stop",
+                ShouldSendToOllama = false
+            };
+        }
+
+        if (command is "autopilot safe" or "agentlage safe")
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.AutopilotSetMode,
+                Risk = CommandRisk.SafeUi,
+                ToolName = "autopilot.mode",
+                Arguments =
+                {
+                    ["mode"] = AgentAutopilotLevelV1.Safe.ToString(),
+                    ["mission"] = ""
+                },
+                ShouldSendToOllama = false
+            };
+        }
+
+        var rawMode = TailWordAt(body, 1);
+        if (!AgentAutopilotModeV1.TryParseLevel(rawMode, out var level))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.Unknown,
+                ToolName = "slash.autopilot.unknown",
+                ShouldSendToOllama = false,
+                ValidationErrors =
+                {
+                    "Okänt /autopilot-kommando. Exempel: /autopilot status, /autopilot approval, /autopilot browser <uppdrag>, /autopilot desktop <uppdrag>, /autopilot build <uppdrag>, /autopilot stop"
+                }
+            };
+        }
+
+        var mission = TailAfterWordCount(body, 2);
+        return new CommandResult
+        {
+            Intent = CommandIntent.AutopilotSetMode,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "autopilot.mode",
+            Arguments =
+            {
+                ["mode"] = level.ToString(),
+                ["mission"] = mission
+            },
+            ShouldSendToOllama = false
         };
     }
 

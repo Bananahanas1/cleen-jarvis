@@ -1091,6 +1091,53 @@ var tests = new (string Name, Action Test)[]
         BuilderMode.Clear();
     }),
 
+    // === Agent Autopilot Modes V1 ===
+
+    ("/autopilot status routes locally", () =>
+    {
+        var result = CommandRouterV1.Parse("/autopilot status");
+        AssertEqual(CommandIntent.AutopilotStatus, result.Intent, "intent");
+        AssertEqual("autopilot.status", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "autopilot status must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/autopilot desktop requires scoped mission", () =>
+    {
+        var missing = CommandRouterV1.Parse("/autopilot desktop");
+        AssertEqual(CommandIntent.AutopilotSetMode, missing.Intent, "intent");
+        AssertTrue(CommandValidatorV1.Validate(missing).Any(e => e.Contains("Autopilot-uppdrag saknas")), "desktop autopilot must require mission");
+
+        var result = CommandRouterV1.Parse("/autopilot desktop organisera fonster");
+        AssertEqual(CommandIntent.AutopilotSetMode, result.Intent, "intent");
+        AssertEqual("DesktopAutopilot", result.Arguments.GetValueOrDefault("mode", ""), "mode");
+        AssertEqual("organisera fonster", result.Arguments.GetValueOrDefault("mission", ""), "mission");
+        AssertFalse(result.ShouldSendToOllama, "desktop autopilot must stay local");
+        AssertCommandValid(result);
+    }),
+
+    ("/autopilot browser and build route locally", () =>
+    {
+        var browser = CommandRouterV1.Parse("/autopilot browser hitta dokumentation");
+        AssertEqual(CommandIntent.AutopilotSetMode, browser.Intent, "browser intent");
+        AssertEqual("BrowserAutopilot", browser.Arguments.GetValueOrDefault("mode", ""), "browser mode");
+        AssertCommandValid(browser);
+
+        var build = CommandRouterV1.Parse("/autopilot build fixa tester");
+        AssertEqual(CommandIntent.AutopilotSetMode, build.Intent, "build intent");
+        AssertEqual("BuildAgent", build.Arguments.GetValueOrDefault("mode", ""), "build mode");
+        AssertCommandValid(build);
+    }),
+
+    ("/autopilot stop routes locally", () =>
+    {
+        var result = CommandRouterV1.Parse("/autopilot stop");
+        AssertEqual(CommandIntent.AutopilotStop, result.Intent, "intent");
+        AssertEqual("autopilot.stop", result.ToolName, "tool");
+        AssertFalse(result.ShouldSendToOllama, "autopilot stop must stay local");
+        AssertCommandValid(result);
+    }),
+
     // === D1/D3/D4: UI-TARS desktop-control ===
 
     ("/desktop status routes locally", () =>

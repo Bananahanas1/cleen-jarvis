@@ -56,6 +56,15 @@ weather-animationer och andra stora future-features.
 - [x] Panel-first monitor i Översikt: livearbete, bakgrundsjobb, tasks, pending, terminal och mini-agent.
 - [x] Snabb task-input i Översikt så tasks kan skapas visuellt utan att minnas `/task add`.
 
+## Agent Autopilot Modes V1 2026-05-13
+
+- [x] Skapa central `AgentAutopilotModeV1` med Safe, Approval, Browser Autopilot, Desktop Autopilot och Build Agent.
+- [x] Gora Desktop Autopilot till BroadDesktopControl for nastan alla normala appar, med denylist och kill-switch i stallet for liten whitelist.
+- [x] Lagg till `/autopilot status`, `/autopilot approval`, `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`, `/autopilot build <uppdrag>` och `/autopilot stop`.
+- [x] Visa Autopilot i Oversiktspanelen.
+- [ ] Bygg riktig Browser Autopilot-runner som kan lasa/klicka inom godkant scope och stoppa vid login/betalning/secrets.
+- [ ] Bygg Desktop Autopilot-runner som kan kora flera steg under samma uppdrag, fortfarande med kill-switch och denylist.
+
 ## Hybrid AI router 2026-05-13
 
 - [x] Skapa `ContextPackV1` sa Jarvis sjalv ager arbetskontexten.
