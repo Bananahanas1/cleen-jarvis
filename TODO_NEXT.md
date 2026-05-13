@@ -83,6 +83,11 @@ weather-animationer och andra stora future-features.
 - [x] Skapa `docs/FULL_SYSTEM_TEST.md` med manuell Jarvis-checklista.
 - [x] Bevaka smoke-runnern med `tests/full-smoke-runner.test.js`.
 
+## Brain graph controls 2026-05-13
+
+- [x] Lagg till sliders i Brain Graph for Center force, Repel force och Link force.
+- [x] Koppla sliders direkt till 3D force-layouten sa grafen kan spridas live.
+
 ## Produktroll
 
 - `cleen-jarvis` är huvudprodukt.

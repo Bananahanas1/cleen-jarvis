@@ -1,5 +1,22 @@
 # SESSION_LOG.md
 
+## 2026-05-13 - Brain Graph Force Sliders
+
+Andringar:
+
+- Lade till tre sliders i Brain Graph: Center, Repel och Link.
+- Sliders styr 3D-force-layouten live och startar om settling nar de dras.
+- Ny regression: `tests/brain-force-controls.test.js`.
+
+Verifiering:
+
+- TDD red: `tests/brain-force-controls.test.js` failade forst pa saknade sliders.
+- Green: riktat test passerade efter implementation.
+- Full smoke-scriptet passerade: 41 Node-testfiler, `CommandRouterV1.Tests`,
+  `dotnet build` och Markdown-langdkoll.
+- Logg: `data/test-runs/20260513-172616/summary.txt`.
+- Publish/start klart. Observerad process: `Jarvis.exe` PID 40836.
+
 ## 2026-05-13 - Full System Smoke Test
 
 Andringar:
