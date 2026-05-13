@@ -906,7 +906,7 @@ public sealed class JarvisForm : Form
 
         if (routedV1.Intent == CommandIntent.AutopilotSetMode)
         {
-            await AddAssistantMessage(AgentAutopilotSetTool(
+            await AddAssistantMessage(await AgentAutopilotSetToolAsync(
                 routedV1.Arguments.GetValueOrDefault("mode", ""),
                 routedV1.Arguments.GetValueOrDefault("mission", "")));
             await SendJarvisOverviewV1Async(showPanel: false);
@@ -1730,7 +1730,7 @@ public sealed class JarvisForm : Form
             return AgentAutopilotStatusTool();
 
         if (routedV1.Intent == CommandIntent.AutopilotSetMode)
-            return AgentAutopilotSetTool(
+            return await AgentAutopilotSetToolAsync(
                 routedV1.Arguments.GetValueOrDefault("mode", ""),
                 routedV1.Arguments.GetValueOrDefault("mission", ""));
 
@@ -3922,7 +3922,7 @@ public sealed class JarvisForm : Form
                "Desktop-policy: BroadDesktopControl för nästan alla normala appar, men denylist och pending approval gäller.";
     }
 
-    private static string AgentAutopilotSetTool(string mode, string mission)
+    private static async Task<string> AgentAutopilotSetToolAsync(string mode, string mission)
     {
         if (!AgentAutopilotModeV1.TryParseLevel(mode, out var level))
             return "Okänt autopilot-läge. Skriv /autopilot status.";
@@ -3942,7 +3942,14 @@ public sealed class JarvisForm : Form
             _ = DesktopActionGate.Enable();
 
         RecordWorkMonitorV1("Autopilot", AgentAutopilotModeV1.Label(level) + (string.IsNullOrWhiteSpace(mission) ? "" : " | " + mission));
-        return message + "\n\n" + AgentAutopilotModeV1.Status();
+        var runnerResult = "";
+        if (level == AgentAutopilotLevelV1.BrowserAutopilot)
+        {
+            RecordWorkMonitorV1("Browser Autopilot", "Startar browser-runner: " + mission);
+            runnerResult = "\n\n" + await BrowserAutopilotRunnerV1.StartAsync(mission);
+        }
+
+        return message + runnerResult + "\n\n" + AgentAutopilotModeV1.Status();
     }
 
     private static string AgentAutopilotStopTool()

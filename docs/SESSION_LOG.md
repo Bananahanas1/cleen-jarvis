@@ -2,19 +2,16 @@
 
 ## 2026-05-13 - Agent Autopilot Modes V1
 
-Utgangspunkt: anvandaren fragade om femniva-modellen var klar och bad att den
-skulle goras klar. Anvandaren justerade sedan desktop-kravet: inte liten
-whitelist, utan nastan allt normalt app-arbete.
+Utgangspunkt: femniva-modellen skulle goras konkret. Desktop-kravet andrades
+till nastan allt normalt app-arbete, inte liten whitelist.
 
 Andringar:
 
 - Skapade `app/Agents/AgentAutopilotModeV1.cs`.
-- Lade till nivaerna Safe, Approval, Browser Autopilot, Desktop Autopilot och
-  Build Agent.
+- Lade till Safe, Approval, Browser Autopilot, Desktop Autopilot och Build Agent.
 - Desktop Autopilot ar BroadDesktopControl for nastan alla normala appar, men
   med denylist, scope och Ctrl+Shift+Alt+J kill-switch.
-- Browser Autopilot haller OperaGX/Opera som synlig browser och isolerad
-  Chromium endast som intern automation engine.
+- Browser Autopilot haller OperaGX/Opera synligt och isolerad Chromium internt.
 - Lade till `/autopilot status`, `/autopilot approval`,
   `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`,
   `/autopilot build <uppdrag>` och `/autopilot stop`.
@@ -28,41 +25,50 @@ Verifiering:
 - `CommandRouterV1.Tests` passerade med autopilot-routerfall.
 - `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
   och kand `MSB3277`.
+- Publish/start klart. Observerad process: `Jarvis.exe` PID 24964.
 - Publicerade/startade om. Observerad process: `Jarvis.exe` PID 15628,
   path `F:\Jarvis-clean\dist\Jarvis.exe`.
 
+## 2026-05-13 - Browser Autopilot Runner V1
+
+Andringar:
+
+- Skapade `app/Agents/BrowserAutopilotRunnerV1.cs`.
+- `/autopilot browser <uppdrag>` kan nu soka/oppna/lasa URL via Opera-policy.
+- Blockar login, password/secrets, betalning, bankid, skicka och publicering.
+- V1 klickar/skriver inte i sidor an.
+
+Verifiering:
+
+- TDD red: `tests/browser-autopilot-runner.test.js` failade forst pa 10 delar.
+- Green: browser-runner-testet passerade.
+- Full node-regression passerade: 38 tester.
+- `CommandRouterV1.Tests` passerade.
+- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
+  och kand `MSB3277`.
+
 ## 2026-05-13 - HybridModelRouterV1 + ContextPackV1
 
-Utgangspunkt: anvandaren vill att sprakmodeller ska vara de man bollar ideer
-med och som hjalper Jarvis forsta naturligt sprak, men utan att modellerna far
-fri skriv-, terminal- eller desktopmakt.
+Utgangspunkt: LLM ska hjalpa Jarvis forsta och planera, men inte fa direkt
+skriv-, terminal- eller desktopmakt.
 
 Andringar:
 
 - Skapade `app/Brain/ContextPackV1.cs`.
 - Skapade `app/Brain/HybridModelRouterV1.cs`.
 - `Program.cs` har nu hybrid chat fallback efter lokal router och safe tools.
-- Online providers kan anvandas via env vars: `GROQ_API_KEY`, `GEMINI_API_KEY`
-  och `GITHUB_TOKEN`.
+- Online providers via env vars: `GROQ_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`.
 - `/modell provider` visar backendstatus.
 - `/modell lage lokal` och `/modell lage auto` styr lokal/auto-free.
 - Oversiktspanelen visar Modellmotor.
 
-Sakerhetslinje:
-
-- LLM ar radgivare/tolk, inte aktor.
-- Jarvis ager kontext, routing, validation, pending approval och tools.
-- Secrets sparas inte i repo eller status.
+Sakerhet: LLM ar radgivare/tolk; Jarvis ager routing, approval och tools.
 
 Verifiering:
 
-- TDD red: `tests/hybrid-model-router-context.test.js` failade forst pa saknade
-  filer och kopplingar.
-- Green: `node F:\Jarvis-clean\tests\hybrid-model-router-context.test.js`
-  passerade.
+- TDD red/green: `tests/hybrid-model-router-context.test.js`.
 - Full node-regression passerade: 36 tester.
-- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj`
-  passerade.
+- `CommandRouterV1.Tests` passerade.
 - Markdown-langdkontroll passerade: alla `.md` under 14 000 tecken.
 - `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
   och kand `MSB3277`.

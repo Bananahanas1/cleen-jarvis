@@ -62,7 +62,8 @@ weather-animationer och andra stora future-features.
 - [x] Gora Desktop Autopilot till BroadDesktopControl for nastan alla normala appar, med denylist och kill-switch i stallet for liten whitelist.
 - [x] Lagg till `/autopilot status`, `/autopilot approval`, `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`, `/autopilot build <uppdrag>` och `/autopilot stop`.
 - [x] Visa Autopilot i Oversiktspanelen.
-- [ ] Bygg riktig Browser Autopilot-runner som kan lasa/klicka inom godkant scope och stoppa vid login/betalning/secrets.
+- [x] Browser Autopilot Runner V1: oppna/sok/lasa URL via Opera-policy och blocka login/betalning/secrets/skicka/publicera.
+- [ ] Lagg till kontrollerad click/type for Browser Autopilot efter starkare sida/form-riskklassning.
 - [ ] Bygg Desktop Autopilot-runner som kan kora flera steg under samma uppdrag, fortfarande med kill-switch och denylist.
 
 ## Hybrid AI router 2026-05-13
