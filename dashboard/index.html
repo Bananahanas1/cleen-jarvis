@@ -2108,12 +2108,18 @@ Skärmvision kräver UI-TARS.</div>
         _kartaPoiCurrent = null;
       });
 
-      // Auto-uppdatera väder när användaren panorerar/zoomar (debounced).
+      // Auto-uppdatera väder + båt-bbox när användaren panorerar/zoomar (debounced).
       let weatherMoveTimer = null;
+      let shipMoveTimer = null;
       _kartaMap.on("moveend", function() {
-        if (!_kartaWeatherOn) return;
-        if (weatherMoveTimer) clearTimeout(weatherMoveTimer);
-        weatherMoveTimer = setTimeout(_kartaFetchWeatherForCenter, 800);
+        if (_kartaWeatherOn) {
+          if (weatherMoveTimer) clearTimeout(weatherMoveTimer);
+          weatherMoveTimer = setTimeout(_kartaFetchWeatherForCenter, 800);
+        }
+        if (_kartaShipsOn) {
+          if (shipMoveTimer) clearTimeout(shipMoveTimer);
+          shipMoveTimer = setTimeout(_kartaMaybeResendShipBoundsV1, 1000);
+        }
       });
 
       // Be om AIS key vid init
@@ -2403,6 +2409,7 @@ Skärmvision kräver UI-TARS.</div>
     };
 
     let _kartaShipFirstSeen = false;
+    let _kartaShipAnyMessageSeen = false;
     function _kartaToggleShips() {
       if (!_kartaAisKey) {
         window.jarvisAddMessage && window.jarvisAddMessage("assistant",
@@ -2413,30 +2420,19 @@ Skärmvision kräver UI-TARS.</div>
       _kartaShipsOn = !_kartaShipsOn;
       if (_kartaShipsOn) {
         _kartaShipFirstSeen = false;
+        _kartaShipAnyMessageSeen = false;
         _kartaConnectAisStream();
-        // Re-skicka bounding box när användaren panorerar/zoomar — annars ser man inga båtar
-        // efter man flyttat kartan, eftersom AISStream-subscription är "frusen" på initial bounds.
-        if (!_kartaShipBoundsTimer) {
-          _kartaShipBoundsTimer = setInterval(function() {
-            if (_kartaShipsOn && _kartaShipWebSocket && _kartaShipWebSocket.readyState === 1) {
-              _kartaResendShipBounds();
-            }
-          }, 5000);
-        }
         window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-          "Live-båtar PÅ (AISStream WebSocket). Båtar visas där shipping-lanes finns — zooma in mot hav/hamn.");
+          "Live-båtar PÅ (AISStream). Subscription skickas — zooma in mot Öresund/Östersjön för flest båtar. Subscription uppdateras automatiskt när du panorerar.");
       } else {
         if (_kartaShipWebSocket) { try { _kartaShipWebSocket.close(); } catch (_) {} }
         _kartaShipWebSocket = null;
-        if (_kartaShipBoundsTimer) { clearInterval(_kartaShipBoundsTimer); _kartaShipBoundsTimer = null; }
         Object.values(_kartaShipMarkers).forEach(function(m) { try { m.remove(); } catch (_) {} });
         _kartaShipMarkers = {};
         window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-båtar AV.");
       }
       _kartaSyncLayerButtonsV1();
     }
-
-    let _kartaShipBoundsTimer = null;
 
     function _kartaCurrentBoundingBoxesV1() {
       // Om kartan är väldigt utzoomad (zoom < 3 = nästan global vy) — använd hela världen så
@@ -2481,13 +2477,21 @@ Skärmvision kräver UI-TARS.</div>
           FilterMessageTypes: ["PositionReport"]
         };
         _kartaShipWebSocket.send(JSON.stringify(sub));
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "AISStream WebSocket öppen, subscription skickad — väntar på data...");
       };
 
       _kartaShipWebSocket.onmessage = function(event) {
         try {
           const msg = JSON.parse(event.data);
+          // Logga FÖRSTA meddelandet oavsett typ — bekräftar att stream lever.
+          if (!_kartaShipAnyMessageSeen) {
+            _kartaShipAnyMessageSeen = true;
+            window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+              "AISStream svarar — första meddelande mottaget (typ: " + (msg.MessageType || "okänd") + ").");
+          }
           if (msg.MessageType !== "PositionReport") {
-            // AISStream skickar även "Error"-meddelanden om auth/quota — visa dem i chatten.
+            // AISStream skickar även "Error"-meddelanden om auth/quota.
             if (msg.error || msg.Error) {
               window.jarvisAddMessage && window.jarvisAddMessage("assistant",
                 "AISStream-fel: " + String(msg.error || msg.Error));
@@ -2534,15 +2538,24 @@ Skärmvision kräver UI-TARS.</div>
         } catch (_) {}
       };
 
-      _kartaShipWebSocket.onerror = function() {
-        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "AISStream WebSocket-fel.");
+      _kartaShipWebSocket.onerror = function(e) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "AISStream WebSocket-fel — kontrollera att AISSTREAM_API_KEY är giltig i Inställningar.");
       };
-      _kartaShipWebSocket.onclose = function() {
+      _kartaShipWebSocket.onclose = function(e) {
         if (_kartaShipsOn) {
-          // Reconnect efter 5 sek
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "AISStream-anslutning stängd (kod " + e.code + "). Försöker återansluta om 5s...");
           setTimeout(function() { if (_kartaShipsOn) _kartaConnectAisStream(); }, 5000);
         }
       };
+    }
+
+    // Re-send bbox när användaren panorerar/zoomar (debounced).
+    function _kartaMaybeResendShipBoundsV1() {
+      if (!_kartaShipsOn) return;
+      if (!_kartaShipWebSocket || _kartaShipWebSocket.readyState !== 1) return;
+      _kartaResendShipBounds();
     }
 
     let _kartaSatelliteOn = false;

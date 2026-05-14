@@ -45,7 +45,7 @@ check("Ships announce first-seen message",
   dashboard.includes("första båten mottagen"));
 check("Ships resend bbox on map move",
   dashboard.includes("_kartaResendShipBounds") &&
-  dashboard.includes("_kartaShipBoundsTimer"));
+  dashboard.includes("_kartaMaybeResendShipBoundsV1"));
 
 // --- Aktiva lager-indikatorer ---
 check("All layer-toggles sync .is-active class",

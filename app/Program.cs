@@ -7566,6 +7566,11 @@ public sealed class JarvisForm : Form
             $"window.jarvisKartaReverseGeocodeResultV1 && window.jarvisKartaReverseGeocodeResultV1({payload});");
     }
 
+    // OpenSky OAuth2-token cachas i 25 minuter (kort under tokens 30 min TTL).
+    private static string? _openSkyAccessToken;
+    private static DateTime _openSkyTokenExpiresAt = DateTime.MinValue;
+    private static readonly SemaphoreSlim _openSkyTokenLock = new(1, 1);
+
     private async Task HandleKartaGetFlightsAsync(JsonElement root)
     {
         var minLat = root.TryGetProperty("minLat", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetDouble() : -90;
@@ -7575,16 +7580,22 @@ public sealed class JarvisForm : Form
 
         try
         {
-            // OpenSky Network - gratis, anonym användning OK med 10 sek interval / 400 calls/dag
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var url = "https://opensky-network.org/api/states/all?lamin=" + minLat.ToString(inv)
                 + "&lomin=" + minLon.ToString(inv) + "&lamax=" + maxLat.ToString(inv) + "&lomax=" + maxLon.ToString(inv);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+
+            // Autentisering: OAuth2 (rekommenderat) → fallback Basic Auth → anonymt
+            await AttachOpenSkyAuthAsync(req);
+
             using var resp = await Http.SendAsync(req);
             if (!resp.IsSuccessStatusCode)
             {
-                await SendFlightsResultAsync(null, "HTTP " + (int)resp.StatusCode);
+                var hint = (int)resp.StatusCode == 429
+                    ? " (rate-limit — sätt OPENSKY_CLIENT_ID/SECRET eller USERNAME/PASSWORD i Inställningar för 4000 credits/dag)"
+                    : "";
+                await SendFlightsResultAsync(null, "HTTP " + (int)resp.StatusCode + hint);
                 return;
             }
             var json = await resp.Content.ReadAsStringAsync();
@@ -7593,6 +7604,68 @@ public sealed class JarvisForm : Form
         catch (Exception ex)
         {
             await SendFlightsResultAsync(null, ex.Message);
+        }
+    }
+
+    private async Task AttachOpenSkyAuthAsync(HttpRequestMessage req)
+    {
+        // 1. OAuth2 client_credentials (rekommenderat av OpenSky 2024+)
+        if (EnvVaultV1.TryGetValue(ProjectRoot, "OPENSKY_CLIENT_ID", out var clientId) &&
+            EnvVaultV1.TryGetValue(ProjectRoot, "OPENSKY_CLIENT_SECRET", out var clientSecret) &&
+            !string.IsNullOrWhiteSpace(clientId) && !string.IsNullOrWhiteSpace(clientSecret))
+        {
+            var token = await GetOpenSkyAccessTokenAsync(clientId, clientSecret);
+            if (!string.IsNullOrEmpty(token))
+            {
+                req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                return;
+            }
+        }
+
+        // 2. Basic auth (legacy)
+        if (EnvVaultV1.TryGetValue(ProjectRoot, "OPENSKY_USERNAME", out var user) &&
+            EnvVaultV1.TryGetValue(ProjectRoot, "OPENSKY_PASSWORD", out var pass) &&
+            !string.IsNullOrWhiteSpace(user) && !string.IsNullOrWhiteSpace(pass))
+        {
+            var raw = user + ":" + pass;
+            var b64 = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(raw));
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", b64);
+        }
+        // annars → anonymt (100 credits/dag, ~25 min användning)
+    }
+
+    private async Task<string> GetOpenSkyAccessTokenAsync(string clientId, string clientSecret)
+    {
+        await _openSkyTokenLock.WaitAsync();
+        try
+        {
+            if (_openSkyAccessToken is not null && DateTime.UtcNow < _openSkyTokenExpiresAt)
+                return _openSkyAccessToken;
+
+            var form = new FormUrlEncodedContent(new[]
+            {
+                new KeyValuePair<string, string>("grant_type", "client_credentials"),
+                new KeyValuePair<string, string>("client_id", clientId),
+                new KeyValuePair<string, string>("client_secret", clientSecret)
+            });
+            using var resp = await Http.PostAsync(
+                "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
+                form);
+            if (!resp.IsSuccessStatusCode) return "";
+            using var doc = JsonDocument.Parse(await resp.Content.ReadAsStringAsync());
+            var token = doc.RootElement.TryGetProperty("access_token", out var t) ? t.GetString() ?? "" : "";
+            var ttl = doc.RootElement.TryGetProperty("expires_in", out var e) ? e.GetInt32() : 1800;
+            _openSkyAccessToken = token;
+            _openSkyTokenExpiresAt = DateTime.UtcNow.AddSeconds(Math.Max(60, ttl - 60));
+            return token;
+        }
+        catch
+        {
+            return "";
+        }
+        finally
+        {
+            _openSkyTokenLock.Release();
         }
     }
 
