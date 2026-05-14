@@ -68,6 +68,7 @@ weather-animationer och andra stora future-features.
 - [x] Desktop Autopilot auto-continue UI: Oversikt visar Fortsatt Autopilot nar desktop-uppdrag kan fortsatta efter godkand action.
 - [x] Desktop Autopilot local app fallback: enkla uppdrag som `oppna notepad` gar via SafeAppLauncher innan UI-TARS kravs.
 - [x] Oversikt command panels: snabbknapparna ar grupperade i visuella paneler med kort forklaring.
+- [x] UI-TARS package manager fallback: `/desktop tars start` letar efter pnpm och faller tillbaka till corepack pnpm innan den ger installationsrad.
 
 ## Agent VM Sandbox riktning 2026-05-13
 

@@ -12,6 +12,7 @@ internal sealed class UiTarsBridge
     private const string UiTarsRoot = @"F:\UI-TARS-desktop-main";
     private const string ConfigPath = @"F:\Jarvis-clean\config\uitars.json";
     private Process? _process;
+    private sealed record UiTarsPackageManagerV1(string FileName, string ArgumentsPrefix, string DisplayName);
 
     public bool IsRunning => _process is not null && !_process.HasExited;
 
@@ -26,9 +27,17 @@ internal sealed class UiTarsBridge
                "- Local source: " + (IsAvailable() ? "hittad" : "saknas") + " (" + UiTarsRoot + ")\n" +
                "- UI-TARS Desktop process: " + (IsRunning ? "kör" : "stoppad") + "\n" +
                "- Vision API config: " + (config is null ? "saknas" : "finns") + "\n" +
+               "- Package manager: " + (ResolveUiTarsPackageManagerV1()?.DisplayName ?? "saknas (pnpm/corepack)") + "\n" +
                "- Desktop-control: " + (DesktopActionGate.Enabled ? "PÅ" : "AV") + "\n" +
                "- Action space: click, double_click, right_click, drag, hover, type, hotkey, scroll, finished\n" +
                "- Config: env JARVIS_UITARS_BASE_URL/JARVIS_UITARS_API_KEY/JARVIS_UITARS_MODEL eller config\\uitars.json";
+    }
+
+    public string VisionConfigStatusLineV1()
+    {
+        var configured = LoadConfig() is not null;
+        return "Skärmvision: " + (configured ? "redo (UI-TARS config finns)" : "saknas UI-TARS config") + "\n" +
+               "UI-TARS source: " + (IsAvailable() ? "hittad" : "saknas") + " | process: " + (IsRunning ? "kör" : "stoppad");
     }
 
     public async Task<string> StartAsync()
@@ -39,12 +48,21 @@ internal sealed class UiTarsBridge
         if (IsRunning)
             return "UI-TARS Desktop verkar redan köras (PID " + _process!.Id + ").";
 
+        var packageManager = ResolveUiTarsPackageManagerV1();
+        if (packageManager is null)
+            return "Kunde inte starta UI-TARS Desktop: varken pnpm eller corepack hittades.\n" +
+                   "Testa i PowerShell:\n" +
+                   "corepack enable\n" +
+                   "corepack prepare pnpm@latest --activate\n" +
+                   "Alternativt: npm install -g pnpm\n" +
+                   "Starta sedan om Jarvis så PATH uppdateras.";
+
         try
         {
             var psi = new ProcessStartInfo
             {
-                FileName = "pnpm.cmd",
-                Arguments = "--dir \"" + UiTarsRoot + "\" --filter ui-tars-desktop start",
+                FileName = packageManager.FileName,
+                Arguments = packageManager.ArgumentsPrefix + "--dir \"" + UiTarsRoot + "\" --filter ui-tars-desktop start",
                 WorkingDirectory = UiTarsRoot,
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -57,11 +75,70 @@ internal sealed class UiTarsBridge
                 return "Kunde inte starta UI-TARS Desktop-processen.";
 
             await Task.Delay(1500);
-            return "UI-TARS Desktop startad som subprocess (PID " + _process.Id + "). Om dependencies saknas, kör pnpm install i UI-TARS-projektet manuellt.";
+            return "UI-TARS Desktop startad via " + packageManager.DisplayName + " som subprocess (PID " + _process.Id + "). Om dependencies saknas, kör pnpm install i UI-TARS-projektet manuellt.";
         }
         catch (Exception ex)
         {
-            return "Kunde inte starta UI-TARS Desktop. Kontrollera att pnpm finns på PATH. Fel: " + ex.Message;
+            return "Kunde inte starta UI-TARS Desktop via " + packageManager.DisplayName + ". Fel: " + ex.Message + "\n" +
+                   "Om felet gäller pnpm: kör `corepack enable` eller `npm install -g pnpm`, starta om Jarvis och försök igen.";
+        }
+    }
+
+    private static UiTarsPackageManagerV1? ResolveUiTarsPackageManagerV1()
+    {
+        var pnpm = FindCommandPathV1("pnpm.cmd", "pnpm.exe", "pnpm");
+        if (!string.IsNullOrWhiteSpace(pnpm))
+            return new UiTarsPackageManagerV1(FileName: pnpm, ArgumentsPrefix: "", DisplayName: "pnpm (" + pnpm + ")");
+
+        var corepack = FindCommandPathV1("corepack.cmd", "corepack.exe", "corepack");
+        if (!string.IsNullOrWhiteSpace(corepack))
+            return new UiTarsPackageManagerV1(FileName: corepack, ArgumentsPrefix: "pnpm ", DisplayName: "corepack pnpm (" + corepack + ")");
+
+        return null;
+    }
+
+    private static string? FindCommandPathV1(params string[] names)
+    {
+        foreach (var directory in CommandSearchDirectoriesV1())
+        {
+            foreach (var name in names)
+            {
+                try
+                {
+                    var path = Path.Combine(directory, name);
+                    if (File.Exists(path))
+                        return path;
+                }
+                catch
+                {
+                    // Ignore malformed PATH entries.
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> CommandSearchDirectoriesV1()
+    {
+        foreach (var path in new[]
+        {
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "npm"),
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "pnpm"),
+            Path.Combine(Environment.GetEnvironmentVariable("ProgramFiles") ?? @"C:\Program Files", "nodejs"),
+            Path.Combine(Environment.GetEnvironmentVariable("ProgramFiles(x86)") ?? @"C:\Program Files (x86)", "nodejs")
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(path))
+                yield return path;
+        }
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        foreach (var path in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var clean = path.Trim().Trim('"');
+            if (!string.IsNullOrWhiteSpace(clean))
+                yield return clean;
         }
     }
 

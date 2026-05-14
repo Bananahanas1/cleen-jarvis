@@ -1,5 +1,25 @@
 # SESSION_LOG.md
 
+## 2026-05-14 - UI-TARS package manager fallback
+
+Andringar:
+
+- `/desktop tars start` letar nu efter `pnpm` och faller tillbaka till
+  `corepack pnpm` nar pnpm saknas i PATH.
+- Felmeddelandet ger konkreta kommandon: `corepack enable`,
+  `corepack prepare pnpm@latest --activate` eller `npm install -g pnpm`.
+- Ny regression: `tests/ui-tars-package-manager.test.js`.
+
+Verifiering:
+
+- TDD red/green: package-manager-testet.
+- `dotnet build` passerade med kand `MSB3277`.
+- Full smoke passerade: 48 Node-testfiler, `CommandRouterV1.Tests`,
+  `dotnet build` och Markdown-langdkoll. Logg:
+  `data/test-runs/20260514-023034/summary.txt`.
+- Publish/start klart med kand `MSB3277`-varning. Observerad process:
+  `Jarvis.exe` PID 43352.
+
 ## 2026-05-13 - Desktop Autopilot Local Fallback + Oversikt Panels
 
 Andringar:
