@@ -7578,6 +7578,136 @@ public sealed class JarvisForm : Form
         var minLon = root.TryGetProperty("minLon", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetDouble() : -180;
         var maxLon = root.TryGetProperty("maxLon", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 180;
 
+        // 1. Primär källa: adsb.fi (HELT gratis, ingen auth, ingen rate-limit dokumenterad)
+        var (adsbJson, adsbErr) = await TryFetchAdsbFiAsync(minLat, maxLat, minLon, maxLon);
+        if (adsbJson is not null)
+        {
+            await SendFlightsResultAsync(adsbJson, null);
+            return;
+        }
+
+        // 2. Fallback: OpenSky (om creds finns → 4000 cred/dag, annars anonymt 100/dag)
+        var (openSkyJson, openSkyErr) = await TryFetchOpenSkyAsync(minLat, maxLat, minLon, maxLon);
+        if (openSkyJson is not null)
+        {
+            await SendFlightsResultAsync(openSkyJson, null);
+            return;
+        }
+
+        await SendFlightsResultAsync(null, "Både adsb.fi och OpenSky failade. adsb.fi: " + (adsbErr ?? "?") + ". OpenSky: " + (openSkyErr ?? "?"));
+    }
+
+    // airplanes.live — community ADS-B aggregator. HELT gratis, ingen auth, ingen rate-limit.
+    // Endpoint: /v2/point/{lat}/{lon}/{NM} → returnerar { ac: [...] }
+    // Vi konverterar till OpenSky-state-format så JS-koden inte behöver ändras.
+    private async Task<(string? json, string? err)> TryFetchAdsbFiAsync(double minLat, double maxLat, double minLon, double maxLon)
+    {
+        try
+        {
+            var centerLat = (minLat + maxLat) / 2.0;
+            var centerLon = (minLon + maxLon) / 2.0;
+            var latNm = (maxLat - minLat) / 2.0 * 60;
+            var lonNm = (maxLon - minLon) / 2.0 * 60 * Math.Cos(centerLat * Math.PI / 180.0);
+            var dist = Math.Sqrt(latNm * latNm + lonNm * lonNm);
+            dist = Math.Min(250, Math.Max(50, dist));
+
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var url = "https://api.airplanes.live/v2/point/" + centerLat.ToString("F4", inv)
+                + "/" + centerLon.ToString("F4", inv)
+                + "/" + ((int)dist).ToString(inv);
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            req.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
+
+            using var resp = await Http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+                return (null, "HTTP " + (int)resp.StatusCode);
+            var body = await resp.Content.ReadAsStringAsync();
+            var openSkyFormat = ConvertAdsbFiToOpenSkyFormat(body);
+            return (openSkyFormat, null);
+        }
+        catch (Exception ex)
+        {
+            return (null, ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    private static string ConvertAdsbFiToOpenSkyFormat(string adsbBody)
+    {
+        // Konverterar adsb.fi { ac: [ {hex, flight, lat, lon, alt_baro, gs, track, ...} ] }
+        // till OpenSky { states: [ [icao24, callsign, country, ..., lon, lat, baro_alt, on_ground, vel, track, ...] ] }
+        var states = new List<object?[]>();
+        try
+        {
+            using var doc = JsonDocument.Parse(adsbBody);
+            if (!doc.RootElement.TryGetProperty("ac", out var ac) || ac.ValueKind != JsonValueKind.Array)
+                return JsonSerializer.Serialize(new { states = new object[0] });
+
+            foreach (var p in ac.EnumerateArray())
+            {
+                var hex = TryStr(p, "hex");
+                var flight = TryStr(p, "flight").Trim();
+                var lat = TryDouble(p, "lat");
+                var lon = TryDouble(p, "lon");
+                if (lat is null || lon is null) continue;
+
+                var altRaw = p.TryGetProperty("alt_baro", out var aEl) ? aEl : default;
+                double? baroAltMeters = null;
+                bool onGround = false;
+                if (altRaw.ValueKind == JsonValueKind.Number)
+                    baroAltMeters = altRaw.GetDouble() * 0.3048; // ft → m
+                else if (altRaw.ValueKind == JsonValueKind.String && altRaw.GetString() == "ground")
+                    onGround = true;
+
+                var gs = TryDouble(p, "gs"); // knots
+                double? velocity = gs is null ? null : gs.Value * 0.514444;
+                var track = TryDouble(p, "track");
+                var category = TryStr(p, "category"); // använder ej i UI
+
+                states.Add(new object?[]
+                {
+                    hex,            // [0] icao24
+                    flight,         // [1] callsign
+                    "",             // [2] origin_country (adsb.fi ger ej direkt)
+                    null,           // [3] time_position
+                    null,           // [4] last_contact
+                    lon,            // [5] longitude
+                    lat,            // [6] latitude
+                    baroAltMeters,  // [7] baro_altitude (m)
+                    onGround,       // [8] on_ground
+                    velocity,       // [9] velocity (m/s)
+                    track ?? 0,     // [10] true_track
+                    null,           // [11] vertical_rate
+                    null,           // [12] sensors
+                    null,           // [13] geo_altitude
+                    null,           // [14] squawk
+                    false,          // [15] spi
+                    0               // [16] position_source
+                });
+            }
+        }
+        catch
+        {
+            // tom array vid parse-fel
+        }
+        return JsonSerializer.Serialize(new { states });
+    }
+
+    private static string TryStr(JsonElement el, string prop)
+    {
+        return el.TryGetProperty(prop, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
+    }
+
+    private static double? TryDouble(JsonElement el, string prop)
+    {
+        if (!el.TryGetProperty(prop, out var v)) return null;
+        if (v.ValueKind == JsonValueKind.Number) return v.GetDouble();
+        return null;
+    }
+
+    private async Task<(string? json, string? err)> TryFetchOpenSkyAsync(double minLat, double maxLat, double minLon, double maxLon)
+    {
         try
         {
             var inv = System.Globalization.CultureInfo.InvariantCulture;
@@ -7585,25 +7715,15 @@ public sealed class JarvisForm : Form
                 + "&lomin=" + minLon.ToString(inv) + "&lamax=" + maxLat.ToString(inv) + "&lomax=" + maxLon.ToString(inv);
             using var req = new HttpRequestMessage(HttpMethod.Get, url);
             req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
-
-            // Autentisering: OAuth2 (rekommenderat) → fallback Basic Auth → anonymt
             await AttachOpenSkyAuthAsync(req);
-
             using var resp = await Http.SendAsync(req);
             if (!resp.IsSuccessStatusCode)
-            {
-                var hint = (int)resp.StatusCode == 429
-                    ? " (rate-limit — sätt OPENSKY_CLIENT_ID/SECRET eller USERNAME/PASSWORD i Inställningar för 4000 credits/dag)"
-                    : "";
-                await SendFlightsResultAsync(null, "HTTP " + (int)resp.StatusCode + hint);
-                return;
-            }
-            var json = await resp.Content.ReadAsStringAsync();
-            await SendFlightsResultAsync(json, null);
+                return (null, "HTTP " + (int)resp.StatusCode);
+            return (await resp.Content.ReadAsStringAsync(), null);
         }
         catch (Exception ex)
         {
-            await SendFlightsResultAsync(null, ex.Message);
+            return (null, ex.Message);
         }
     }
 

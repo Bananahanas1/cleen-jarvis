@@ -2297,13 +2297,12 @@ Skärmvision kräver UI-TARS.</div>
       _kartaFlightsOn = !_kartaFlightsOn;
       if (_kartaFlightsOn) {
         _kartaFlightConsecutiveErrors = 0;
+        _kartaFlightLastReportedCount = -1;
         _kartaFetchFlights();
-        // OpenSky anonymous: 100 credits/dag totalt. Bbox <500°² = 1 credit, global = 4 credits.
-        // 15s = 240 calls/h → slut på 25-100 min beroende på bbox. När rate-limit hits backar vi
-        // upp till 60s automatiskt och visar varning i chat.
-        _kartaFlightTimer = setInterval(_kartaFetchFlights, 15000);
+        // adsb.fi är helt gratis utan auth — kan polla snabbare. 10s = bra balans.
+        _kartaFlightTimer = setInterval(_kartaFetchFlights, 10000);
         window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-          "Live-flygplan PÅ (OpenSky Network, 15s interval). Zooma in över Europa/USA för flest plan.");
+          "Live-flygplan PÅ (airplanes.live, helt gratis, 10s interval). OpenSky används som fallback om du har OPENSKY_CLIENT_ID/SECRET satta.");
       } else {
         if (_kartaFlightTimer) clearInterval(_kartaFlightTimer);
         _kartaFlightTimer = null;
@@ -2332,17 +2331,9 @@ Skärmvision kräver UI-TARS.</div>
       if (payload.error) {
         _kartaFlightConsecutiveErrors += 1;
         console.warn("Flygplan-fel:", payload.error);
-        // Visa fel i chatten — minst hälften av "no plan visible"-buggar är tysta HTTP-fel.
-        if (_kartaFlightConsecutiveErrors === 1 || _kartaFlightConsecutiveErrors === 3) {
+        if (_kartaFlightConsecutiveErrors === 1 || _kartaFlightConsecutiveErrors === 5) {
           window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-            "Flygplan-fel från OpenSky: " + String(payload.error || "okänt"));
-        }
-        // 3+ fel i rad → backa till 60s interval (rate-limit-skydd)
-        if (_kartaFlightConsecutiveErrors === 3 && _kartaFlightTimer) {
-          clearInterval(_kartaFlightTimer);
-          _kartaFlightTimer = setInterval(_kartaFetchFlights, 60000);
-          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-            "OpenSky troligen rate-limit — bytt till 60s polling. Anonymous-kontot har 100 credits/dag.");
+            "Flygplan-fel: " + String(payload.error || "okänt"));
         }
         return;
       }
@@ -2405,7 +2396,8 @@ Skärmvision kräver UI-TARS.</div>
 
     window.jarvisKartaApplyAisKeyV1 = function(payload) {
       if (!payload) return;
-      _kartaAisKey = String(payload.key || "");
+      // Trimma whitespace — copy-paste tar ofta med extra space/newline som AISStream avvisar.
+      _kartaAisKey = String(payload.key || "").trim();
     };
 
     let _kartaShipFirstSeen = false;
@@ -2544,6 +2536,16 @@ Skärmvision kräver UI-TARS.</div>
       };
       _kartaShipWebSocket.onclose = function(e) {
         if (_kartaShipsOn) {
+          let hint = "";
+          if (e.code === 1006) {
+            hint = " (kod 1006 = AISStream avvisade förbindelsen — nästan alltid ogiltig/utgången AISSTREAM_API_KEY. Generera en ny gratis på https://aisstream.io/authenticate och klistra in i Inställningar.)";
+            // Sluta auto-reconnect efter 1006 — det är poänglöst om nyckeln är ogiltig.
+            _kartaShipsOn = false;
+            _kartaSyncLayerButtonsV1();
+            window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+              "AISStream-anslutning stängd" + hint);
+            return;
+          }
           window.jarvisAddMessage && window.jarvisAddMessage("assistant",
             "AISStream-anslutning stängd (kod " + e.code + "). Försöker återansluta om 5s...");
           setTimeout(function() { if (_kartaShipsOn) _kartaConnectAisStream(); }, 5000);

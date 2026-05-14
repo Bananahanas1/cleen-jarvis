@@ -34,12 +34,11 @@ check("Weather overlay reads WMO codes", dashboard.includes("_kartaWmoToEffect")
 
 // --- Flyg + båtar visible-error reporting ---
 check("Flights show error in chat (not silent warn only)",
-  /Flygplan-fel från OpenSky/.test(dashboard));
-check("Flights auto-backoff to 60s on rate-limit",
-  dashboard.includes("_kartaFlightConsecutiveErrors === 3") &&
-  dashboard.includes("60000"));
-check("Flights default interval is 15s (rate-limit safe)",
-  /_kartaFetchFlights,\s*15000/.test(dashboard));
+  /Flygplan-fel:/.test(dashboard));
+check("Flights use airplanes.live as primary (no auth)",
+  dashboard.includes("airplanes.live"));
+check("Flights default interval is 10s (no rate-limit on airplanes.live)",
+  /_kartaFetchFlights,\s*10000/.test(dashboard));
 check("Ships announce first-seen message",
   dashboard.includes("_kartaShipFirstSeen") &&
   dashboard.includes("första båten mottagen"));
