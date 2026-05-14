@@ -37,8 +37,12 @@ check("Flights show error in chat (not silent warn only)",
   /Flygplan-fel:/.test(dashboard));
 check("Flights use airplanes.live as primary (no auth)",
   dashboard.includes("airplanes.live"));
-check("Flights default interval is 10s (no rate-limit on airplanes.live)",
-  /_kartaFetchFlights,\s*10000/.test(dashboard));
+check("Flights default interval is 5s (faster polling, no rate-limit)",
+  /_kartaFetchFlights,\s*5000/.test(dashboard));
+check("Flights show ALL planes (no .slice cap)",
+  !/states\.slice\(0,\s*250\)/.test(dashboard));
+check("Flights refetch on map moveend",
+  /flightMoveTimer[\s\S]{0,200}?_kartaFetchFlights/.test(dashboard));
 check("Ships announce first-seen message",
   dashboard.includes("_kartaShipFirstSeen") &&
   dashboard.includes("första båten mottagen"));

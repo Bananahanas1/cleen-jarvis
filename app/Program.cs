@@ -7606,10 +7606,9 @@ public sealed class JarvisForm : Form
         {
             var centerLat = (minLat + maxLat) / 2.0;
             var centerLon = (minLon + maxLon) / 2.0;
-            var latNm = (maxLat - minLat) / 2.0 * 60;
-            var lonNm = (maxLon - minLon) / 2.0 * 60 * Math.Cos(centerLat * Math.PI / 180.0);
-            var dist = Math.Sqrt(latNm * latNm + lonNm * lonNm);
-            dist = Math.Min(250, Math.Max(50, dist));
+            // airplanes.live cappar radius på 250nm (~463km). Vi använder ALLTID max
+            // för att fånga så många flyg som möjligt. Större radius ger 403.
+            var dist = 250.0;
 
             var inv = System.Globalization.CultureInfo.InvariantCulture;
             var url = "https://api.airplanes.live/v2/point/" + centerLat.ToString("F4", inv)

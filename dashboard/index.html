@@ -2108,9 +2108,10 @@ Skärmvision kräver UI-TARS.</div>
         _kartaPoiCurrent = null;
       });
 
-      // Auto-uppdatera väder + båt-bbox när användaren panorerar/zoomar (debounced).
+      // Auto-uppdatera väder + båt-bbox + flyg när användaren panorerar/zoomar (debounced).
       let weatherMoveTimer = null;
       let shipMoveTimer = null;
+      let flightMoveTimer = null;
       _kartaMap.on("moveend", function() {
         if (_kartaWeatherOn) {
           if (weatherMoveTimer) clearTimeout(weatherMoveTimer);
@@ -2119,6 +2120,12 @@ Skärmvision kräver UI-TARS.</div>
         if (_kartaShipsOn) {
           if (shipMoveTimer) clearTimeout(shipMoveTimer);
           shipMoveTimer = setTimeout(_kartaMaybeResendShipBoundsV1, 1000);
+        }
+        if (_kartaFlightsOn) {
+          // Snabb refetch av flyg när användaren flyttar kartan — annars ser man
+          // gamla planmarkers från förra center-punkten i 5s.
+          if (flightMoveTimer) clearTimeout(flightMoveTimer);
+          flightMoveTimer = setTimeout(_kartaFetchFlights, 400);
         }
       });
 
@@ -2299,10 +2306,11 @@ Skärmvision kräver UI-TARS.</div>
         _kartaFlightConsecutiveErrors = 0;
         _kartaFlightLastReportedCount = -1;
         _kartaFetchFlights();
-        // adsb.fi är helt gratis utan auth — kan polla snabbare. 10s = bra balans.
-        _kartaFlightTimer = setInterval(_kartaFetchFlights, 10000);
+        // Polling så snabbt som airplanes.live tillåter. 5s = 720 calls/h, inom rimlig gräns.
+        // Refetchar även omedelbart vid moveend så användaren ser flyg i nya områden direkt.
+        _kartaFlightTimer = setInterval(_kartaFetchFlights, 5000);
         window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-          "Live-flygplan PÅ (airplanes.live, helt gratis, 10s interval). OpenSky används som fallback om du har OPENSKY_CLIENT_ID/SECRET satta.");
+          "Live-flygplan PÅ (airplanes.live, gratis, 5s polling, ALLA flyg inom 463 km från kartans mitt). Panorera så uppdateras området.");
       } else {
         if (_kartaFlightTimer) clearInterval(_kartaFlightTimer);
         _kartaFlightTimer = null;
@@ -2357,7 +2365,8 @@ Skärmvision kräver UI-TARS.</div>
       _kartaFlightMarkers.forEach(function(m) { try { m.remove(); } catch (_) {} });
       _kartaFlightMarkers = [];
 
-      states.slice(0, 250).forEach(function(s) {
+      // Ingen .slice — visa ALLA flyg som airplanes.live returnerar inom 250nm-radien.
+      states.forEach(function(s) {
         const icao24 = s[0], callsign = (s[1] || "").trim();
         const country = s[2];
         const lon = s[5], lat = s[6], baroAlt = s[7], onGround = s[8];
