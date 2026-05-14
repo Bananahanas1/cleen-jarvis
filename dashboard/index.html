@@ -59,6 +59,7 @@
       border-right: 1px solid #193247;
       background: #08111f;
       min-height: 0;
+      min-width: 0; /* Förhindrar att grid-cell pushar ut layouten när kollapsad till 0 */
     }
 
     .explorer {
@@ -70,6 +71,7 @@
       padding: 12px;
       display: flex;
       flex-direction: column;
+      position: relative; /* mapPanel/scenePanel position:absolute anchorar hit */
       gap: 10px;
       background: #06101d;
     }
@@ -798,19 +800,15 @@
     body.brain-mode .editor { padding: 8px !important; }
     body.brain-mode #brainPanel { flex: 1; min-height: 0 !important; }
 
-    /* Sidopanel-togglar (V2 2026-05-14):
-       - "‹ Stäng vänster" döljer Project Explorer
-       - "Stäng höger ›" döljer Jarvis Chat
-       - När båda är stängda blir mitten fullskärm.
-       Layout grid kollapsar 1fr-kolumnerna när respektive sida är borta. */
-    body.hide-left .layout  { grid-template-columns: 0 minmax(380px, 1fr) 390px !important; }
-    body.hide-right .layout { grid-template-columns: 280px minmax(380px, 1fr) 0 !important; }
-    body.hide-left.hide-right .layout { grid-template-columns: 0 minmax(380px, 1fr) 0 !important; }
+    /* Sidopanel-togglar (V3 2026-05-14):
+       Använder enkla 1fr-tracks utan minmax så grid kollapsar pålitligt vid hide. */
+    body.hide-left  .layout { grid-template-columns: 0 1fr 390px !important; }
+    body.hide-right .layout { grid-template-columns: 280px 1fr 0 !important; }
+    body.hide-left.hide-right .layout { grid-template-columns: 0 1fr 0 !important; }
     body.hide-left  .explorer { display: none !important; }
     body.hide-right .chat     { display: none !important; }
-    body.hide-left.hide-right .editor,
-    body.hide-left .editor,
-    body.hide-right .editor { padding: 8px !important; }
+    body.hide-left  .editor,
+    body.hide-right .editor   { padding: 8px !important; }
 
     /* "Open"-flikar som visas på edge när sidan är gömd, så användaren kan öppna igen */
     .panel-reopen-tab {
@@ -1250,13 +1248,20 @@ Skärmvision kräver UI-TARS.</div>
         .karta-search input:focus { border-color:#6ad9ff; box-shadow:0 0 8px rgba(106,217,255,0.3); }
         .karta-help { font-size:10px; opacity:0.6; margin-top:6px; line-height:1.4; }
         .karta-info { top:14px; right:14px; min-width:200px; max-width:300px; font-size:12px; }
+        /* Weather HUD — visas när Väder-toggle är på, uppdaterar live vid pan/zoom */
+        .karta-weather-hud { top:170px; right:14px; min-width:180px; max-width:240px; font-size:12px; }
+        .karta-weather-hud .hud-row { display:flex; align-items:center; gap:10px; margin-top:6px; }
+        .karta-weather-hud .hud-icon { font-size: 26px; line-height: 1; }
+        .karta-weather-hud .hud-temp { font-size: 26px; font-weight: 700; color: #ffd680; }
+        .karta-weather-hud .hud-label { margin-top: 6px; font-size: 13px; color: #dff7ff; }
+        .karta-weather-hud .hud-meta { margin-top: 4px; font-size: 11px; color: #6ad9ff; opacity: 0.8; }
         .karta-stat { display:flex; justify-content:space-between; padding:2px 0; }
         .karta-stat-label { opacity:0.65; }
         .karta-stat-val { color:#aee6ff; font-family:monospace; }
         .karta-mini-chat { bottom:14px; right:14px; width:280px; }
         .karta-mini-chat input { width:100%; background:#03070d; border:1px solid #1f4e68;
           color:#dff7ff; padding:6px 10px; border-radius:4px; font-family:inherit; outline:none; font-size:12px; }
-        .karta-controls { bottom:14px; left:14px; display:flex; gap:6px; }
+        .karta-controls { bottom:14px; left:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:calc(100vw - 320px); }
         .karta-btn { background:rgba(106,217,255,0.12); border:1px solid #1f4e68; color:#aee6ff;
           padding:4px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:11px;
           position:relative; transition: background 0.15s, border-color 0.15s, color 0.15s; }
@@ -1305,6 +1310,77 @@ Skärmvision kräver UI-TARS.</div>
           5%   { opacity: 1; }
           100% { transform: translateY(110vh) translateX(40px); opacity: 0.5; }
         }
+        /* POI info-panel (V2 2026-05-14) — full sidopanel istället för popup */
+        #kartaPoiPanel { position: absolute; top: 50px; right: 0; bottom: 0; width: 400px;
+          max-width: 92vw; z-index: 15; background: linear-gradient(180deg, #0a1622 0%, #050d18 100%);
+          border-left: 1px solid #1f4e68; box-shadow: -8px 0 32px rgba(0,0,0,0.55);
+          display: none; flex-direction: column;
+          color: #dff7ff; font-family: inherit; }
+        #kartaPoiPanel.is-open { display: flex; }
+        .poi-panel-header { padding: 12px 16px; border-bottom: 1px solid #1f4e68;
+          display: flex; align-items: center; gap: 10px; }
+        .poi-panel-header .poi-close { background: rgba(106,217,255,0.12); border: 1px solid #1f4e68;
+          color: #aee6ff; padding: 4px 10px; border-radius: 4px; cursor: pointer; }
+        .poi-panel-header .poi-close:hover { background: rgba(106,217,255,0.25); }
+        .poi-panel-header .poi-h-title { flex: 1; font-weight: 700; font-size: 15px; color: #dff7ff;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .poi-panel-body { flex: 1; overflow-y: auto; overflow-x: hidden; }
+        .poi-panel-body::-webkit-scrollbar { width: 8px; }
+        .poi-panel-body::-webkit-scrollbar-track { background: rgba(106,217,255,0.05); }
+        .poi-panel-body::-webkit-scrollbar-thumb { background: #1f4e68; border-radius: 4px; }
+        /* Foto-galleri */
+        .poi-gallery { position: relative; width: 100%; height: 220px;
+          background: #02080f; overflow: hidden; }
+        .poi-gallery img { position: absolute; inset: 0; width: 100%; height: 100%;
+          object-fit: cover; opacity: 0; transition: opacity 0.5s; }
+        .poi-gallery img.active { opacity: 1; }
+        .poi-gallery .poi-gallery-empty { position: absolute; inset: 0;
+          display: flex; align-items: center; justify-content: center;
+          color: #6ad9ff; opacity: 0.6; font-size: 13px; letter-spacing: 1px;
+          text-transform: uppercase; }
+        .poi-gallery .poi-gallery-nav { position: absolute; top: 50%; transform: translateY(-50%);
+          width: 32px; height: 60px; background: rgba(8,15,30,0.6); color: #aee6ff;
+          border: 1px solid #1f4e68; cursor: pointer; font-size: 18px; line-height: 60px;
+          text-align: center; display: none; }
+        .poi-gallery:hover .poi-gallery-nav { display: block; }
+        .poi-gallery .poi-gallery-prev { left: 0; border-radius: 0 4px 4px 0; }
+        .poi-gallery .poi-gallery-next { right: 0; border-radius: 4px 0 0 4px; }
+        .poi-gallery .poi-gallery-dots { position: absolute; bottom: 8px; left: 0; right: 0;
+          display: flex; justify-content: center; gap: 4px; }
+        .poi-gallery .poi-gallery-dots span { width: 7px; height: 7px; border-radius: 50%;
+          background: rgba(255,255,255,0.4); transition: background 0.2s; }
+        .poi-gallery .poi-gallery-dots span.active { background: #6ad9ff; box-shadow: 0 0 6px #6ad9ff; }
+        /* Titel-block */
+        .poi-title-block { padding: 16px 18px 12px; border-bottom: 1px solid rgba(31,78,104,0.4); }
+        .poi-title-block .poi-bigname { font-size: 20px; font-weight: 700; color: #ffffff;
+          line-height: 1.2; }
+        .poi-title-block .poi-bigtype { font-size: 12px; color: #6ad9ff; letter-spacing: 1.2px;
+          text-transform: uppercase; margin-top: 4px; opacity: 0.85; }
+        /* Action-rad */
+        .poi-actions { display: flex; gap: 6px; padding: 10px 14px;
+          border-bottom: 1px solid rgba(31,78,104,0.4); }
+        .poi-actions button { flex: 1; background: rgba(106,217,255,0.12); border: 1px solid #1f4e68;
+          color: #aee6ff; padding: 8px 6px; border-radius: 4px; cursor: pointer;
+          font-family: inherit; font-size: 11px; line-height: 1.3;
+          display: flex; flex-direction: column; align-items: center; gap: 3px; }
+        .poi-actions button:hover { background: rgba(106,217,255,0.25); border-color: #6ad9ff; }
+        .poi-actions .poi-action-ico { font-size: 16px; }
+        /* Info-rader */
+        .poi-section { padding: 12px 18px; border-bottom: 1px solid rgba(31,78,104,0.3); }
+        .poi-section h4 { margin: 0 0 8px 0; font-size: 11px; color: #6ad9ff;
+          letter-spacing: 1.2px; text-transform: uppercase; opacity: 0.85; }
+        .poi-info-row { display: flex; gap: 10px; padding: 4px 0; font-size: 13px; }
+        .poi-info-row .poi-i-ico { width: 18px; opacity: 0.7; flex-shrink: 0; }
+        .poi-info-row .poi-i-v { flex: 1; color: #dff7ff; word-break: break-word; }
+        .poi-info-row .poi-i-v a { color: #6ad9ff; text-decoration: none; }
+        .poi-info-row .poi-i-v a:hover { text-decoration: underline; }
+        .poi-section .poi-wikiabs { color: #cfeaff; line-height: 1.55; font-size: 13.5px; opacity: 0.9; }
+        .poi-nearby li { font-size: 12.5px; color: #aee6ff; padding: 4px 0;
+          border-bottom: 1px solid rgba(31,78,104,0.2); }
+        .poi-nearby ul { list-style: none; padding: 0; margin: 0; }
+        .poi-weather-now { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #dff7ff; }
+        .poi-weather-now .poi-w-temp { font-size: 22px; font-weight: 700; color: #ffd680; }
+        .poi-loading-shimmer { color: #6ad9ff; font-style: italic; padding: 8px 0; opacity: 0.7; }
         #kartaWeatherOverlay.has-lightning::after {
           content: ""; position: absolute; inset: 0; background: rgba(255,255,255,0);
           animation: weatherLightning 7s ease-in-out infinite; pointer-events: none;
@@ -1346,6 +1422,17 @@ Skärmvision kräver UI-TARS.</div>
           <div class="karta-glass-title">Fråga Jarvis</div>
           <input id="kartaMiniChatInput" placeholder="ex: visa Tokyo, var ligger Mt Everest..." autocomplete="off">
           <div class="karta-help">Enter = skicka till Jarvis. Svaret syns i högra chatten.</div>
+        </div>
+
+        <!-- POI Info-panel (V2 2026-05-14) — Google-Maps-like sidopanel som öppnas vid dblclick på POI -->
+        <div id="kartaPoiPanel" aria-hidden="true">
+          <div class="poi-panel-header">
+            <button class="poi-close" id="kartaPoiCloseBtn" title="Stäng">✕</button>
+            <div class="poi-h-title" id="kartaPoiHTitle">Plats</div>
+          </div>
+          <div class="poi-panel-body" id="kartaPoiBody">
+            <!-- innehåll renderas av _kartaRenderPoiPanelV2 -->
+          </div>
         </div>
       </div>
 
@@ -2014,6 +2101,21 @@ Skärmvision kräver UI-TARS.</div>
       const weatherBtn = document.getElementById("kartaToggleWeatherBtn");
       if (weatherBtn) weatherBtn.addEventListener("click", function() { _kartaToggleWeather(); });
 
+      // POI-panel close-knapp
+      const poiCloseBtn = document.getElementById("kartaPoiCloseBtn");
+      if (poiCloseBtn) poiCloseBtn.addEventListener("click", function() {
+        _kartaShowPoiPanel(false);
+        _kartaPoiCurrent = null;
+      });
+
+      // Auto-uppdatera väder när användaren panorerar/zoomar (debounced).
+      let weatherMoveTimer = null;
+      _kartaMap.on("moveend", function() {
+        if (!_kartaWeatherOn) return;
+        if (weatherMoveTimer) clearTimeout(weatherMoveTimer);
+        weatherMoveTimer = setTimeout(_kartaFetchWeatherForCenter, 800);
+      });
+
       // Be om AIS key vid init
       postMessage({ type: "karta_get_ais_key" });
     }
@@ -2026,17 +2128,52 @@ Skärmvision kräver UI-TARS.</div>
     function _kartaToggleWeather() {
       _kartaWeatherOn = !_kartaWeatherOn;
       if (_kartaWeatherOn) {
+        _kartaShowWeatherHud(true);
         _kartaFetchWeatherForCenter();
+        // 60s interval för full uppdatering — moveend-handler triggar debouncad refresh vid pan/zoom
         _kartaWeatherTimer = setInterval(_kartaFetchWeatherForCenter, 60000);
+        // EN single chat-bekräftelse första gången, sedan TYSTNAD (ingen spam).
         window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-          "Live-väder PÅ (open-meteo, uppdaterar var minut). Animation visar regn/snö/blixt om det förekommer.");
+          "Live-väder PÅ — HUD längst upp till höger på kartan visar väder vid mittpunkten. Animation (regn/snö/blixt) startar vid nederbörd.");
       } else {
         if (_kartaWeatherTimer) clearInterval(_kartaWeatherTimer);
         _kartaWeatherTimer = null;
         _kartaSetWeatherEffect("clear", 0, "");
+        _kartaShowWeatherHud(false);
         window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-väder AV.");
       }
       _kartaSyncLayerButtonsV1();
+    }
+
+    function _kartaShowWeatherHud(open) {
+      let hud = document.getElementById("kartaWeatherHud");
+      if (!open) { if (hud) hud.style.display = "none"; return; }
+      if (!hud) {
+        hud = document.createElement("div");
+        hud.id = "kartaWeatherHud";
+        hud.className = "karta-glass karta-weather-hud";
+        hud.innerHTML =
+          '<div class="karta-glass-title">Väder · mittpunkt</div>' +
+          '<div class="hud-row"><span class="hud-icon" id="kartaWeatherIcon">○</span>' +
+          '<span class="hud-temp" id="kartaWeatherTemp">--°</span></div>' +
+          '<div class="hud-label" id="kartaWeatherLabel">Hämtar...</div>' +
+          '<div class="hud-meta" id="kartaWeatherMeta"></div>';
+        const map = document.getElementById("mapPanel");
+        if (map) map.appendChild(hud);
+      }
+      hud.style.display = "block";
+    }
+
+    function _kartaWmoIcon(code) {
+      if (code === 0) return "☀";
+      if (code >= 1 && code <= 3) return "🌤";
+      if (code === 45 || code === 48) return "🌫";
+      if (code >= 51 && code <= 67) return "🌧";
+      if (code >= 71 && code <= 77) return "❄";
+      if (code >= 80 && code <= 82) return "🌧";
+      if (code >= 85 && code <= 86) return "🌨";
+      if (code >= 95) return "⛈";
+      return "○";
     }
 
     async function _kartaFetchWeatherForCenter() {
@@ -2048,11 +2185,7 @@ Skärmvision kräver UI-TARS.</div>
                 + "&current=temperature_2m,weather_code,precipitation,wind_speed_10m,is_day";
       try {
         const resp = await fetch(url);
-        if (!resp.ok) {
-          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-            "Väder-fel: HTTP " + resp.status);
-          return;
-        }
+        if (!resp.ok) return; // tyst fel — användaren ser ändå HUD med "--°"
         const data = await resp.json();
         const cur = data.current || {};
         const code = Number(cur.weather_code);
@@ -2060,13 +2193,19 @@ Skärmvision kräver UI-TARS.</div>
         const wind = cur.wind_speed_10m;
         const precip = Number(cur.precipitation || 0);
         const effect = _kartaWmoToEffect(code, precip);
-        _kartaSetWeatherEffect(effect.kind, effect.intensity, _kartaWmoLabel(code));
         const label = _kartaWmoLabel(code);
-        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
-          "Väder vid kart-mitten: " + label + " · " + temp + "°C · vind " + wind + " m/s · regn " + precip + " mm/h.");
-      } catch (e) {
-        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Väder-fel: " + e.message);
-      }
+        _kartaSetWeatherEffect(effect.kind, effect.intensity, label);
+
+        // Uppdatera HUD live — INGEN chat-spam
+        const iconEl = document.getElementById("kartaWeatherIcon");
+        const tempEl = document.getElementById("kartaWeatherTemp");
+        const labelEl = document.getElementById("kartaWeatherLabel");
+        const metaEl = document.getElementById("kartaWeatherMeta");
+        if (iconEl) iconEl.textContent = _kartaWmoIcon(code);
+        if (tempEl) tempEl.textContent = (temp != null ? temp.toFixed(1) : "--") + "°";
+        if (labelEl) labelEl.textContent = label;
+        if (metaEl) metaEl.textContent = "Vind " + wind + " m/s · regn " + precip + " mm/h";
+      } catch (_) { /* tyst */ }
     }
 
     function _kartaWmoToEffect(code, precip) {
@@ -2583,41 +2722,309 @@ Skärmvision kräver UI-TARS.</div>
       });
 
       if (namedFeature || hitBuilding) {
-        _kartaOpenPoiPopupV1(lat, lon, namedFeature);
+        _kartaOpenPoiPanelV2(lat, lon, namedFeature);
         return;
       }
       _kartaOpenNotePopup(lat, lon, null);
     }
 
-    // POI-info-popup (fix 2026-05-14) — Google-Maps-like info: namn, typ, öppettider,
-    // telefon, hemsida, foto från Wikimedia Commons om Wikidata-tag finns.
+    // POI-info-panel V2 (2026-05-14) — Google-Maps-like sidopanel som ersätter den gamla popup:en.
     //
-    // Källor: Overpass API (free, no auth) + Wikidata + Wikimedia Commons.
-    function _kartaOpenPoiPopupV1(lat, lon, tileFeature) {
-      if (!_kartaMap) return;
+    // Sources (alla gratis, ingen API-nyckel):
+    //   - Overpass API (OSM-tags: name, opening_hours, phone, website, wheelchair, capacity, ...)
+    //   - Wikidata (P18 image + structured facts)
+    //   - Wikimedia Commons (sökning på namn → galleri av bilder)
+    //   - Wikipedia REST summary (extract + ev. originalimage)
+    //   - open-meteo (väder vid POI:n)
+    //   - Overpass (nearby POI:s inom 200m)
+    let _kartaPoiCurrent = null; // { lat, lon, tags, images:[], imageIndex }
+
+    function _kartaOpenPoiPanelV2(lat, lon, tileFeature) {
       const tileTags = (tileFeature && tileFeature.properties) || {};
       const initialName = tileTags.name || tileTags["name:en"] || "Plats";
+      _kartaPoiCurrent = { lat: lat, lon: lon, tags: { name: initialName }, images: [], imageIndex: 0 };
+      _kartaShowPoiPanel(true);
+      _kartaRenderPoiPanelV2(true);
 
-      const popup = new maplibregl.Popup({ closeOnClick: false, maxWidth: "360px" })
-        .setLngLat([lon, lat])
-        .setHTML(_kartaRenderPoiHtml({ name: initialName, _loading: true }, lat, lon))
-        .addTo(_kartaMap);
-
-      // Hämta riktiga OSM-tags via Overpass + ev. Wikidata-bild parallellt.
+      // 1) Hämta riktiga OSM-tags via Overpass
       _kartaQueryOsmAround(lat, lon).then(function(element) {
         const tags = (element && element.tags) ? element.tags : tileTags;
         if (!tags.name && initialName) tags.name = initialName;
-        popup.setHTML(_kartaRenderPoiHtml(tags, lat, lon));
+        _kartaPoiCurrent.tags = tags;
+        _kartaRenderPoiPanelV2(true);
 
-        // Om Wikidata QID finns — hämta bild från Wikimedia Commons.
+        // 2) Wikidata: bild + extra info
         if (tags.wikidata) {
-          _kartaFetchWikidataImageV1(tags.wikidata).then(function(imageUrl) {
-            if (!imageUrl) return;
-            const enriched = Object.assign({}, tags, { _imageUrl: imageUrl });
-            popup.setHTML(_kartaRenderPoiHtml(enriched, lat, lon));
+          _kartaFetchWikidataImageV1(tags.wikidata).then(function(url) {
+            if (url && _kartaPoiCurrent) {
+              _kartaPoiCurrent.images.push(url);
+              _kartaRenderPoiPanelV2();
+            }
           });
         }
+
+        // 3) Wikipedia: extract + ev. originalbild
+        if (tags.wikipedia) {
+          _kartaFetchWikipediaSummaryV1(tags.wikipedia).then(function(wikiData) {
+            if (_kartaPoiCurrent) {
+              if (wikiData.extract) _kartaPoiCurrent.tags._wikiExtract = wikiData.extract;
+              if (wikiData.image) _kartaPoiCurrent.images.push(wikiData.image);
+              _kartaRenderPoiPanelV2();
+            }
+          });
+        }
+
+        // 4) Wikimedia Commons: ytterligare bilder via söknamn
+        if (tags.name) {
+          _kartaFetchCommonsImagesV1(tags.name, 4).then(function(urls) {
+            if (urls.length > 0 && _kartaPoiCurrent) {
+              const seen = new Set(_kartaPoiCurrent.images);
+              urls.forEach(function(u) { if (!seen.has(u)) _kartaPoiCurrent.images.push(u); });
+              _kartaRenderPoiPanelV2();
+            }
+          });
+        }
+
+        // 5) Nearby POIs inom 150 m
+        _kartaQueryNearbyOsmV1(lat, lon, 150).then(function(items) {
+          if (_kartaPoiCurrent) {
+            _kartaPoiCurrent.tags._nearby = items.filter(function(e) {
+              return e.tags && e.tags.name && e.tags.name !== _kartaPoiCurrent.tags.name;
+            }).slice(0, 6);
+            _kartaRenderPoiPanelV2();
+          }
+        });
+
+        // 6) Väder vid POI
+        _kartaFetchPoiWeatherV1(lat, lon).then(function(w) {
+          if (_kartaPoiCurrent && w) {
+            _kartaPoiCurrent.tags._weather = w;
+            _kartaRenderPoiPanelV2();
+          }
+        });
       });
+    }
+
+    function _kartaShowPoiPanel(open) {
+      const panel = document.getElementById("kartaPoiPanel");
+      if (!panel) return;
+      if (open) panel.classList.add("is-open");
+      else panel.classList.remove("is-open");
+    }
+
+    function _kartaRenderPoiPanelV2(initial) {
+      if (!_kartaPoiCurrent) return;
+      const tags = _kartaPoiCurrent.tags || {};
+      const lat = _kartaPoiCurrent.lat, lon = _kartaPoiCurrent.lon;
+      const esc = _kartaPoiEscape;
+      const titleEl = document.getElementById("kartaPoiHTitle");
+      if (titleEl) titleEl.textContent = tags.name || "Plats";
+      const body = document.getElementById("kartaPoiBody");
+      if (!body) return;
+
+      // Foto-galleri
+      const images = _kartaPoiCurrent.images || [];
+      let gallery = '<div class="poi-gallery">';
+      if (images.length === 0) {
+        gallery += '<div class="poi-gallery-empty">' + (initial ? "Söker bilder..." : "Ingen bild hittades") + '</div>';
+      } else {
+        images.forEach(function(url, i) {
+          gallery += '<img src="' + esc(url) + '" class="' + (i === _kartaPoiCurrent.imageIndex ? "active" : "") + '" data-idx="' + i + '" alt="" onerror="this.style.display=\'none\'">';
+        });
+        if (images.length > 1) {
+          gallery += '<button class="poi-gallery-nav poi-gallery-prev" data-dir="-1">‹</button>';
+          gallery += '<button class="poi-gallery-nav poi-gallery-next" data-dir="1">›</button>';
+          gallery += '<div class="poi-gallery-dots">';
+          for (let i = 0; i < images.length; i++) {
+            gallery += '<span class="' + (i === _kartaPoiCurrent.imageIndex ? "active" : "") + '"></span>';
+          }
+          gallery += '</div>';
+        }
+      }
+      gallery += '</div>';
+
+      // Title-block
+      const typeLabel = _kartaPoiTypeLabel(tags);
+      let titleBlock = '<div class="poi-title-block">'
+        + '<div class="poi-bigname">' + esc(tags.name || "Plats") + '</div>';
+      if (typeLabel) titleBlock += '<div class="poi-bigtype">' + esc(typeLabel) + '</div>';
+      titleBlock += '</div>';
+
+      // Action-rad
+      const gMapsUrl = "https://www.google.com/maps/search/" + encodeURIComponent(tags.name || (lat + "," + lon)) + "/@" + lat + "," + lon + ",18z";
+      const directionsUrl = "https://www.google.com/maps/dir/?api=1&destination=" + lat + "," + lon;
+      const actions = '<div class="poi-actions">'
+        + '<button onclick="window.open(\'' + directionsUrl + '\',\'_blank\')"><span class="poi-action-ico">🧭</span><span>Vägbeskr</span></button>'
+        + '<button onclick="window.open(\'' + gMapsUrl + '\',\'_blank\')"><span class="poi-action-ico">⭐</span><span>Recensioner</span></button>'
+        + '<button onclick="navigator.clipboard && navigator.clipboard.writeText(\'' + lat + ',' + lon + '\')"><span class="poi-action-ico">📋</span><span>Kopiera</span></button>'
+        + '</div>';
+
+      // Info-rader
+      const rows = [];
+      if (tags["addr:street"]) {
+        const addr = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
+        const city = [tags["addr:postcode"], tags["addr:city"]].filter(Boolean).join(" ");
+        rows.push(["📍", (addr + (city ? ", " + city : "")) || "Adress okänd"]);
+      } else if (tags["addr:city"]) {
+        rows.push(["📍", tags["addr:city"]]);
+      }
+      if (tags.opening_hours) rows.push(["🕐", String(tags.opening_hours)]);
+      if (tags.phone || tags["contact:phone"]) {
+        const ph = tags.phone || tags["contact:phone"];
+        rows.push(["📞", '<a href="tel:' + esc(ph) + '">' + esc(ph) + '</a>']);
+      }
+      if (tags.website || tags["contact:website"]) {
+        const w = tags.website || tags["contact:website"];
+        rows.push(["🌐", '<a href="' + esc(w) + '" target="_blank" rel="noopener">' + esc(w) + '</a>']);
+      }
+      if (tags.email || tags["contact:email"]) {
+        const e = tags.email || tags["contact:email"];
+        rows.push(["✉", '<a href="mailto:' + esc(e) + '">' + esc(e) + '</a>']);
+      }
+      if (tags.cuisine)    rows.push(["🍽", "Kök: " + tags.cuisine]);
+      if (tags.brand)      rows.push(["🏷", "Brand: " + tags.brand]);
+      if (tags.wheelchair) rows.push(["♿", "Rullstol: " + tags.wheelchair]);
+      if (tags.capacity)   rows.push(["👥", "Kapacitet: " + tags.capacity]);
+      if (tags.operator)   rows.push(["🏢", "Operatör: " + tags.operator]);
+      if (tags.network)    rows.push(["🚉", "Nätverk: " + tags.network]);
+
+      let infoSection = "";
+      if (rows.length > 0) {
+        infoSection = '<div class="poi-section"><h4>Info</h4>';
+        rows.forEach(function(r) {
+          infoSection += '<div class="poi-info-row"><span class="poi-i-ico">' + r[0] + '</span><span class="poi-i-v">' + r[1] + '</span></div>';
+        });
+        infoSection += '</div>';
+      }
+
+      // Wikipedia-extract
+      let wikiSection = "";
+      if (tags._wikiExtract) {
+        wikiSection = '<div class="poi-section"><h4>Om</h4>'
+          + '<div class="poi-wikiabs">' + esc(tags._wikiExtract) + '</div>';
+        if (tags.wikipedia) {
+          const m = String(tags.wikipedia).match(/^([a-z\-]+):(.+)$/i);
+          if (m) {
+            const url = "https://" + m[1] + ".wikipedia.org/wiki/" + encodeURIComponent(m[2].replace(/ /g, "_"));
+            wikiSection += '<div style="margin-top:8px;"><a href="' + url + '" target="_blank" rel="noopener" style="color:#6ad9ff; font-size:12px;">Hela artikeln på Wikipedia →</a></div>';
+          }
+        }
+        wikiSection += '</div>';
+      }
+
+      // Väder
+      let weatherSection = "";
+      if (tags._weather) {
+        const w = tags._weather;
+        weatherSection = '<div class="poi-section"><h4>Väder här</h4>'
+          + '<div class="poi-weather-now">'
+          + '<span class="poi-w-temp">' + w.temp + '°C</span>'
+          + '<span>' + esc(w.label) + ' · vind ' + w.wind + ' m/s · regn ' + w.precip + ' mm</span>'
+          + '</div></div>';
+      }
+
+      // Nearby
+      let nearbySection = "";
+      if (Array.isArray(tags._nearby) && tags._nearby.length > 0) {
+        nearbySection = '<div class="poi-section poi-nearby"><h4>I närheten</h4><ul>';
+        tags._nearby.forEach(function(el) {
+          const t = _kartaPoiTypeLabel(el.tags || {});
+          nearbySection += '<li><strong>' + esc(el.tags.name) + '</strong>' + (t ? ' · ' + esc(t) : "") + '</li>';
+        });
+        nearbySection += '</ul></div>';
+      }
+
+      // Loading-hint
+      let loadingSection = "";
+      if (initial && images.length === 0 && !tags._wikiExtract) {
+        loadingSection = '<div class="poi-section"><div class="poi-loading-shimmer">Hämtar bilder, beskrivning, närliggande och väder…</div></div>';
+      }
+
+      body.innerHTML = gallery + titleBlock + actions + infoSection + wikiSection + weatherSection + nearbySection + loadingSection;
+
+      // Wire galleri-navigation
+      const gn = body.querySelectorAll(".poi-gallery-nav");
+      gn.forEach(function(b) {
+        b.addEventListener("click", function() {
+          const dir = parseInt(b.dataset.dir, 10) || 1;
+          const total = (_kartaPoiCurrent && _kartaPoiCurrent.images.length) || 1;
+          _kartaPoiCurrent.imageIndex = (_kartaPoiCurrent.imageIndex + dir + total) % total;
+          _kartaRenderPoiPanelV2();
+        });
+      });
+    }
+
+    // ===== POI-källor =====
+    async function _kartaFetchWikipediaSummaryV1(wikipediaTag) {
+      // wikipediaTag format: "sv:Stockholm"
+      const m = String(wikipediaTag).match(/^([a-z\-]+):(.+)$/i);
+      if (!m) return {};
+      const lang = m[1], title = m[2].replace(/ /g, "_");
+      try {
+        const resp = await fetch("https://" + lang + ".wikipedia.org/api/rest_v1/page/summary/" + encodeURIComponent(title));
+        if (!resp.ok) return {};
+        const data = await resp.json();
+        const image = (data.originalimage && data.originalimage.source)
+                   || (data.thumbnail && data.thumbnail.source) || "";
+        return { extract: data.extract || "", image: image };
+      } catch (_) { return {}; }
+    }
+
+    async function _kartaFetchCommonsImagesV1(query, limit) {
+      // Commons MediaWiki API — sök på filer som matchar namnet.
+      try {
+        const url = "https://commons.wikimedia.org/w/api.php?action=query&format=json&origin=*"
+          + "&generator=search&gsrnamespace=6&gsrlimit=" + limit
+          + "&gsrsearch=" + encodeURIComponent(query)
+          + "&prop=imageinfo&iiprop=url&iiurlwidth=600";
+        const resp = await fetch(url);
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        const pages = data.query && data.query.pages;
+        if (!pages) return [];
+        const out = [];
+        Object.keys(pages).forEach(function(k) {
+          const info = pages[k].imageinfo && pages[k].imageinfo[0];
+          if (info && info.thumburl) out.push(info.thumburl);
+        });
+        return out;
+      } catch (_) { return []; }
+    }
+
+    async function _kartaQueryNearbyOsmV1(lat, lon, radius) {
+      const query = "[out:json][timeout:8];"
+        + "(node(around:" + radius + "," + lat + "," + lon + ")[name][amenity];"
+        + " node(around:" + radius + "," + lat + "," + lon + ")[name][shop];"
+        + " node(around:" + radius + "," + lat + "," + lon + ")[name][tourism];);"
+        + "out tags 15;";
+      try {
+        const resp = await fetch("https://overpass-api.de/api/interpreter", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "data=" + encodeURIComponent(query)
+        });
+        if (!resp.ok) return [];
+        const data = await resp.json();
+        return Array.isArray(data.elements) ? data.elements : [];
+      } catch (_) { return []; }
+    }
+
+    async function _kartaFetchPoiWeatherV1(lat, lon) {
+      try {
+        const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat
+          + "&longitude=" + lon
+          + "&current=temperature_2m,weather_code,precipitation,wind_speed_10m";
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const cur = data.current || {};
+        return {
+          temp: cur.temperature_2m,
+          wind: cur.wind_speed_10m,
+          precip: cur.precipitation || 0,
+          label: _kartaWmoLabel(Number(cur.weather_code))
+        };
+      } catch (_) { return null; }
     }
 
     async function _kartaQueryOsmAround(lat, lon) {
@@ -3508,8 +3915,14 @@ Skärmvision kräver UI-TARS.</div>
     //   - Klick på edge-flik öppnar respektive sida igen.
     //   - Esc öppnar båda igen.
     function _resizeWorkspacePanelsV1() {
-      try { if (_kartaMap) _kartaMap.resize(); } catch (_) {}
-      try { if (window._brainGraphResize) window._brainGraphResize(); } catch (_) {}
+      // Vänta tills layout settle:at — annars läser MapLibre stale offsetWidth.
+      // Två rAF garanterar att browsern har gjort både layout + paint.
+      requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+          try { if (_kartaMap) _kartaMap.resize(); } catch (_) {}
+          try { if (window._brainGraphResize) window._brainGraphResize(); } catch (_) {}
+        });
+      });
     }
     function _setSidePanelHiddenV1(side, hidden) {
       const cls = side === "left" ? "hide-left" : "hide-right";
