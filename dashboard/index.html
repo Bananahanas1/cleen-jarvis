@@ -1075,6 +1075,8 @@
           <div class="brain-stat"><span class="brain-stat-label">Filer</span><span class="brain-stat-val" id="brainNodeCount">--</span></div>
           <div class="brain-stat"><span class="brain-stat-label">Relationer</span><span class="brain-stat-val" id="brainEdgeCount">--</span></div>
           <div class="brain-stat"><span class="brain-stat-label">Vault</span><span class="brain-stat-val" id="brainVaultCount">--</span></div>
+          <div class="brain-stat"><span class="brain-stat-label">Läge</span><span class="brain-stat-val" id="brainGraphMode">--</span></div>
+          <div class="brain-stat"><span class="brain-stat-label">Dolt brus</span><span class="brain-stat-val" id="brainHiddenGeneratedCount">--</span></div>
           <div class="brain-stat"><span class="brain-stat-label">Status</span><span class="brain-stat-val" id="brainStatus">väntar</span></div>
         </div>
 
@@ -1087,7 +1089,6 @@
           <label class="brain-filter"><input type="checkbox" data-kind="css" checked> <span style="color:#ffb878;">●</span> CSS</label>
           <label class="brain-filter"><input type="checkbox" data-kind="py" checked> <span style="color:#ffd966;">●</span> Python</label>
           <label class="brain-filter"><input type="checkbox" data-kind="md" checked> <span style="color:#b38cff;">●</span> Markdown</label>
-          <label class="brain-filter"><input type="checkbox" data-kind="json" checked> <span style="color:#44ffaa;">●</span> JSON</label>
           <label class="brain-filter"><input type="checkbox" data-kind="vault" checked> <span style="color:#a66dff;">●</span> Vault</label>
           <button id="brainRebuildBtn" class="brain-mini-btn" title="Rensar grafens cache och bygger om från scratch. Använd om du har lagt till/ändrat filer och vill se nya relationer.">↻ Bygg om</button>
           <div class="brain-glass-title" style="margin-top:10px; margin-bottom:4px;">FORCE</div>
@@ -3237,11 +3238,25 @@
 
       const rawNodes = graph.nodes || [];
       const rawEdges = graph.edges || [];
+      const graphMeta = graph.meta || {};
       const vaultCount = rawNodes.filter(n => n.source === "vault").length;
       overlayNodes.textContent = rawNodes.length;
       overlayEdges.textContent = rawEdges.length;
       const vaultEl = document.getElementById("brainVaultCount");
       if (vaultEl) vaultEl.textContent = vaultCount;
+      const modeEl = document.getElementById("brainGraphMode");
+      if (modeEl) modeEl.textContent = graphMeta.mode || "relations-first";
+      const hiddenEl = document.getElementById("brainHiddenGeneratedCount");
+      if (hiddenEl) {
+        const hiddenGeneratedFiles = Number(graphMeta.hiddenGeneratedFiles || 0);
+        const hiddenVaultProjectFiles = Number(graphMeta.hiddenVaultProjectFiles || 0);
+        const hiddenJsonFiles = Number(graphMeta.hiddenJsonFiles || 0);
+        hiddenEl.textContent = String(hiddenGeneratedFiles + hiddenVaultProjectFiles + hiddenJsonFiles);
+        hiddenEl.title =
+          "Generated/runtime: " + hiddenGeneratedFiles +
+          " | vault som projekt: " + hiddenVaultProjectFiles +
+          " | json utan scanner: " + hiddenJsonFiles;
+      }
       setStatus("renderar...");
 
       if (rawNodes.length === 0) {
@@ -3790,7 +3805,7 @@
       setSize();
 
       // === Filter & sök ===
-      const visibleKinds = new Set(["cs","js","html","css","py","md","json","vault"]);
+      const visibleKinds = new Set(["cs","js","html","css","py","md","vault"]);
       let searchQuery = "";
       function applyFilterAndSearch() {
         const search = searchQuery.toLowerCase().trim();

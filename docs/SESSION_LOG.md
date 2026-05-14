@@ -1,5 +1,28 @@
 # SESSION_LOG.md
 
+## 2026-05-14 - Brain Relations-First Graph
+
+Andringar:
+
+- `FileGraphBuilder` bygger relations-first och doljer runtime/genererat brus:
+  `data/`, `graphify-out/`, `.claude/`, `Obsidian valv/`, projekt-`vault/`
+  och `.json` utan scanner.
+- Projekt-MD skapar relationer via `[[wikilinks]]`, markdown-lankar,
+  backtickade filpaths och `source_file:`. Vault matchar titel/path och tar
+  med target-only noter.
+- Payload har `meta`; dashboarden visar lage och dolt brus.
+- Regression: C# FileGraphBuilder-cases och
+  `tests/brain-relations-first-dashboard.test.js`.
+
+Verifiering:
+
+- TDD red/green: C# och `brain-relations-first-dashboard` passerade.
+- Full smoke passerade: 49 Node-testfiler, `CommandRouterV1.Tests`,
+  `dotnet build` och MD-langdkoll. Logg:
+  `data/test-runs/20260514-030252/summary.txt`.
+- Publish/start klart med kand `MSB3277`-varning. Observerad process:
+  `Jarvis.exe` PID 47480.
+
 ## 2026-05-14 - UI-TARS package manager fallback
 
 Andringar:

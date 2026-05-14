@@ -3,43 +3,34 @@ using System.Text.RegularExpressions;
 
 namespace JarvisClean;
 
-// FileGraphBuilder bygger en kombinerad fil-graf:
-//  • Projektfiler i F:\Jarvis-clean\ (.cs, .js, .html, .css, .py, .md, .json)
-//  • Obsidian-vault-noter (.md med [[wikilinks]])
-//  • Edges:
-//      - C# typnamn-referenser
-//      - JS import / require / <script src=...>
-//      - HTML script + link
-//      - Python import (toleranta, hoppar över duplicerade __init__)
-//      - Vault [[wikilinks]] mellan noter
-//      - Vault frontmatter "source_file:" → projekt-fil (cross-link!)
-//
-// Bug fix 2026-05-10: Tidigare ToDictionary på Path.GetFileNameWithoutExtension kraschade
-// pga Python-paketens många __init__.py-filer. Nu använder vi ILookup.
+// Relations-first graph builder for Brain.
+// It favors meaningful code/vault connections over showing every generated file.
 internal static class FileGraphBuilder
 {
     private const string ProjectRoot = @"F:\Jarvis-clean";
-    // Vault-scope per användarens val 2026-05-10: bara F:\Jarvis-clean\vault\
-    // (gamla F:\New project\obsidian-vault\ är read-only-referens, inte aktiv)
-    private static readonly string[] VaultPaths = new[]
+    private const string BuilderVersion = "relations-first-v1-20260514";
+    private const long MaxFileSizeBytes = 200_000;
+    private const int MaxProjectNodes = 300;
+    private const int MaxVaultNodes = 250;
+    private const int MaxVaultFilesToScan = 600;
+
+    private static readonly HashSet<string> CodeExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        @"F:\Jarvis-clean\vault"
+        ".cs", ".js", ".html", ".css", ".py"
     };
 
-    private static readonly HashSet<string> SourceExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> ProjectMarkdownExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".cs", ".js", ".html", ".css", ".py", ".md", ".json"
+        ".md"
     };
-    private static readonly HashSet<string> ExcludedDirs = new(StringComparer.OrdinalIgnoreCase)
+
+    private static readonly HashSet<string> RuntimeOrGeneratedDirs = new(StringComparer.OrdinalIgnoreCase)
     {
         "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget",
         "backups", ".tmp", ".checkpoints", "build-verify", "github-brain",
-        "third_party", "__pycache__", "vendor"
+        "third_party", "__pycache__", "vendor", "data", "graphify-out",
+        ".claude", "Obsidian valv"
     };
-    private const long MaxFileSizeBytes = 200_000;
-    private const int MaxProjectNodes = 300;
-    // Vault är 3694 noter — vi cap'ar till de mest kopplade ([[wikilinks]] eller source_file matching)
-    private const int MaxVaultNodes = 250;
 
     internal sealed class Node
     {
@@ -47,9 +38,8 @@ internal static class FileGraphBuilder
         public string path { get; set; } = "";
         public string label { get; set; } = "";
         public string kind { get; set; } = "";
-        public string source { get; set; } = ""; // "project" eller "vault"
+        public string source { get; set; } = "";
         public int degree { get; set; }
-        // Minuter sedan filen ändrades — JS visar orange ring om < 60 min
         public int mtimeMin { get; set; } = 99999;
     }
 
@@ -60,10 +50,46 @@ internal static class FileGraphBuilder
         public string kind { get; set; } = "";
     }
 
+    internal sealed class GraphMeta
+    {
+        public string mode { get; set; } = "relations-first";
+        public string builderVersion { get; set; } = BuilderVersion;
+        public int projectCandidateFiles { get; set; }
+        public int vaultCandidateFiles { get; set; }
+        public int includedProjectNodes { get; set; }
+        public int includedVaultNodes { get; set; }
+        public int hiddenGeneratedFiles { get; set; }
+        public int hiddenVaultProjectFiles { get; set; }
+        public int hiddenJsonFiles { get; set; }
+        public int hiddenOversizeFiles { get; set; }
+        public int hiddenUnlinkedMarkdownFiles { get; set; }
+        public int zeroDegreeCount { get; set; }
+    }
+
     internal sealed class GraphPayload
     {
         public List<Node> nodes { get; set; } = new();
         public List<Edge> edges { get; set; } = new();
+        public GraphMeta meta { get; set; } = new();
+    }
+
+    private sealed class ProjectCandidate
+    {
+        public string FullPath { get; init; } = "";
+        public string RelPath { get; init; } = "";
+        public string Ext { get; init; } = "";
+        public string Kind => Ext.TrimStart('.').ToLowerInvariant();
+        public bool IsCode => CodeExtensions.Contains(Ext);
+        public bool IsMarkdown => ProjectMarkdownExtensions.Contains(Ext);
+    }
+
+    private sealed class VaultNote
+    {
+        public string FullPath { get; set; } = "";
+        public string RelPath { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string SourceFile { get; set; } = "";
+        public List<string> WikiLinks { get; set; } = new();
     }
 
     public static string BuildJsonForRoot(string projectRoot = ProjectRoot)
@@ -78,46 +104,38 @@ internal static class FileGraphBuilder
         var nodeById = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
         var edges = new List<Edge>();
         var edgeSeen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var meta = new GraphMeta();
 
-        // === 1. Projekt-filer ===
-        if (Directory.Exists(projectRoot))
+        var candidates = EnumerateProjectCandidates(projectRoot, meta);
+        meta.projectCandidateFiles = candidates.Count;
+
+        var candidateByRelPath = candidates
+            .GroupBy(c => c.RelPath, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var candidateByWikiKey = BuildProjectWikiIndex(candidates);
+
+        var linkedMarkdown = FindLinkedProjectMarkdown(candidates, candidateByRelPath, candidateByWikiKey);
+        var selectedCandidates = candidates
+            .Where(c => c.IsCode || linkedMarkdown.Contains(c.RelPath))
+            .OrderBy(ProjectPriority)
+            .ThenBy(c => c.RelPath, StringComparer.OrdinalIgnoreCase)
+            .Take(MaxProjectNodes)
+            .ToList();
+        meta.hiddenUnlinkedMarkdownFiles = candidates.Count(c => c.IsMarkdown && !linkedMarkdown.Contains(c.RelPath));
+
+        foreach (var f in selectedCandidates)
         {
-            foreach (var f in EnumerateSafe(projectRoot))
-            {
-                if (nodes.Count >= MaxProjectNodes) break;
-                var rel = Path.GetRelativePath(projectRoot, f).Replace("\\", "/");
-                if (rel.Split('/').Any(p => ExcludedDirs.Contains(p))) continue;
-                var ext = Path.GetExtension(f);
-                if (!SourceExtensions.Contains(ext)) continue;
-                try { if (new FileInfo(f).Length > MaxFileSizeBytes) continue; }
-                catch { continue; }
-
-                var id = "proj:" + rel;
-                int mtimeMin;
-                try { mtimeMin = (int)Math.Min(99999, (DateTime.Now - new FileInfo(f).LastWriteTime).TotalMinutes); }
-                catch { mtimeMin = 99999; }
-                var node = new Node
-                {
-                    id = id,
-                    path = rel,
-                    label = Path.GetFileName(rel),
-                    kind = ext.TrimStart('.').ToLowerInvariant(),
-                    source = "project",
-                    mtimeMin = mtimeMin
-                };
-                nodes.Add(node);
-                nodeById[id] = node;
-            }
+            var node = CreateProjectNode(f);
+            nodes.Add(node);
+            nodeById[node.id] = node;
         }
 
-        // Sökindex: filename-without-ext → list of project nodes (for C# typnamn-matchning).
-        // Använder ToLookup vilket hanterar dubletter (t.ex. flera __init__.py) utan att krascha.
         var projectByName = nodes.Where(n => n.source == "project")
             .ToLookup(n => Path.GetFileNameWithoutExtension(n.path), StringComparer.OrdinalIgnoreCase);
         var projectByRelPath = nodes.Where(n => n.source == "project")
             .ToDictionary(n => n.path, n => n, StringComparer.OrdinalIgnoreCase);
+        var projectByWikiKey = BuildProjectNodeWikiIndex(nodes);
 
-        // Skanna varje projekt-fil för internal edges.
         foreach (var node in nodes.Where(n => n.source == "project").ToList())
         {
             var abs = Path.Combine(projectRoot, node.path.Replace("/", "\\"));
@@ -131,70 +149,157 @@ internal static class FileGraphBuilder
                 case "js": ScanJsFile(node, content, projectByRelPath, edges, edgeSeen); break;
                 case "html": ScanHtmlFile(node, content, projectByRelPath, edges, edgeSeen); break;
                 case "py": ScanPyFile(node, content, projectByName, edges, edgeSeen); break;
+                case "md": ScanMarkdownFile(node, content, projectByRelPath, projectByWikiKey, edges, edgeSeen); break;
             }
         }
 
-        // === 2. Vault-noter ===
-        // Vi inkluderar bara noter som har minst en wikilink ELLER en source_file som matchar projekt.
-        // Det håller graph-storleken hanterbar och fokuserar på meningsfulla connections.
-        var vaultRaw = ScanVault();
-        // Filtrera till noter med wikilinks eller source-koppling
-        var keep = vaultRaw.Where(v => v.WikiLinks.Count > 0 || !string.IsNullOrEmpty(v.SourceFile))
-            .Take(MaxVaultNodes).ToList();
+        var vaultRaw = ScanVault(projectRoot);
+        meta.vaultCandidateFiles = vaultRaw.Count;
+        var vaultKeep = SelectVaultNotes(vaultRaw).Take(MaxVaultNodes).ToList();
+        var vaultByWikiKey = BuildVaultWikiIndex(vaultKeep);
 
-        var vaultById = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
-        foreach (var v in keep)
+        foreach (var v in vaultKeep)
         {
-            var id = "vault:" + v.RelPath;
-            int mtimeMin;
-            try
-            {
-                var abs = Path.Combine(@"F:\Jarvis-clean\vault", v.RelPath.Replace("/", "\\"));
-                mtimeMin = (int)Math.Min(99999, (DateTime.Now - File.GetLastWriteTime(abs)).TotalMinutes);
-            }
-            catch { mtimeMin = 99999; }
             var node = new Node
             {
-                id = id,
+                id = "vault:" + v.RelPath,
                 path = v.RelPath,
                 label = v.Title,
                 kind = "vault",
                 source = "vault",
-                mtimeMin = mtimeMin
+                mtimeMin = SafeMtimeMin(v.FullPath)
             };
             nodes.Add(node);
-            nodeById[id] = node;
-            vaultById[v.Title] = node; // index by title för wikilink-resolve
+            nodeById[node.id] = node;
         }
 
-        // Vault-edges: wikilinks mellan vault-noter + source_file → projekt
-        foreach (var v in keep)
+        foreach (var v in vaultKeep)
         {
             var srcId = "vault:" + v.RelPath;
-            // Wikilinks
             foreach (var wl in v.WikiLinks)
             {
-                if (vaultById.TryGetValue(wl, out var target))
-                    AddEdge(srcId, target.id, "vault-link", edges, edgeSeen);
+                if (TryResolveVaultWiki(wl, vaultByWikiKey, out var target))
+                    AddEdge(srcId, "vault:" + target.RelPath, "vault-link", edges, edgeSeen);
             }
-            // Source-file cross-link
-            if (!string.IsNullOrEmpty(v.SourceFile))
+
+            if (!string.IsNullOrWhiteSpace(v.SourceFile))
             {
-                // source_file kan vara t.ex. "AI_HANDOFF/AI_WORKFLOW.md" — försök hitta i projekt
-                var sf = v.SourceFile.Replace("\\", "/");
+                var sf = NormalizeRelPath(v.SourceFile);
                 if (projectByRelPath.TryGetValue(sf, out var projNode))
                     AddEdge(srcId, projNode.id, "vault-source", edges, edgeSeen);
             }
         }
 
-        // 3. Beräkna degree
         foreach (var e in edges)
         {
             if (nodeById.TryGetValue(e.source, out var s)) s.degree++;
             if (nodeById.TryGetValue(e.target, out var t)) t.degree++;
         }
 
-        return new GraphPayload { nodes = nodes, edges = edges };
+        meta.includedProjectNodes = nodes.Count(n => n.source == "project");
+        meta.includedVaultNodes = nodes.Count(n => n.source == "vault");
+        meta.zeroDegreeCount = nodes.Count(n => n.degree == 0);
+
+        return new GraphPayload { nodes = nodes, edges = edges, meta = meta };
+    }
+
+    private static List<ProjectCandidate> EnumerateProjectCandidates(string root, GraphMeta meta)
+    {
+        if (!Directory.Exists(root)) return new List<ProjectCandidate>();
+
+        var list = new List<ProjectCandidate>();
+        foreach (var f in EnumerateSafe(root).OrderBy(p => NormalizeRelPath(Path.GetRelativePath(root, p)), StringComparer.OrdinalIgnoreCase))
+        {
+            var rel = NormalizeRelPath(Path.GetRelativePath(root, f));
+            var parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+            if (parts.Length > 0 && string.Equals(parts[0], "vault", StringComparison.OrdinalIgnoreCase))
+            {
+                meta.hiddenVaultProjectFiles++;
+                continue;
+            }
+
+            if (parts.Any(p => RuntimeOrGeneratedDirs.Contains(p)))
+            {
+                meta.hiddenGeneratedFiles++;
+                continue;
+            }
+
+            var ext = Path.GetExtension(f);
+            if (string.Equals(ext, ".json", StringComparison.OrdinalIgnoreCase))
+            {
+                meta.hiddenJsonFiles++;
+                continue;
+            }
+
+            if (!CodeExtensions.Contains(ext) && !ProjectMarkdownExtensions.Contains(ext))
+                continue;
+
+            try
+            {
+                if (new FileInfo(f).Length > MaxFileSizeBytes)
+                {
+                    meta.hiddenOversizeFiles++;
+                    continue;
+                }
+            }
+            catch { continue; }
+
+            list.Add(new ProjectCandidate { FullPath = f, RelPath = rel, Ext = ext });
+        }
+
+        return list;
+    }
+
+    private static HashSet<string> FindLinkedProjectMarkdown(
+        List<ProjectCandidate> candidates,
+        Dictionary<string, ProjectCandidate> byRelPath,
+        Dictionary<string, ProjectCandidate> byWikiKey)
+    {
+        var linked = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in candidates.Where(c => c.IsMarkdown))
+        {
+            string content;
+            try { content = File.ReadAllText(candidate.FullPath); }
+            catch { continue; }
+
+            foreach (var target in ExtractMarkdownProjectTargets(candidate.RelPath, content, byRelPath, byWikiKey))
+            {
+                linked.Add(candidate.RelPath);
+                if (target.IsMarkdown)
+                    linked.Add(target.RelPath);
+            }
+        }
+
+        return linked;
+    }
+
+    private static Node CreateProjectNode(ProjectCandidate f)
+    {
+        return new Node
+        {
+            id = "proj:" + f.RelPath,
+            path = f.RelPath,
+            label = Path.GetFileName(f.RelPath),
+            kind = f.Kind,
+            source = "project",
+            mtimeMin = SafeMtimeMin(f.FullPath)
+        };
+    }
+
+    private static int ProjectPriority(ProjectCandidate c)
+    {
+        return c.Ext.ToLowerInvariant() switch
+        {
+            ".cs" => 0,
+            ".js" => 1,
+            ".html" => 2,
+            ".css" => 3,
+            ".py" => 4,
+            ".md" => 5,
+            _ => 99
+        };
     }
 
     private static IEnumerable<string> EnumerateSafe(string root)
@@ -207,13 +312,12 @@ internal static class FileGraphBuilder
     {
         if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(target)) return;
         if (string.Equals(source, target, StringComparison.OrdinalIgnoreCase)) return;
-        if (!seen.Add(source + "→" + target + ":" + kind)) return;
+        if (!seen.Add(source + "->" + target + ":" + kind)) return;
         edges.Add(new Edge { source = source, target = target, kind = kind });
     }
 
     private static void ScanCsFile(Node node, string content, ILookup<string, Node> projectByName, List<Edge> edges, HashSet<string> seen)
     {
-        // PascalCase identifiers ≥4 tecken som matchar fil-basnamn → relation
         foreach (Match m in Regex.Matches(content, @"\b([A-Z][A-Za-z0-9_]+)\b"))
         {
             var name = m.Groups[1].Value;
@@ -226,9 +330,7 @@ internal static class FileGraphBuilder
     private static void ScanJsFile(Node node, string content, Dictionary<string, Node> byRelPath, List<Edge> edges, HashSet<string> seen)
     {
         foreach (Match m in Regex.Matches(content, @"(?:import\s.*?from\s*|require\(\s*|import\(\s*)['""]([^'""]+)['""]"))
-        {
             ResolveJsSpec(node, m.Groups[1].Value, byRelPath, edges, seen);
-        }
     }
 
     private static void ResolveJsSpec(Node node, string spec, Dictionary<string, Node> byRelPath, List<Edge> edges, HashSet<string> seen)
@@ -236,11 +338,14 @@ internal static class FileGraphBuilder
         if (!spec.StartsWith(".") && !spec.StartsWith("/")) return;
         var nodeDir = Path.GetDirectoryName(node.path)?.Replace("\\", "/") ?? "";
         var combined = Path.GetFullPath(Path.Combine("/", nodeDir, spec.Trim('/')));
-        var asRel = combined.Replace("\\", "/").TrimStart('/');
+        var asRel = NormalizeRelPath(combined.TrimStart('\\', '/'));
         foreach (var candidate in new[] { asRel, asRel + ".js", asRel + "/index.js" })
         {
             if (byRelPath.TryGetValue(candidate, out var t))
-            { AddEdge(node.id, t.id, "js-import", edges, seen); return; }
+            {
+                AddEdge(node.id, t.id, "js-import", edges, seen);
+                return;
+            }
         }
     }
 
@@ -264,80 +369,315 @@ internal static class FileGraphBuilder
         }
     }
 
-    // === Vault scanning ===
-    private sealed class VaultNote
+    private static void ScanMarkdownFile(
+        Node node,
+        string content,
+        Dictionary<string, Node> byRelPath,
+        Dictionary<string, Node> byWikiKey,
+        List<Edge> edges,
+        HashSet<string> seen)
     {
-        public string RelPath { get; set; } = "";
-        public string Title { get; set; } = "";
-        public string SourceFile { get; set; } = "";
-        public List<string> WikiLinks { get; set; } = new();
+        foreach (var target in ExtractMarkdownNodeTargets(node.path, content, byRelPath, byWikiKey))
+            AddEdge(node.id, target.id, "md-link", edges, seen);
+
+        foreach (var sf in ExtractSourceFiles(content))
+        {
+            if (TryResolveProjectRel(node.path, sf, byRelPath, out var target))
+                AddEdge(node.id, target.id, "md-source", edges, seen);
+        }
     }
 
-    // Hård cap: scanna max så här många vault-filer totalt innan vi ger upp.
-    // Med 3694 noter i F:\New project\obsidian-vault tog full skanning 29s — för långt.
-    private const int MaxVaultFilesToScan = 600;
-
-    private static List<VaultNote> ScanVault()
+    private static IEnumerable<ProjectCandidate> ExtractMarkdownProjectTargets(
+        string sourceRelPath,
+        string content,
+        Dictionary<string, ProjectCandidate> byRelPath,
+        Dictionary<string, ProjectCandidate> byWikiKey)
     {
-        var notes = new List<VaultNote>();
-        var seenTitles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var vaultRoot in VaultPaths)
+        foreach (var sf in ExtractSourceFiles(content))
+            if (TryResolveProjectRel(sourceRelPath, sf, byRelPath, out var t))
+                yield return t;
+
+        foreach (var spec in ExtractMarkdownLinkSpecs(content).Concat(ExtractBacktickPathSpecs(content)))
+            if (TryResolveProjectRel(sourceRelPath, spec, byRelPath, out var t))
+                yield return t;
+
+        foreach (var wiki in ExtractWikiTargets(content))
+            if (TryResolveProjectWiki(wiki, byWikiKey, out var t))
+                yield return t;
+    }
+
+    private static IEnumerable<Node> ExtractMarkdownNodeTargets(
+        string sourceRelPath,
+        string content,
+        Dictionary<string, Node> byRelPath,
+        Dictionary<string, Node> byWikiKey)
+    {
+        foreach (var spec in ExtractMarkdownLinkSpecs(content).Concat(ExtractBacktickPathSpecs(content)))
+            if (TryResolveProjectRel(sourceRelPath, spec, byRelPath, out var t))
+                yield return t;
+
+        foreach (var wiki in ExtractWikiTargets(content))
+            if (TryResolveProjectWiki(wiki, byWikiKey, out var t))
+                yield return t;
+    }
+
+    private static IEnumerable<string> ExtractSourceFiles(string content)
+    {
+        foreach (Match m in Regex.Matches(content, @"(?im)^\s*source_file:\s*['""]?([^'""\r\n]+)['""]?\s*$"))
+            yield return m.Groups[1].Value.Trim();
+    }
+
+    private static IEnumerable<string> ExtractMarkdownLinkSpecs(string content)
+    {
+        foreach (Match m in Regex.Matches(content, @"\[[^\]]+\]\(([^)#]+)(?:#[^)]+)?\)"))
         {
-            if (!Directory.Exists(vaultRoot)) continue;
-            try
+            var spec = m.Groups[1].Value.Trim();
+            if (IsLocalFileSpec(spec))
+                yield return spec;
+        }
+    }
+
+    private static IEnumerable<string> ExtractBacktickPathSpecs(string content)
+    {
+        foreach (Match m in Regex.Matches(content, "`([^`]+)`"))
+        {
+            var spec = m.Groups[1].Value.Trim();
+            if (IsLocalFileSpec(spec))
+                yield return spec;
+        }
+    }
+
+    private static IEnumerable<string> ExtractWikiTargets(string content)
+    {
+        foreach (Match m in Regex.Matches(content, @"\[\[([^\]\|#]+)(?:[#\|][^\]]*)?\]\]"))
+        {
+            var target = m.Groups[1].Value.Trim();
+            if (!string.IsNullOrEmpty(target))
+                yield return target;
+        }
+    }
+
+    private static bool TryResolveProjectRel<T>(string sourceRelPath, string spec, Dictionary<string, T> byRelPath, out T target)
+    {
+        target = default!;
+        var normalized = NormalizeRelPath(spec.Split('#')[0].Trim());
+        if (string.IsNullOrWhiteSpace(normalized)) return false;
+
+        var candidates = new List<string>();
+        if (normalized.StartsWith("."))
+        {
+            var sourceDir = Path.GetDirectoryName(sourceRelPath)?.Replace("\\", "/") ?? "";
+            var combined = Path.GetFullPath(Path.Combine("/", sourceDir, normalized)).TrimStart('\\', '/');
+            candidates.Add(NormalizeRelPath(combined));
+        }
+        candidates.Add(normalized.TrimStart('/'));
+
+        foreach (var c in candidates.Select(NormalizeRelPath).Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            foreach (var variant in CandidatePathVariants(c))
             {
-                foreach (var f in Directory.EnumerateFiles(vaultRoot, "*.md", SearchOption.AllDirectories))
+                if (byRelPath.TryGetValue(variant, out var found))
                 {
-                    if (notes.Count >= MaxVaultFilesToScan) break;
-                    var rel = Path.GetRelativePath(vaultRoot, f).Replace("\\", "/");
-                    var title = Path.GetFileNameWithoutExtension(rel);
-                    // Snabbskanna: hoppa över filer utan [[ i namnet eller relevanta tecken
-                    // (vault innehåller t.ex. ".applyMatrix4()_10.md" — Three.js-API-doc, trolig referens)
-                    string content;
-                    try
-                    {
-                        var info = new FileInfo(f);
-                        if (info.Length > MaxFileSizeBytes) continue;
-                        if (info.Length < 30) continue; // tom fil — hoppa
-                        content = File.ReadAllText(f);
-                    }
-                    catch { continue; }
-
-                    // Snabb pre-check: bara filer som innehåller [[ eller source_file: tas in
-                    if (content.IndexOf("[[", StringComparison.Ordinal) < 0 &&
-                        content.IndexOf("source_file:", StringComparison.OrdinalIgnoreCase) < 0)
-                        continue;
-
-                    // Dedupa titlar så vi inte får 50 ".applyMatrix4()" som dominerar.
-                    if (!seenTitles.Add(title)) continue;
-
-                    var note = new VaultNote { RelPath = rel, Title = title };
-
-                    var fmMatch = Regex.Match(content, @"^---\s*\n(.*?)\n---", RegexOptions.Singleline);
-                    if (fmMatch.Success)
-                    {
-                        var fm = fmMatch.Groups[1].Value;
-                        var sfMatch = Regex.Match(fm, @"source_file:\s*['""]?([^'""\n]+)['""]?");
-                        if (sfMatch.Success) note.SourceFile = sfMatch.Groups[1].Value.Trim();
-                    }
-
-                    foreach (Match m in Regex.Matches(content, @"\[\[([^\]\|]+)(?:\|[^\]]*)?\]\]"))
-                    {
-                        var target = m.Groups[1].Value.Trim();
-                        if (!string.IsNullOrEmpty(target) && note.WikiLinks.Count < 30)
-                            note.WikiLinks.Add(target);
-                    }
-
-                    notes.Add(note);
+                    target = found;
+                    return true;
                 }
             }
-            catch { }
         }
+
+        return false;
+    }
+
+    private static bool TryResolveProjectWiki<T>(string target, Dictionary<string, T> byWikiKey, out T value)
+    {
+        value = default!;
+        var key = NormalizeWikiKey(target);
+        if (byWikiKey.TryGetValue(key, out var exact))
+        {
+            value = exact;
+            return true;
+        }
+
+        if (byWikiKey.TryGetValue(Path.GetFileNameWithoutExtension(key), out var byName))
+        {
+            value = byName;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<string> CandidatePathVariants(string rel)
+    {
+        yield return rel;
+        if (!Path.HasExtension(rel))
+        {
+            foreach (var ext in CodeExtensions.Concat(ProjectMarkdownExtensions))
+                yield return rel + ext;
+            yield return rel + "/index.js";
+            yield return rel + "/README.md";
+        }
+    }
+
+    private static Dictionary<string, ProjectCandidate> BuildProjectWikiIndex(IEnumerable<ProjectCandidate> candidates)
+    {
+        var index = new Dictionary<string, ProjectCandidate>(StringComparer.OrdinalIgnoreCase);
+        foreach (var c in candidates)
+        {
+            foreach (var key in ProjectWikiKeys(c.RelPath))
+                index.TryAdd(key, c);
+        }
+        return index;
+    }
+
+    private static Dictionary<string, Node> BuildProjectNodeWikiIndex(IEnumerable<Node> nodes)
+    {
+        var index = new Dictionary<string, Node>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in nodes.Where(n => n.source == "project"))
+        {
+            foreach (var key in ProjectWikiKeys(n.path))
+                index.TryAdd(key, n);
+        }
+        return index;
+    }
+
+    private static IEnumerable<string> ProjectWikiKeys(string relPath)
+    {
+        var noExt = NormalizeRelPath(Path.ChangeExtension(relPath, null) ?? relPath);
+        yield return NormalizeWikiKey(noExt);
+        yield return NormalizeWikiKey(Path.GetFileNameWithoutExtension(relPath));
+    }
+
+    private static List<VaultNote> ScanVault(string projectRoot)
+    {
+        var vaultRoot = Path.Combine(projectRoot, "vault");
+        var notes = new List<VaultNote>();
+        if (!Directory.Exists(vaultRoot)) return notes;
+
+        try
+        {
+            foreach (var f in Directory.EnumerateFiles(vaultRoot, "*.md", SearchOption.AllDirectories)
+                         .OrderBy(p => NormalizeRelPath(Path.GetRelativePath(vaultRoot, p)), StringComparer.OrdinalIgnoreCase))
+            {
+                if (notes.Count >= MaxVaultFilesToScan) break;
+                var rel = NormalizeRelPath(Path.GetRelativePath(vaultRoot, f));
+                string content;
+                try
+                {
+                    var info = new FileInfo(f);
+                    if (info.Length > MaxFileSizeBytes || info.Length < 3) continue;
+                    content = File.ReadAllText(f);
+                }
+                catch { continue; }
+
+                var note = new VaultNote
+                {
+                    FullPath = f,
+                    RelPath = rel,
+                    Title = Path.GetFileNameWithoutExtension(rel),
+                    SourceFile = ExtractSourceFiles(content).FirstOrDefault() ?? "",
+                    WikiLinks = ExtractWikiTargets(content).Take(30).ToList()
+                };
+                notes.Add(note);
+            }
+        }
+        catch { }
+
         return notes;
     }
 
-    // Cache: graf byggs en gång per session, sparas till .checkpoints/.brain-graph-cache.json.
-    // Användarens build/check-fil-tider används som invalidation-trigger om vi vill ha färsk graf.
+    private static IEnumerable<VaultNote> SelectVaultNotes(List<VaultNote> notes)
+    {
+        var index = BuildVaultWikiIndex(notes);
+        var keep = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var note in notes)
+        {
+            if (note.WikiLinks.Count > 0 || !string.IsNullOrWhiteSpace(note.SourceFile))
+                keep.Add(note.RelPath);
+
+            foreach (var wl in note.WikiLinks)
+                if (TryResolveVaultWiki(wl, index, out var target))
+                    keep.Add(target.RelPath);
+        }
+
+        return notes.Where(n => keep.Contains(n.RelPath))
+            .OrderBy(n => n.RelPath, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, VaultNote> BuildVaultWikiIndex(IEnumerable<VaultNote> notes)
+    {
+        var index = new Dictionary<string, VaultNote>(StringComparer.OrdinalIgnoreCase);
+        foreach (var n in notes)
+        {
+            foreach (var key in VaultWikiKeys(n))
+                index.TryAdd(key, n);
+        }
+        return index;
+    }
+
+    private static IEnumerable<string> VaultWikiKeys(VaultNote note)
+    {
+        var noExt = NormalizeRelPath(Path.ChangeExtension(note.RelPath, null) ?? note.RelPath);
+        yield return NormalizeWikiKey(noExt);
+        yield return NormalizeWikiKey(note.RelPath);
+        yield return NormalizeWikiKey(note.Title);
+    }
+
+    private static bool TryResolveVaultWiki(string target, Dictionary<string, VaultNote> byWikiKey, out VaultNote note)
+    {
+        note = default!;
+        var key = NormalizeWikiKey(target);
+        if (byWikiKey.TryGetValue(key, out var exact))
+        {
+            note = exact;
+            return true;
+        }
+
+        if (byWikiKey.TryGetValue(NormalizeWikiKey(key + ".md"), out var byMd))
+        {
+            note = byMd;
+            return true;
+        }
+
+        if (byWikiKey.TryGetValue(NormalizeWikiKey(Path.GetFileNameWithoutExtension(key)), out var byName))
+        {
+            note = byName;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static string NormalizeRelPath(string path)
+    {
+        return path.Replace("\\", "/").Trim().TrimStart('/');
+    }
+
+    private static string NormalizeWikiKey(string value)
+    {
+        return NormalizeRelPath(value)
+            .Trim()
+            .TrimStart('/')
+            .TrimEnd('/')
+            .Replace(".md", "", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsLocalFileSpec(string spec)
+    {
+        if (string.IsNullOrWhiteSpace(spec)) return false;
+        if (spec.StartsWith("http://", StringComparison.OrdinalIgnoreCase)) return false;
+        if (spec.StartsWith("https://", StringComparison.OrdinalIgnoreCase)) return false;
+        if (spec.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)) return false;
+        if (spec.StartsWith("#")) return false;
+        return spec.Contains('/') || spec.Contains('\\') || Path.HasExtension(spec);
+    }
+
+    private static int SafeMtimeMin(string path)
+    {
+        try { return (int)Math.Min(99999, (DateTime.Now - File.GetLastWriteTime(path)).TotalMinutes); }
+        catch { return 99999; }
+    }
+
     public static string BuildJsonForRootCached(string projectRoot = ProjectRoot, int maxAgeSec = 300)
     {
         try
@@ -347,20 +687,37 @@ internal static class FileGraphBuilder
             {
                 var age = DateTime.Now - File.GetLastWriteTime(cachePath);
                 if (age.TotalSeconds < maxAgeSec)
-                    return File.ReadAllText(cachePath);
+                {
+                    var cached = File.ReadAllText(cachePath);
+                    if (CacheMatchesBuilderVersion(cached))
+                        return cached;
+                }
             }
+
             var json = BuildJsonForRoot(projectRoot);
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(cachePath)!);
                 File.WriteAllText(cachePath, json);
             }
-            catch { /* cache är best-effort */ }
+            catch { }
             return json;
         }
         catch
         {
             return BuildJsonForRoot(projectRoot);
         }
+    }
+
+    private static bool CacheMatchesBuilderVersion(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.TryGetProperty("meta", out var meta) &&
+                   meta.TryGetProperty("builderVersion", out var version) &&
+                   string.Equals(version.GetString(), BuilderVersion, StringComparison.Ordinal);
+        }
+        catch { return false; }
     }
 }

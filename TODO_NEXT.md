@@ -96,6 +96,8 @@ weather-animationer och andra stora future-features.
 
 - [x] Lagg till sliders i Brain Graph for Center force, Repel force och Link force.
 - [x] Koppla sliders direkt till 3D force-layouten sa grafen kan spridas live.
+- [x] Brain Relations-First: dolj runtime/generated-brus, bygg stabil graf-meta
+  och prioritera riktiga kod/vault/markdown-relationer.
 
 ## Produktroll
 

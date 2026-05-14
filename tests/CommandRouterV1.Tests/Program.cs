@@ -1242,6 +1242,72 @@ var tests = new (string Name, Action Test)[]
         AssertEqual(30, action.X, "prediction x");
         AssertEqual(40, action.Y, "prediction y");
         AssertEqual("ui-tars", action.Source, "prediction source");
+    }),
+
+    ("FileGraphBuilder hides generated data and json in relations-first mode", () =>
+    {
+        var root = CreateTempRoot("brain-relations-generated");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "data", "jobs", "job-1"));
+            File.WriteAllText(Path.Combine(root, "data", "jobs", "job-1", "status.json"), "{\"state\":\"Completed\"}");
+            Directory.CreateDirectory(Path.Combine(root, "app"));
+            File.WriteAllText(Path.Combine(root, "app", "AlphaService.cs"), "class AlphaService { BetaService beta; }");
+            File.WriteAllText(Path.Combine(root, "app", "BetaService.cs"), "class BetaService { }");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(FileGraphBuilder.BuildJsonForRoot(root));
+            var nodes = doc.RootElement.GetProperty("nodes").EnumerateArray().ToList();
+            AssertTrue(nodes.Any(n => n.GetProperty("path").GetString() == "app/AlphaService.cs"), "keeps code node");
+            AssertTrue(nodes.Any(n => n.GetProperty("path").GetString() == "app/BetaService.cs"), "keeps referenced code node");
+            AssertFalse(nodes.Any(n => (n.GetProperty("path").GetString() ?? "").StartsWith("data/")), "data jobs must be hidden");
+            AssertFalse(nodes.Any(n => n.GetProperty("kind").GetString() == "json"), "json nodes must be hidden until scanner exists");
+            AssertEqual("relations-first", doc.RootElement.GetProperty("meta").GetProperty("mode").GetString(), "graph mode");
+            AssertTrue(doc.RootElement.GetProperty("meta").GetProperty("hiddenGeneratedFiles").GetInt32() >= 1, "hidden generated count");
+        }
+        finally { DeleteTempRoot(root); }
+    }),
+
+    ("FileGraphBuilder scans vault once and resolves wikilinks by title or path", () =>
+    {
+        var root = CreateTempRoot("brain-relations-vault");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "vault", "Project"));
+            File.WriteAllText(Path.Combine(root, "vault", "Index.md"), "# Index\n[[Project/UNIFICATION_PLAN]]\n[[UNIFICATION_PLAN]]\n");
+            File.WriteAllText(Path.Combine(root, "vault", "Project", "UNIFICATION_PLAN.md"), "# Unification\nBack to [[Index]]\n");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(FileGraphBuilder.BuildJsonForRoot(root));
+            var nodes = doc.RootElement.GetProperty("nodes").EnumerateArray().ToList();
+            var edges = doc.RootElement.GetProperty("edges").EnumerateArray().ToList();
+            AssertFalse(nodes.Any(n => n.GetProperty("source").GetString() == "project" && (n.GetProperty("path").GetString() ?? "").StartsWith("vault/")), "vault files must not be project nodes");
+            AssertTrue(nodes.Any(n => n.GetProperty("id").GetString() == "vault:Index.md"), "index vault node");
+            AssertTrue(nodes.Any(n => n.GetProperty("id").GetString() == "vault:Project/UNIFICATION_PLAN.md"), "target vault node");
+            AssertTrue(edges.Any(e => e.GetProperty("source").GetString() == "vault:Index.md" &&
+                                      e.GetProperty("target").GetString() == "vault:Project/UNIFICATION_PLAN.md" &&
+                                      e.GetProperty("kind").GetString() == "vault-link"), "wikilink resolves to path target");
+        }
+        finally { DeleteTempRoot(root); }
+    }),
+
+    ("FileGraphBuilder links project markdown paths and source_file to code", () =>
+    {
+        var root = CreateTempRoot("brain-relations-md");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "app"));
+            Directory.CreateDirectory(Path.Combine(root, "docs"));
+            File.WriteAllText(Path.Combine(root, "app", "Program.cs"), "class Program { }");
+            File.WriteAllText(Path.Combine(root, "docs", "Guide.md"),
+                "---\nsource_file: app/Program.cs\n---\n# Guide\nSee [Program](../app/Program.cs) and `app/Program.cs`.\n");
+
+            using var doc = System.Text.Json.JsonDocument.Parse(FileGraphBuilder.BuildJsonForRoot(root));
+            var nodes = doc.RootElement.GetProperty("nodes").EnumerateArray().ToList();
+            var edges = doc.RootElement.GetProperty("edges").EnumerateArray().ToList();
+            AssertTrue(nodes.Any(n => n.GetProperty("path").GetString() == "docs/Guide.md"), "keeps linked markdown node");
+            AssertTrue(edges.Any(e => e.GetProperty("source").GetString() == "proj:docs/Guide.md" &&
+                                      e.GetProperty("target").GetString() == "proj:app/Program.cs"), "markdown links to code");
+        }
+        finally { DeleteTempRoot(root); }
     })
 };
 
@@ -1309,4 +1375,17 @@ static string ReadStringProperty(object target, string propertyName)
     var property = target.GetType().GetProperty(propertyName)
         ?? throw new InvalidOperationException("missing property " + propertyName);
     return property.GetValue(target)?.ToString() ?? "";
+}
+
+static string CreateTempRoot(string prefix)
+{
+    var root = Path.Combine(Path.GetTempPath(), prefix + "-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    return root;
+}
+
+static void DeleteTempRoot(string root)
+{
+    if (Directory.Exists(root))
+        Directory.Delete(root, recursive: true);
 }

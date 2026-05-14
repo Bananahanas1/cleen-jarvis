@@ -91,7 +91,7 @@ if (!program.includes('Navigate("https://jarvis.local/dashboard/index.html")')) 
 }
 
 // 7. FileGraphBuilder är på plats
-const fgbMarkers = ["BuildJsonForRoot", "ScanCsFile", "ScanJsFile", "ScanPyFile", "ExcludedDirs", "MaxProjectNodes"];
+const fgbMarkers = ["BuildJsonForRoot", "ScanCsFile", "ScanJsFile", "ScanPyFile", "RuntimeOrGeneratedDirs", "MaxProjectNodes"];
 for (const m of fgbMarkers) {
   if (!fgb.includes(m)) {
     failures += 1;
@@ -118,7 +118,7 @@ if (html.includes('id="showExplorerBtn"')) {
 }
 
 // 10. FileGraphBuilder ska scanna Obsidian-vault
-const vaultMarkers = ["VaultPaths", "ScanVault", "WikiLinks", "vault-link", "vault-source"];
+const vaultMarkers = ["ScanVault", "BuildVaultWikiIndex", "WikiLinks", "vault-link", "vault-source"];
 for (const m of vaultMarkers) {
   if (!fgb.includes(m)) {
     failures += 1;
