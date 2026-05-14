@@ -16,6 +16,8 @@ internal static class Program
     private static void Main()
     {
         ApplicationConfiguration.Initialize();
+        // Ladda API-nycklar från .env in i processen INNAN modellrouter eller andra komponenter läser env vars.
+        try { EnvVaultV1.LoadIntoProcessAtStartup(@"F:\Jarvis-clean"); } catch { }
         Application.Run(new JarvisForm());
     }
 }
@@ -41,7 +43,8 @@ public sealed class JarvisForm : Form
 
     private static readonly HttpClient Http = new()
     {
-        Timeout = TimeSpan.FromSeconds(60)
+        // 180 sek så Ollama hinner kall-starta stora modeller (qwen3:8b kan ta 60+ sek vid första anropet).
+        Timeout = TimeSpan.FromSeconds(180)
     };
 
     private static List<MemoryBlock> PendingForgetMatches = new();
@@ -133,17 +136,35 @@ public sealed class JarvisForm : Form
     {
         base.OnHandleCreated(e);
         try { RegisterHotKey(Handle, DesktopKillHotkeyIdV1, ModControlV1 | ModShiftV1 | ModAltV1, (uint)Keys.J); } catch { }
+        VoiceHotkeyV1.PttPressed += OnVoicePttHotkey;
+        VoiceHotkeyV1.Register(Handle);
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
     {
         try { UnregisterHotKey(Handle, DesktopKillHotkeyIdV1); } catch { }
+        VoiceHotkeyV1.Unregister(Handle);
+        VoiceHotkeyV1.PttPressed -= OnVoicePttHotkey;
         base.OnHandleDestroyed(e);
+    }
+
+    private void OnVoicePttHotkey()
+    {
+        _ = BeginInvoke(new Action(async () =>
+        {
+            await HandleVoicePttToggleAsync();
+        }));
     }
 
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == WmHotkeyV1 && m.WParam.ToInt32() == DesktopKillHotkeyIdV1)
+        // VIKTIGT: använd ToInt64() — ToInt32() overflowar på 64-bit Windows när andra messages
+        // kommer in med stora WParam-värden (t.ex. window handles, pekare).
+        var wParamLong = m.WParam.ToInt64();
+        if (VoiceHotkeyV1.TryHandleWmHotkey(m.Msg, wParamLong))
+            return;
+
+        if (m.Msg == WmHotkeyV1 && wParamLong == DesktopKillHotkeyIdV1)
         {
             AgentAutopilotModeV1.Stop(out _);
             DesktopActionGate.Disable();
@@ -565,6 +586,93 @@ public sealed class JarvisForm : Form
                 await SendBrainGraphToDashboardAsync();
                 return;
             }
+
+            // VOICE_HANDLERS — push-to-talk från dashboard mic-knapp + Ctrl+Space hotkey
+            if (type == "voice_ptt_toggle")
+            {
+                await HandleVoicePttToggleAsync();
+                return;
+            }
+            if (type == "voice_ptt_press")
+            {
+                await HandleVoicePttPressAsync();
+                return;
+            }
+            if (type == "voice_ptt_release")
+            {
+                await HandleVoicePttReleaseAsync();
+                return;
+            }
+
+            // SETTINGS_HANDLERS — Inställningspanel (Voice + API-nycklar)
+            if (type == "settings_get")
+            {
+                await SendSettingsSnapshotAsync();
+                return;
+            }
+            if (type == "settings_save_voice")
+            {
+                await HandleSettingsSaveVoiceAsync(root);
+                return;
+            }
+            if (type == "settings_save_env_key")
+            {
+                await HandleSettingsSaveEnvKeyAsync(root);
+                return;
+            }
+            if (type == "settings_clear_env_key")
+            {
+                await HandleSettingsClearEnvKeyAsync(root);
+                return;
+            }
+            if (type == "settings_open_download")
+            {
+                await HandleSettingsOpenDownloadAsync(root);
+                return;
+            }
+
+            // KARTA_HANDLERS - 3D globe panel, user-driven note storage
+            if (type == "karta_get_notes")
+            {
+                await SendKartaNotesAsync();
+                return;
+            }
+            if (type == "karta_add_note")
+            {
+                await HandleKartaAddNoteAsync(root);
+                return;
+            }
+            if (type == "karta_delete_note")
+            {
+                await HandleKartaDeleteNoteAsync(root);
+                return;
+            }
+            if (type == "karta_get_google_key")
+            {
+                await SendKartaGoogleKeyAsync();
+                return;
+            }
+            if (type == "karta_geocode")
+            {
+                await HandleKartaGeocodeAsync(root);
+                return;
+            }
+            if (type == "karta_reverse_geocode")
+            {
+                await HandleKartaReverseGeocodeAsync(root);
+                return;
+            }
+            if (type == "karta_get_flights")
+            {
+                await HandleKartaGetFlightsAsync(root);
+                return;
+            }
+            if (type == "karta_get_ais_key")
+            {
+                await SendKartaAisKeyAsync();
+                return;
+            }
+
             if (type == "brain_rebuild_graph")
             {
                 // Rensa cache → tvinga rebuild nästa request
@@ -922,6 +1030,47 @@ public sealed class JarvisForm : Form
             return true;
         }
 
+        if (routedV1.Intent is CommandIntent.VoiceStatus
+            or CommandIntent.VoiceOn
+            or CommandIntent.VoiceOff
+            or CommandIntent.VoiceMute
+            or CommandIntent.VoiceUnmute
+            or CommandIntent.VoiceMicTest
+            or CommandIntent.VoiceModelSet
+            or CommandIntent.VoiceListVoices
+            or CommandIntent.VoiceSetVoice)
+        {
+            var configDir = Path.Combine(ProjectRoot, "config");
+            await AddAssistantMessage(VoiceCommandHandlerV1.Apply(routedV1, configDir));
+            await SendJarvisOverviewV1Async(showPanel: false);
+
+            if (routedV1.Intent == CommandIntent.VoiceMicTest)
+            {
+                var micConfig = VoiceConfigV1.Load(configDir);
+                _ = Task.Run(async () =>
+                {
+                    var result = await VoiceCaptureV1.RunMicTestAsync(micConfig.MicDeviceId, 2);
+                    await AddAssistantMessage(result);
+                    await SendJarvisOverviewV1Async(showPanel: false);
+                });
+            }
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.SceneShow)
+        {
+            var query = routedV1.Arguments.TryGetValue("query", out var q) ? q ?? "" : "";
+            await HandleSceneShowAsync(query);
+            return true;
+        }
+
+        if (routedV1.Intent == CommandIntent.MapShow)
+        {
+            var query = routedV1.Arguments.TryGetValue("query", out var q) ? q ?? "" : "";
+            await HandleMapShowAsync(query);
+            return true;
+        }
+
         if (routedV1.Intent == CommandIntent.DesktopStatus)
         {
             await AddAssistantMessage(DesktopStatusTool());
@@ -1066,9 +1215,11 @@ public sealed class JarvisForm : Form
             ["jobs"] = BackgroundJobQueueV1.FormatMonitorLine(),
             ["workNow"] = BuildWorkMonitorOverviewLineV1(),
             ["modelProvider"] = BuildModelProviderOverviewLineV1(),
+            ["voice"] = VoiceStateV1.OverviewLine(),
             ["autopilot"] = BuildAgentAutopilotOverviewLineV1(),
             ["desktopAutopilotCanContinue"] = CanContinueDesktopAutopilotV1() ? "true" : "false",
             ["desktopAutopilotContinueCommand"] = DesktopAutopilotContinueCommandV1,
+            ["desktopAutopilotCapability"] = BuildDesktopAutopilotCapabilityLineV1(),
             ["vault"] = BuildVaultOverviewLineV1(),
             ["desktop"] = "Desktop-control: " + (DesktopActionGate.Enabled ? "PÅ" : "AV") + "\n" + (_uiTarsBridge.IsAvailable() ? "UI-TARS source hittad" : "UI-TARS source saknas"),
             ["loop"] = "Observe -> Think -> Plan -> Ask if risky -> Act -> Verify -> Report -> Remember\nMonitor: aktiv. Riskabla writes/actions visas som pending.",
@@ -1100,6 +1251,12 @@ public sealed class JarvisForm : Form
         var state = AgentAutopilotModeV1.State;
         return state.Level == AgentAutopilotLevelV1.DesktopAutopilot
             && !string.IsNullOrWhiteSpace(state.Mission);
+    }
+
+    private static string BuildDesktopAutopilotCapabilityLineV1()
+    {
+        return SafeAppLauncher.LocalAutopilotActionsLineV1() + "\n" +
+               _uiTarsBridge.VisionConfigStatusLineV1();
     }
 
     private static string BuildTaskOverviewLineV1()
@@ -5808,7 +5965,7 @@ public sealed class JarvisForm : Form
             {
                 model = chosenModel,
                 stream = false,
-                keep_alive = "10m",
+                keep_alive = "30m",
                 messages = messages
             };
 
@@ -5871,7 +6028,7 @@ public sealed class JarvisForm : Form
             {
                 model,
                 stream = false,
-                keep_alive = "10m",
+                keep_alive = "30m",
                 messages
             };
 
@@ -7001,6 +7158,630 @@ public sealed class JarvisForm : Form
 
         return true;
     }
+    private async Task HandleVoicePttToggleAsync()
+    {
+        // Hotkey-toggle: tryck → börja spela in eller stoppa+transkribera.
+        if (VoiceCaptureV1.IsRecording)
+            await HandleVoicePttReleaseAsync();
+        else
+            await HandleVoicePttPressAsync();
+    }
+
+    private static DateTime _voicePttPressedAtUtc = DateTime.MinValue;
+    private const int VoiceMinRecordingMs = 600;
+
+    private async Task HandleVoicePttPressAsync()
+    {
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var config = VoiceConfigV1.Load(configDir);
+
+        if (!config.Enabled)
+        {
+            await AddAssistantMessage("Röst är avstängd. Säg 'aktivera röst' eller klicka På.");
+            return;
+        }
+
+        if (VoiceCaptureV1.IsRecording)
+            return; // redan igång — ignorera duplicerad press
+
+        try
+        {
+            _voicePttPressedAtUtc = DateTime.UtcNow;
+            VoiceCaptureV1.StartRecording(config.MicDeviceId);
+            await SendJarvisOverviewV1Async(showPanel: false);
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Kunde inte starta mikrofonen: " + ex.Message);
+        }
+    }
+
+    private async Task HandleVoicePttReleaseAsync()
+    {
+        if (!VoiceCaptureV1.IsRecording)
+            return; // ingen pågående inspelning — ignorera duplicerad release
+
+        // Minimum inspelningstid — om användaren klickar för snabbt (< 600 ms) hinner
+        // WaveInEvent inte buffra någon PCM och vi får "ingen audio mottagen".
+        var elapsed = DateTime.UtcNow - _voicePttPressedAtUtc;
+        if (elapsed < TimeSpan.FromMilliseconds(VoiceMinRecordingMs))
+        {
+            var remaining = TimeSpan.FromMilliseconds(VoiceMinRecordingMs) - elapsed;
+            await Task.Delay(remaining);
+        }
+
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var config = VoiceConfigV1.Load(configDir);
+
+        var pcm = await VoiceCaptureV1.StopAndGetPcmAsync();
+        VoiceStateV1.TransitionTo(VoiceModeV1.Transcribing);
+        await SendJarvisOverviewV1Async(showPanel: false);
+
+        if (pcm.Length == 0)
+        {
+            await AddAssistantMessage("Mikrofontranskribering: ingen audio mottagen.");
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return;
+        }
+
+        var modelPath = VoiceAssetManagerV1.WhisperModelPath(ProjectRoot, config.SttModel);
+        var sttResult = await VoiceSttServiceV1.TranscribeAsync(pcm, modelPath, config.Language);
+
+        if (!string.IsNullOrEmpty(sttResult.Error))
+        {
+            await AddAssistantMessage("Transkribering misslyckades: " + sttResult.Error);
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(sttResult.Transcript))
+        {
+            await AddAssistantMessage("Hörde ingenting. Försök igen.");
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return;
+        }
+
+        // Skriv transkriptet i chat-input istället för att skicka direkt.
+        // Användaren kan granska/redigera och trycka Enter eller Skicka.
+        if (_webView.CoreWebView2 is not null)
+        {
+            var transcriptJson = JsonSerializer.Serialize(sttResult.Transcript);
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                $"window.jarvisFillChatInputV1 && window.jarvisFillChatInputV1({transcriptJson});"
+            );
+        }
+
+        if (VoiceStateV1.IsEnabled)
+        {
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            await SendJarvisOverviewV1Async(showPanel: false);
+        }
+    }
+
+    private async Task SendSettingsSnapshotAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var voiceConfig = VoiceConfigV1.Load(configDir);
+        var voiceReport = VoiceAssetManagerV1.BuildReport(ProjectRoot, voiceConfig);
+        var installedVoices = VoiceAssetManagerV1.ListInstalledPiperVoices(ProjectRoot);
+        var installedModels = VoiceAssetManagerV1.ListInstalledWhisperModels(ProjectRoot);
+        var envStatus = EnvVaultV1.StatusReport(ProjectRoot);
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["voice"] = new Dictionary<string, object?>
+            {
+                ["enabled"] = voiceConfig.Enabled,
+                ["muted"] = voiceConfig.Muted,
+                ["ttsAutoSpeak"] = voiceConfig.TtsAutoSpeak,
+                ["sttModel"] = voiceConfig.SttModel,
+                ["ttsVoice"] = voiceConfig.TtsVoice,
+                ["language"] = voiceConfig.Language,
+                ["pttHotkey"] = voiceConfig.PttHotkey,
+                ["installedVoices"] = installedVoices,
+                ["installedModels"] = installedModels,
+                ["assets"] = new Dictionary<string, object?>
+                {
+                    ["sttReady"] = voiceReport.SttReady,
+                    ["ttsReady"] = voiceReport.TtsReady,
+                    ["allPresent"] = voiceReport.AllPresent,
+                    ["whisperModelPath"] = voiceReport.WhisperModelPath,
+                    ["whisperModelExists"] = voiceReport.WhisperModelExists,
+                    ["piperExecutablePath"] = voiceReport.PiperExecutablePath,
+                    ["piperExecutableExists"] = voiceReport.PiperExecutableExists,
+                    ["piperVoicePath"] = voiceReport.PiperVoicePath,
+                    ["piperVoiceExists"] = voiceReport.PiperVoiceExists,
+                    ["piperVoiceConfigPath"] = voiceReport.PiperVoiceConfigPath,
+                    ["piperVoiceConfigExists"] = voiceReport.PiperVoiceConfigExists
+                }
+            },
+            ["env"] = new Dictionary<string, object?>
+            {
+                ["allowedKeys"] = EnvVaultV1.AllowedKeys,
+                ["status"] = envStatus,
+                ["envFilePath"] = EnvVaultV1.EnvFilePath(ProjectRoot)
+            }
+        };
+
+        var payloadJson = JsonSerializer.Serialize(payload);
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisApplySettingsV1 && window.jarvisApplySettingsV1({payloadJson});"
+        );
+    }
+
+    private async Task HandleSettingsSaveVoiceAsync(JsonElement root)
+    {
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var config = VoiceConfigV1.Load(configDir);
+        var updated = config;
+
+        if (root.TryGetProperty("enabled", out var enabledEl) && enabledEl.ValueKind == JsonValueKind.True)
+            updated = updated with { Enabled = true };
+        else if (root.TryGetProperty("enabled", out var enabledElF) && enabledElF.ValueKind == JsonValueKind.False)
+            updated = updated with { Enabled = false };
+
+        if (root.TryGetProperty("muted", out var mutedEl))
+        {
+            if (mutedEl.ValueKind == JsonValueKind.True) updated = updated with { Muted = true };
+            else if (mutedEl.ValueKind == JsonValueKind.False) updated = updated with { Muted = false };
+        }
+
+        if (root.TryGetProperty("ttsAutoSpeak", out var autoEl))
+        {
+            if (autoEl.ValueKind == JsonValueKind.True) updated = updated with { TtsAutoSpeak = true };
+            else if (autoEl.ValueKind == JsonValueKind.False) updated = updated with { TtsAutoSpeak = false };
+        }
+
+        if (root.TryGetProperty("sttModel", out var modelEl) && modelEl.ValueKind == JsonValueKind.String)
+        {
+            var v = (modelEl.GetString() ?? "").Trim().ToLowerInvariant();
+            if (v is "small" or "medium" or "tiny" or "base" or "large")
+                updated = updated with { SttModel = v };
+        }
+
+        if (root.TryGetProperty("ttsVoice", out var voiceEl) && voiceEl.ValueKind == JsonValueKind.String)
+        {
+            var v = (voiceEl.GetString() ?? "").Trim();
+            if (!string.IsNullOrWhiteSpace(v))
+                updated = updated with { TtsVoice = v };
+        }
+
+        VoiceConfigV1.Save(configDir, updated);
+        VoiceStateV1.SetModelLabels(updated.SttModel, updated.TtsVoice);
+        VoiceStateV1.SetMuted(updated.Muted);
+        if (updated.Enabled && !VoiceStateV1.IsEnabled)
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+        else if (!updated.Enabled)
+            VoiceStateV1.TransitionTo(VoiceModeV1.Off);
+
+        await SendSettingsSnapshotAsync();
+        await SendJarvisOverviewV1Async(showPanel: false);
+        await AddAssistantMessage("Röstinställningar sparade.");
+    }
+
+    private async Task HandleSettingsSaveEnvKeyAsync(JsonElement root)
+    {
+        var key = root.TryGetProperty("key", out var keyEl) ? (keyEl.GetString() ?? "") : "";
+        var value = root.TryGetProperty("value", out var valEl) ? (valEl.GetString() ?? "") : "";
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            await AddAssistantMessage("API-nyckel: ingen nyckel angiven.");
+            return;
+        }
+
+        if (!EnvVaultV1.IsAllowed(key))
+        {
+            await AddAssistantMessage("API-nyckel '" + key + "' är inte i whitelist. Tillåtna: " + string.Join(", ", EnvVaultV1.AllowedKeys));
+            return;
+        }
+
+        var result = EnvVaultV1.SetKey(ProjectRoot, key, value);
+        await SendSettingsSnapshotAsync();
+        await AddAssistantMessage(result);
+    }
+
+    private async Task HandleSettingsClearEnvKeyAsync(JsonElement root)
+    {
+        var key = root.TryGetProperty("key", out var keyEl) ? (keyEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            await AddAssistantMessage("API-nyckel: ingen nyckel angiven.");
+            return;
+        }
+        var result = EnvVaultV1.ClearKey(ProjectRoot, key);
+        await SendSettingsSnapshotAsync();
+        await AddAssistantMessage(result);
+    }
+
+    private async Task HandleSettingsOpenDownloadAsync(JsonElement root)
+    {
+        var target = root.TryGetProperty("target", out var t) ? (t.GetString() ?? "") : "";
+        string? url = target switch
+        {
+            "whisper" => "https://huggingface.co/ggerganov/whisper.cpp/tree/main",
+            "piper-binary" => "https://github.com/rhasspy/piper/releases",
+            "piper-voices" => "https://huggingface.co/rhasspy/piper-voices/tree/main",
+            _ => null
+        };
+        if (url is null)
+        {
+            await AddAssistantMessage("Okänt download-mål.");
+            return;
+        }
+        try
+        {
+            // UseShellExecute=true → öppnar i Windows default-browser (oftast OperaGX i denna miljö).
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+            await AddAssistantMessage("Öppnar download-sidan: " + url);
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Kunde inte öppna URL: " + ex.Message + "\nÖppna manuellt: " + url);
+        }
+    }
+
+    private async Task SendKartaNotesAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var notes = MapNoteStoreV1.LoadAll(ProjectRoot);
+        var json = MapNoteStoreV1.ToClientJson(notes);
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaSetNotesV1 && window.jarvisKartaSetNotesV1({json});");
+    }
+
+    private async Task HandleKartaAddNoteAsync(JsonElement root)
+    {
+        try
+        {
+            var lat = root.TryGetProperty("lat", out var latEl) && latEl.ValueKind == JsonValueKind.Number ? latEl.GetDouble() : 0;
+            var lon = root.TryGetProperty("lon", out var lonEl) && lonEl.ValueKind == JsonValueKind.Number ? lonEl.GetDouble() : 0;
+            var name = root.TryGetProperty("name", out var nameEl) ? (nameEl.GetString() ?? "") : "";
+            var note = root.TryGetProperty("note", out var noteEl) ? (noteEl.GetString() ?? "") : "";
+
+            if (lat == 0 && lon == 0)
+            {
+                await AddAssistantMessage("Karta-note: ogiltig position.");
+                return;
+            }
+
+            var entry = MapNoteStoreV1.Add(ProjectRoot, lat, lon, name, note);
+            await AddAssistantMessage("Sparade karta-note: " + entry.Name + " (" + entry.Lat.ToString("0.000") + ", " + entry.Lon.ToString("0.000") + ")");
+            await SendKartaNotesAsync();
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Kunde inte spara karta-note: " + ex.Message);
+        }
+    }
+
+    private async Task HandleKartaDeleteNoteAsync(JsonElement root)
+    {
+        var id = root.TryGetProperty("id", out var idEl) ? (idEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(id))
+        {
+            await AddAssistantMessage("Karta-note delete: id saknas.");
+            return;
+        }
+        var ok = MapNoteStoreV1.Delete(ProjectRoot, id);
+        if (ok)
+        {
+            await AddAssistantMessage("Karta-note borttagen.");
+            await SendKartaNotesAsync();
+        }
+        else
+        {
+            await AddAssistantMessage("Karta-note hittades inte: " + id);
+        }
+    }
+
+    private async Task HandleKartaGeocodeAsync(JsonElement root)
+    {
+        var query = root.TryGetProperty("query", out var qEl) ? (qEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            await SendKartaGeocodeResultAsync(query, null, "Tom sökterm.");
+            return;
+        }
+        try
+        {
+            var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&addressdetails=1&accept-language=sv&q=" + Uri.EscapeDataString(query);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            // Nominatim kräver identifierande User-Agent
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0 (local desktop assistant)");
+            using var resp = await Http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendKartaGeocodeResultAsync(query, null, "HTTP " + (int)resp.StatusCode + " " + resp.ReasonPhrase);
+                return;
+            }
+            var json = await resp.Content.ReadAsStringAsync();
+            await SendKartaGeocodeResultAsync(query, json, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaGeocodeResultAsync(query, null, ex.Message);
+        }
+    }
+
+    private async Task SendKartaGeocodeResultAsync(string query, string? json, string? error)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new
+        {
+            query,
+            json = json ?? "",
+            error = error ?? ""
+        });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaGeocodeResultV1 && window.jarvisKartaGeocodeResultV1({payload});");
+    }
+
+    private async Task HandleKartaReverseGeocodeAsync(JsonElement root)
+    {
+        var id = root.TryGetProperty("id", out var idEl) ? (idEl.GetString() ?? "") : "";
+        var lat = root.TryGetProperty("lat", out var latEl) && latEl.ValueKind == JsonValueKind.Number ? latEl.GetDouble() : 0;
+        var lon = root.TryGetProperty("lon", out var lonEl) && lonEl.ValueKind == JsonValueKind.Number ? lonEl.GetDouble() : 0;
+        try
+        {
+            var url = "https://nominatim.openstreetmap.org/reverse?format=json&accept-language=sv&lat="
+                      + lat.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                      + "&lon=" + lon.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0 (local desktop assistant)");
+            using var resp = await Http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendKartaReverseGeocodeResultAsync(id, null, "HTTP " + (int)resp.StatusCode);
+                return;
+            }
+            var json = await resp.Content.ReadAsStringAsync();
+            await SendKartaReverseGeocodeResultAsync(id, json, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaReverseGeocodeResultAsync(id, null, ex.Message);
+        }
+    }
+
+    private async Task SendKartaReverseGeocodeResultAsync(string id, string? json, string? error)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new
+        {
+            id,
+            json = json ?? "",
+            error = error ?? ""
+        });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaReverseGeocodeResultV1 && window.jarvisKartaReverseGeocodeResultV1({payload});");
+    }
+
+    private async Task HandleKartaGetFlightsAsync(JsonElement root)
+    {
+        var minLat = root.TryGetProperty("minLat", out var a) && a.ValueKind == JsonValueKind.Number ? a.GetDouble() : -90;
+        var maxLat = root.TryGetProperty("maxLat", out var b) && b.ValueKind == JsonValueKind.Number ? b.GetDouble() : 90;
+        var minLon = root.TryGetProperty("minLon", out var c) && c.ValueKind == JsonValueKind.Number ? c.GetDouble() : -180;
+        var maxLon = root.TryGetProperty("maxLon", out var d) && d.ValueKind == JsonValueKind.Number ? d.GetDouble() : 180;
+
+        try
+        {
+            // OpenSky Network - gratis, anonym användning OK med 10 sek interval / 400 calls/dag
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var url = "https://opensky-network.org/api/states/all?lamin=" + minLat.ToString(inv)
+                + "&lomin=" + minLon.ToString(inv) + "&lamax=" + maxLat.ToString(inv) + "&lomax=" + maxLon.ToString(inv);
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var resp = await Http.SendAsync(req);
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendFlightsResultAsync(null, "HTTP " + (int)resp.StatusCode);
+                return;
+            }
+            var json = await resp.Content.ReadAsStringAsync();
+            await SendFlightsResultAsync(json, null);
+        }
+        catch (Exception ex)
+        {
+            await SendFlightsResultAsync(null, ex.Message);
+        }
+    }
+
+    private async Task SendFlightsResultAsync(string? json, string? error)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new { json = json ?? "", error = error ?? "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaFlightsResultV1 && window.jarvisKartaFlightsResultV1({payload});");
+    }
+
+    private async Task SendKartaAisKeyAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var hasKey = EnvVaultV1.TryGetValue(ProjectRoot, "AISSTREAM_API_KEY", out var key);
+        var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaApplyAisKeyV1 && window.jarvisKartaApplyAisKeyV1({payload});");
+    }
+
+    private async Task SendKartaGoogleKeyAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        // Returnerar ENBART om nyckeln är satt, inte värdet exponeras inte direkt till JS-payload
+        // utan vi laddar Google SDK-scriptet med key från C# side om vi vill.
+        // För nu: vi skickar key till dashboard så Google SDK kan laddas där. Användaren har
+        // explicit satt nyckeln i Settings, så detta är inte en leak.
+        var hasKey = EnvVaultV1.TryGetValue(ProjectRoot, "GOOGLE_MAPS_API_KEY", out var key);
+        var json = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaApplyGoogleKeyV1 && window.jarvisKartaApplyGoogleKeyV1({json});");
+    }
+
+    private async Task HandleMapShowAsync(string query)
+    {
+        if (_webView.CoreWebView2 is null) return;
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                "window.jarvisShowMapPanelV1 && window.jarvisShowMapPanelV1();");
+            await AddAssistantMessage("Karta öppnad. Sök plats i hörnet eller säg t.ex. 'karta Tokyo'.");
+            return;
+        }
+
+        var queryJson = JsonSerializer.Serialize(query);
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaFlyToV1 && window.jarvisKartaFlyToV1({queryJson});");
+        await AddAssistantMessage("Flyger till " + query + " på kartan.");
+    }
+
+    private async Task HandleSceneShowAsync(string query)
+    {
+        await AddAssistantMessage("Bygger scen för: " + query);
+
+        // 1. Öppna scen-panelen direkt och rendera skeleton (hero placeholder + summary shimmer + ev. video).
+        if (_webView.CoreWebView2 is not null)
+        {
+            var skeleton = SceneServiceV1.BuildSkeleton(query);
+            var skeletonJson = SceneServiceV1.ToJson(skeleton);
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                "window.jarvisShowScenePanelV1 && window.jarvisShowScenePanelV1();");
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                $"window.jarvisApplyScenePayloadV1 && window.jarvisApplyScenePayloadV1({skeletonJson});");
+        }
+
+        // 2. Parallellt: riktig web-research + Ollama-sammanfattning.
+        var searchTask = SceneResearchV1.SearchAsync(query);
+        var summaryTask = BuildSceneSummaryAsync(query);
+
+        // 3. När research returnerar:
+        //    - Första träff med thumbnail blir hero-bild (riktig bild från Wikipedia).
+        //    - Om ingen träff har thumbnail används Pollinations som fallback.
+        //    - Övriga träffar pushas som källkort.
+        string heroImageUrl = SceneServiceV1.PollinationsFallbackUrl(query);
+        string heroSourceUrl = "";
+        try
+        {
+            var hits = await searchTask;
+            var heroHit = hits.FirstOrDefault(h => !string.IsNullOrWhiteSpace(h.ThumbnailUrl));
+            if (heroHit is not null)
+            {
+                heroImageUrl = heroHit.ThumbnailUrl;
+                heroSourceUrl = heroHit.Url;
+            }
+
+            if (_webView.CoreWebView2 is not null)
+            {
+                var heroJson = JsonSerializer.Serialize(new
+                {
+                    imageUrl = heroImageUrl,
+                    sourceUrl = heroSourceUrl,
+                    caption = heroHit is not null ? heroHit.Title : query
+                });
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.jarvisUpdateSceneHeroV1 && window.jarvisUpdateSceneHeroV1({heroJson});");
+
+                foreach (var hit in hits)
+                {
+                    var cardJson = JsonSerializer.Serialize(new
+                    {
+                        type = "source",
+                        title = hit.Title,
+                        body = hit.Snippet,
+                        imageUrl = hit.Url
+                    });
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.jarvisAddSceneCardV1 && window.jarvisAddSceneCardV1({cardJson});");
+                }
+            }
+        }
+        catch
+        {
+            // research best-effort — fortsätt med summary
+        }
+
+        // 4. När Ollama returnerar — uppdatera summary-kortet + läs upp via TTS.
+        var summaryText = await summaryTask;
+        if (_webView.CoreWebView2 is not null)
+        {
+            var summaryJson = JsonSerializer.Serialize(summaryText);
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                $"window.jarvisUpdateSceneSummaryV1 && window.jarvisUpdateSceneSummaryV1({summaryJson});");
+        }
+
+        // Cinematic V3: scen-summary läses upp utan badge-prefix (V3 fix 2026-05-14).
+        if (VoiceStateV1.ShouldSpeak && !string.IsNullOrWhiteSpace(summaryText))
+        {
+            try
+            {
+                var voiceConfig = VoiceConfigV1.Load(Path.Combine(ProjectRoot, "config"));
+                VoiceTtsServiceV1.SpeakIfEnabled(summaryText, ProjectRoot, voiceConfig);
+            }
+            catch
+            {
+                // TTS får aldrig krascha scen-flödet.
+            }
+        }
+    }
+
+    private async Task<string> BuildSceneSummaryAsync(string query)
+    {
+        try
+        {
+            var systemPrompt = "Du är Jarvis. Användaren har bett om en scen/presentation om ett ämne. " +
+                               "Ge en kort, faktabaserad sammanfattning på svenska (3-5 meningar) som kan visas på en arbetsyta " +
+                               "och läsas upp för användaren. Inga rubriker, ingen markdown, bara prosa.";
+            var messages = new List<object>
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = query }
+            };
+            var payload = new
+            {
+                model = _activeModel,
+                stream = false,
+                keep_alive = "30m",
+                messages
+            };
+            using var response = await Http.PostAsJsonAsync(OllamaUrl, payload);
+            if (!response.IsSuccessStatusCode)
+                return "Kunde inte hämta sammanfattning från Ollama: " + response.StatusCode;
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            if (json.RootElement.TryGetProperty("message", out var msg) &&
+                msg.TryGetProperty("content", out var content))
+            {
+                var s = content.GetString();
+                return string.IsNullOrWhiteSpace(s) ? "(tomt svar)" : s.Trim();
+            }
+        }
+        catch (Exception ex)
+        {
+            return "Fel vid sammanfattning: " + ex.Message;
+        }
+        return "(ingen sammanfattning)";
+    }
+
+    private static readonly System.Text.RegularExpressions.Regex TtsBadgeRegex =
+        new(@"^\s*\[[^\]]+\]\s*\[ctx[^\]]+\]\s*", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static string StripBadgeForTts(string text)
+    {
+        // Tar bort modell-badge "[lokal] [ctx≈1,4k tok, svar≈40 tok] " innan TTS läser upp.
+        // Chatten visar fortfarande badgen för läsbar info.
+        if (string.IsNullOrEmpty(text)) return text;
+        var match = TtsBadgeRegex.Match(text);
+        return match.Success ? text.Substring(match.Length) : text;
+    }
+
     private async Task AddAssistantMessage(string message)
     {
         if (_webView.CoreWebView2 is null)
@@ -7012,5 +7793,19 @@ public sealed class JarvisForm : Form
         await _webView.CoreWebView2.ExecuteScriptAsync(
             $"window.jarvisAddMessage({roleJson}, {textJson});"
         );
+
+        if (VoiceStateV1.ShouldSpeak)
+        {
+            try
+            {
+                var voiceConfig = VoiceConfigV1.Load(Path.Combine(ProjectRoot, "config"));
+                var ttsText = StripBadgeForTts(message);
+                VoiceTtsServiceV1.SpeakIfEnabled(ttsText, ProjectRoot, voiceConfig);
+            }
+            catch
+            {
+                // Tysta — TTS får aldrig krascha chat-flödet.
+            }
+        }
     }
 }

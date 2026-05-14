@@ -42,6 +42,13 @@ internal enum CommandIntent
     AutopilotStatus,
     AutopilotSetMode,
     AutopilotStop,
+    VoiceStatus,
+    VoiceOn,
+    VoiceOff,
+    VoiceMute,
+    VoiceUnmute,
+    VoiceMicTest,
+    VoiceModelSet,
     TerminalPreview,
     TerminalConfirm,
     TerminalCancel,
@@ -78,7 +85,11 @@ internal enum CommandIntent
     DesktopBridgeStart,
     DesktopBridgeStop,
     DesktopVisionRequest,
-    DesktopActionRequest
+    DesktopActionRequest,
+    VoiceListVoices,
+    VoiceSetVoice,
+    SceneShow,
+    MapShow
 }
 
 internal enum CommandRisk
@@ -191,6 +202,37 @@ internal static class CommandRouterV1
             return ParseAutopilotSlashCommand(raw, command);
         }
 
+        if (IsVoiceNaturalLanguage(command))
+            return ParseVoiceCommand(command);
+
+        // Scen / Cinematic Workspace - använd raw för att bevara å/ä/ö
+        if (command.StartsWith("scen ") || command.StartsWith("presentera ") || command.StartsWith("visa scen "))
+        {
+            var prefix = command.StartsWith("scen ") ? "scen "
+                       : command.StartsWith("visa scen ") ? "visa scen "
+                       : "presentera ";
+            return SceneResult(ExtractRawArg(raw, prefix));
+        }
+        if (command is "scen" or "scene" or "presentera")
+            return SceneResult("");
+
+        // Karta - 3D globe panel - använd raw för att bevara å/ä/ö
+        if (command.StartsWith("karta ") || command.StartsWith("kartan ")
+            || command.StartsWith("visa karta ") || command.StartsWith("visa kartan ")
+            || command.StartsWith("flyga till ") || command.StartsWith("zooma till "))
+        {
+            string prefix;
+            if (command.StartsWith("visa karta ")) prefix = "visa karta ";
+            else if (command.StartsWith("visa kartan ")) prefix = "visa kartan ";
+            else if (command.StartsWith("flyga till ")) prefix = "flyga till ";
+            else if (command.StartsWith("zooma till ")) prefix = "zooma till ";
+            else if (command.StartsWith("kartan ")) prefix = "kartan ";
+            else prefix = "karta ";
+            return MapResult(ExtractRawArg(raw, prefix));
+        }
+        if (command is "karta" or "kartan" or "map" or "visa karta" or "visa kartan")
+            return MapResult("");
+
         if (command is "minnesstatus" or "minne status")
         {
             return new CommandResult
@@ -274,6 +316,25 @@ internal static class CommandRouterV1
             };
         }
 
+        // /scen <query>  eller  /scene <query> - använd raw för att bevara å/ä/ö
+        var rawNoSlash = input.StartsWith("/") ? input.Substring(1).TrimStart() : input.TrimStart();
+        if (command.StartsWith("scen ") || command.StartsWith("scene "))
+        {
+            var prefix = command.StartsWith("scene ") ? "scene " : "scen ";
+            return SceneResult(ExtractRawArg(rawNoSlash, prefix));
+        }
+        if (command is "scen" or "scene")
+            return SceneResult("");
+
+        // /karta <plats>  eller  /map <plats> - använd raw för att bevara å/ä/ö
+        if (command.StartsWith("karta ") || command.StartsWith("map "))
+        {
+            var prefix = command.StartsWith("map ") ? "map " : "karta ";
+            return MapResult(ExtractRawArg(rawNoSlash, prefix));
+        }
+        if (command is "karta" or "map")
+            return MapResult("");
+
         if (command == "status")
         {
             return new CommandResult
@@ -356,6 +417,10 @@ internal static class CommandRouterV1
         if (command == "autopilot" || command.StartsWith("autopilot ") ||
             command == "agentlage" || command.StartsWith("agentlage "))
             return ParseAutopilotSlashCommand(input[1..].Trim(), command);
+
+        if (command == "voice" || command.StartsWith("voice ") ||
+            command == "rost" || command.StartsWith("rost "))
+            return ParseVoiceSlashCommand(command);
 
         if (command == "desktop" || command.StartsWith("desktop "))
             return ParseDesktopSlashCommand(input[1..].Trim(), command);
@@ -686,6 +751,232 @@ internal static class CommandRouterV1
                 ["mode"] = level.ToString(),
                 ["mission"] = mission
             },
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static bool IsVoiceNaturalLanguage(string command)
+    {
+        if (command is "rost" or "rost status" or "rostlage" or "rostlage status")
+            return true;
+        if (command is "aktivera rost" or "rost pa" or "satta pa rost" or "satt pa rost")
+            return true;
+        if (command is "stang av rost" or "rost av" or "avaktivera rost")
+            return true;
+        if (command is "tysta dig" or "var tyst" or "var tyst tack" or "rost mute" or "mute rost")
+            return true;
+        if (command is "prata igen" or "prata" or "rost unmute" or "unmute rost")
+            return true;
+        if (command is "mick test" or "mikrofon test" or "mic test" or "testa mikrofonen")
+            return true;
+        if (command.StartsWith("byt rostmodell till ") || command.StartsWith("rostmodell ")
+            || command.StartsWith("rost modell "))
+            return true;
+        if (command is "rost roster" or "rost voices" or "lista roster" or "visa roster")
+            return true;
+        if (command.StartsWith("byt rost till ") || command.StartsWith("byt tts till ")
+            || command.StartsWith("rost rost ") || command.StartsWith("ttsrost "))
+            return true;
+        return false;
+    }
+
+    private static CommandResult ParseVoiceCommand(string command)
+    {
+        if (command is "rost" or "rost status" or "rostlage" or "rostlage status")
+            return VoiceResult(CommandIntent.VoiceStatus, "voice.status");
+
+        if (command is "aktivera rost" or "rost pa" or "satta pa rost" or "satt pa rost")
+            return VoiceResult(CommandIntent.VoiceOn, "voice.on");
+
+        if (command is "stang av rost" or "rost av" or "avaktivera rost")
+            return VoiceResult(CommandIntent.VoiceOff, "voice.off");
+
+        if (command is "tysta dig" or "var tyst" or "var tyst tack" or "rost mute" or "mute rost")
+            return VoiceResult(CommandIntent.VoiceMute, "voice.mute");
+
+        if (command is "prata igen" or "prata" or "rost unmute" or "unmute rost")
+            return VoiceResult(CommandIntent.VoiceUnmute, "voice.unmute");
+
+        if (command is "mick test" or "mikrofon test" or "mic test" or "testa mikrofonen")
+            return VoiceResult(CommandIntent.VoiceMicTest, "voice.mic.test");
+
+        if (command.StartsWith("byt rostmodell till "))
+        {
+            var model = command.Substring("byt rostmodell till ".Length).Trim();
+            return VoiceModelResult(model);
+        }
+        if (command.StartsWith("rostmodell "))
+        {
+            var model = command.Substring("rostmodell ".Length).Trim();
+            return VoiceModelResult(model);
+        }
+        if (command.StartsWith("rost modell "))
+        {
+            var model = command.Substring("rost modell ".Length).Trim();
+            return VoiceModelResult(model);
+        }
+
+        if (command is "rost roster" or "rost voices" or "lista roster" or "visa roster")
+            return VoiceResult(CommandIntent.VoiceListVoices, "voice.voices.list");
+
+        if (command.StartsWith("byt rost till "))
+            return VoiceVoiceResult(command.Substring("byt rost till ".Length).Trim());
+        if (command.StartsWith("byt tts till "))
+            return VoiceVoiceResult(command.Substring("byt tts till ".Length).Trim());
+        if (command.StartsWith("rost rost "))
+            return VoiceVoiceResult(command.Substring("rost rost ".Length).Trim());
+        if (command.StartsWith("ttsrost "))
+            return VoiceVoiceResult(command.Substring("ttsrost ".Length).Trim());
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.Unknown,
+            ToolName = "voice.unknown",
+            ShouldSendToOllama = false,
+            ValidationErrors = { "Okänt röstkommando. Exempel: aktivera röst, tysta dig, prata igen, mick test, byt röstmodell till medium." }
+        };
+    }
+
+    private static CommandResult ParseVoiceSlashCommand(string command)
+    {
+        // command is already normalized and starts with "voice " or "rost "
+        var rest = command.StartsWith("voice")
+            ? command.Substring("voice".Length).Trim()
+            : command.Substring("rost".Length).Trim();
+
+        if (rest.Length == 0 || rest == "status")
+            return VoiceResult(CommandIntent.VoiceStatus, "voice.status");
+
+        if (rest is "on" or "pa" or "aktivera")
+            return VoiceResult(CommandIntent.VoiceOn, "voice.on");
+
+        if (rest is "off" or "av" or "stang av" or "avaktivera")
+            return VoiceResult(CommandIntent.VoiceOff, "voice.off");
+
+        if (rest is "mute" or "tyst" or "tysta")
+            return VoiceResult(CommandIntent.VoiceMute, "voice.mute");
+
+        if (rest is "unmute" or "prata")
+            return VoiceResult(CommandIntent.VoiceUnmute, "voice.unmute");
+
+        if (rest is "mic test" or "mick test" or "test" or "mikrofon test" or "mic")
+            return VoiceResult(CommandIntent.VoiceMicTest, "voice.mic.test");
+
+        if (rest.StartsWith("modell ") || rest.StartsWith("model "))
+        {
+            var model = rest.Substring(rest.IndexOf(' ') + 1).Trim();
+            return VoiceModelResult(model);
+        }
+
+        if (rest is "roster" or "voices" or "rost lista" or "lista")
+            return VoiceResult(CommandIntent.VoiceListVoices, "voice.voices.list");
+
+        if (rest.StartsWith("rost ") || rest.StartsWith("voice "))
+        {
+            var voice = rest.Substring(rest.IndexOf(' ') + 1).Trim();
+            return VoiceVoiceResult(voice);
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.Unknown,
+            ToolName = "slash.voice.unknown",
+            ShouldSendToOllama = false,
+            ValidationErrors =
+            {
+                "Okänt /voice-kommando. Exempel: /voice, /voice on, /voice off, /voice mute, /voice unmute, /voice mic test, /voice modell <small|medium>."
+            }
+        };
+    }
+
+    private static CommandResult VoiceResult(CommandIntent intent, string toolName)
+    {
+        return new CommandResult
+        {
+            Intent = intent,
+            Risk = CommandRisk.SafeUi,
+            ToolName = toolName,
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static CommandResult MapResult(string query)
+    {
+        return new CommandResult
+        {
+            Intent = CommandIntent.MapShow,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "map.show",
+            Arguments = { ["query"] = query ?? "" },
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static CommandResult SceneResult(string query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.Unknown,
+                ToolName = "scene.empty",
+                ShouldSendToOllama = false,
+                ValidationErrors = { "Ange vad scenen ska visa. Exempel: /scen senaste nyheterna om AI, eller: presentera Stockholm väder." }
+            };
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.SceneShow,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "scene.show",
+            Arguments = { ["query"] = query },
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static CommandResult VoiceVoiceResult(string voice)
+    {
+        if (string.IsNullOrWhiteSpace(voice))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.Unknown,
+                ToolName = "voice.voice.empty",
+                ShouldSendToOllama = false,
+                ValidationErrors = { "Ange en TTS-röst. Exempel: /voice rost sv_SE-nst-medium. Lista installerade med /voice roster." }
+            };
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.VoiceSetVoice,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "voice.voice.set",
+            Arguments = { ["voice"] = voice.Trim() },
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static CommandResult VoiceModelResult(string model)
+    {
+        if (string.IsNullOrWhiteSpace(model))
+        {
+            return new CommandResult
+            {
+                Intent = CommandIntent.Unknown,
+                ToolName = "voice.model.empty",
+                ShouldSendToOllama = false,
+                ValidationErrors = { "Ange en modell: small eller medium. Exempel: /voice modell medium." }
+            };
+        }
+
+        return new CommandResult
+        {
+            Intent = CommandIntent.VoiceModelSet,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "voice.model.set",
+            Arguments = { ["model"] = model.ToLowerInvariant() },
             ShouldSendToOllama = false
         };
     }
@@ -1358,6 +1649,18 @@ internal static class CommandRouterV1
             .Replace("ö", "o");
 
         return string.Join(" ", normalized.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+    }
+
+    // Hämtar argumentdelen från raw-input efter ett normalized prefix. Bevarar accenter (å/ä/ö)
+    // och original casing. Säker mot multiple-whitespace och case-skillnader.
+    // Exempel: ExtractRawArg("Karta Kågeröd Sverige", "karta") -> "Kågeröd Sverige"
+    private static string ExtractRawArg(string raw, string normalizedPrefix)
+    {
+        if (string.IsNullOrEmpty(raw) || string.IsNullOrEmpty(normalizedPrefix)) return "";
+        var prefixTokens = normalizedPrefix.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var rawTokens = raw.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (rawTokens.Length <= prefixTokens.Length) return "";
+        return string.Join(" ", rawTokens.Skip(prefixTokens.Length));
     }
 
     private static bool IsProjectIndexRequest(string command)

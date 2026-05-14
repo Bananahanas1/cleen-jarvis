@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Jarvis</title>
+  <!-- Cinematic Workspace V2: Chart.js + MapLibre GL -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
+  <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js" defer></script>
   <style>
     * {
       box-sizing: border-box;
@@ -425,6 +429,19 @@
       overflow-wrap: anywhere;
     }
 
+    .monitor-panel-status {
+      color: #c9f5ff;
+      font-size: 11px;
+      line-height: 1.35;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: rgba(3, 7, 13, 0.52);
+      border: 1px solid #193247;
+      border-radius: 6px;
+      padding: 7px;
+      margin-bottom: 8px;
+    }
+
     .monitor-panel-actions {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
@@ -781,6 +798,42 @@
     body.brain-mode .editor { padding: 8px !important; }
     body.brain-mode #brainPanel { flex: 1; min-height: 0 !important; }
 
+    /* Sidopanel-togglar (V2 2026-05-14):
+       - "‹ Stäng vänster" döljer Project Explorer
+       - "Stäng höger ›" döljer Jarvis Chat
+       - När båda är stängda blir mitten fullskärm.
+       Layout grid kollapsar 1fr-kolumnerna när respektive sida är borta. */
+    body.hide-left .layout  { grid-template-columns: 0 minmax(380px, 1fr) 390px !important; }
+    body.hide-right .layout { grid-template-columns: 280px minmax(380px, 1fr) 0 !important; }
+    body.hide-left.hide-right .layout { grid-template-columns: 0 minmax(380px, 1fr) 0 !important; }
+    body.hide-left  .explorer { display: none !important; }
+    body.hide-right .chat     { display: none !important; }
+    body.hide-left.hide-right .editor,
+    body.hide-left .editor,
+    body.hide-right .editor { padding: 8px !important; }
+
+    /* "Open"-flikar som visas på edge när sidan är gömd, så användaren kan öppna igen */
+    .panel-reopen-tab {
+      position: fixed; top: 50%; transform: translateY(-50%); z-index: 9999;
+      background: rgba(80,200,255,0.18); border: 1px solid #2c6688; color: #aee6ff;
+      width: 22px; height: 70px; cursor: pointer; display: none;
+      font-family: inherit; font-size: 16px; line-height: 70px; text-align: center;
+      box-shadow: 0 0 12px rgba(80,200,255,0.25);
+    }
+    .panel-reopen-tab:hover { background: rgba(80,200,255,0.35); border-color: #6ad9ff; }
+    #reopenLeftTab  { left: 0; border-radius: 0 6px 6px 0; }
+    #reopenRightTab { right: 0; border-radius: 6px 0 0 6px; }
+    body.hide-left  #reopenLeftTab  { display: block; }
+    body.hide-right #reopenRightTab { display: block; }
+
+    /* Toggle-knapparna i top-row */
+    .panel-toggle-btn { background: rgba(106,217,255,0.12); border:1px solid #1f4e68;
+      color:#aee6ff; padding: 4px 8px; border-radius: 4px; cursor: pointer;
+      font-family: inherit; font-size: 12px; margin-left: 4px;
+      transition: background 0.15s, border-color 0.15s; }
+    .panel-toggle-btn:hover { background: rgba(106,217,255,0.25); border-color: #6ad9ff; }
+    .panel-toggle-btn.is-collapsed { background: rgba(80,200,255,0.30); border-color: #6ad9ff; color: #fff; }
+
     /* === Sci-fi NeuroLinked-glas-paneler för Brain-vyn === */
     .brain-glass {
       position: absolute;
@@ -881,6 +934,9 @@
   </style>
 </head>
 <body>
+  <!-- Reopen-flikar — visas på edge när motsv. sidopanel är dold -->
+  <div id="reopenLeftTab" class="panel-reopen-tab" title="Öppna Project Explorer">›</div>
+  <div id="reopenRightTab" class="panel-reopen-tab" title="Öppna Jarvis Chat">‹</div>
   <div class="layout">
     <aside class="explorer">
       <div class="top-row">
@@ -895,9 +951,14 @@
     <main class="editor">
       <div class="top-row">
         <h2 id="workspaceTitle" style="flex:1;">Workspace Panel</h2>
+        <button id="toggleLeftPanelBtn" class="panel-toggle-btn" title="Dölj/visa Project Explorer (vänster panel)">‹ Explorer</button>
+        <button id="toggleRightPanelBtn" class="panel-toggle-btn" title="Dölj/visa Jarvis Chat (höger panel)">Chat ›</button>
         <button id="showWorkspaceBtn" class="panel-button active">Filer</button>
         <button id="showVisualBtn" class="panel-button">Översikt</button>
         <button id="showBrainBtn" class="panel-button">Brain</button>
+        <button id="showSceneBtn" class="panel-button">Scen</button>
+        <button id="showMapBtn" class="panel-button">Karta</button>
+        <button id="showSettingsBtn" class="panel-button">Inställningar</button>
         <button id="showTerminalBtn">Terminal</button>
         <button id="copyEditorBtn">Kopiera</button>
       </div>
@@ -955,6 +1016,8 @@
           <section id="desktopAutopilotPanelV1" class="monitor-command-panel" data-panel="autopilot">
             <div class="monitor-panel-title">Autopilot</div>
             <div class="monitor-panel-desc">Vad den gör: styr agentnivå, approval och nästa desktop-steg.</div>
+            <div id="desktopAutopilotCapabilityState" class="monitor-panel-status">Enkla appsteg körs lokalt.
+Skärmvision kräver UI-TARS.</div>
             <div class="monitor-panel-actions">
               <button class="monitor-action" type="button" data-command="/autopilot status">Status</button>
               <button class="monitor-action" type="button" data-command="/autopilot approval">Approval</button>
@@ -978,6 +1041,19 @@
               <button class="monitor-action" type="button" data-command="/terminal visa">Visa terminal</button>
             </div>
           </section>
+
+          <section class="monitor-command-panel" data-panel="voice">
+            <div class="monitor-panel-title">Röst</div>
+            <div class="monitor-panel-desc">Vad den gör: slår på/av röstinput och TTS. Ljud ligger lokalt (Whisper + Piper).</div>
+            <div class="monitor-panel-actions">
+              <button class="monitor-action" type="button" data-command="/voice">Status</button>
+              <button class="monitor-action" type="button" data-command="/voice on">På</button>
+              <button class="monitor-action" type="button" data-command="/voice off">Av</button>
+              <button class="monitor-action" type="button" data-command="/voice mute">Mute</button>
+              <button class="monitor-action" type="button" data-command="/voice unmute">Prata</button>
+              <button class="monitor-action" type="button" data-command="/voice mic test">Mic test</button>
+            </div>
+          </section>
         </div>
         <div class="visual-grid">
           <div class="visual-cell">
@@ -999,6 +1075,10 @@
           <div class="visual-cell">
             <div class="visual-label">Autopilot</div>
             <div id="visualAutopilotState" class="visual-value">Nivå 1 Safe</div>
+          </div>
+          <div class="visual-cell">
+            <div class="visual-label">Röst</div>
+            <div id="visualVoiceState" class="visual-value">Röst: Av</div>
           </div>
           <div class="visual-cell">
             <div class="visual-label">Senaste task-ändring</div>
@@ -1124,6 +1204,293 @@
         </div>
       </div>
 
+      <!-- Karta / Map panel V1 (3D globe via MapLibre globe projection) -->
+      <style>
+        #mapPanel { display:none; flex:1; position:relative; background:#02060c; border-radius:6px; overflow:hidden; min-height:500px; }
+        #kartaMap { position:absolute; inset:0;
+          filter: hue-rotate(195deg) saturate(0.95) brightness(0.95) contrast(1.05); }
+        #kartaMap.jarvis-strong { filter: hue-rotate(200deg) saturate(0.7) brightness(0.7) contrast(1.3); }
+        #kartaMap.no-filter { filter: none; }
+        /* Ta bort Jarvis-blå-filtret när satellit är på - vi vill se riktiga färger på satellit */
+        #kartaMap.satellite-on { filter: none; }
+        /* Map-mode: dölj andra workspace-element så kartan får hela utrymmet */
+        body.map-mode #activeFileLabel,
+        body.map-mode #changeReviewBar,
+        body.map-mode .editor > .top-row + div:not(#mapPanel):not(#diffViewer):not(#scenePanel):not(#settingsPanel):not(#brainPanel),
+        body.map-mode #editorArea { display: none !important; }
+        body.map-mode .editor { position: relative; }
+        body.map-mode #mapPanel { position: absolute; top: 50px; left: 0; right: 0; bottom: 0; min-height: 0; }
+        /* Dölj edit-läge / spara-knapparna i map-mode (de hör till file editor) */
+        body.map-mode .editor > div:last-child { display: none !important; }
+        /* Popup styling för Jarvis-tema */
+        .karta-note-popup { font-family: inherit; min-width: 220px; }
+        .karta-note-popup textarea { width: 100%; min-height: 60px; background: #0a1622;
+          border: 1px solid #1f4e68; color: #dff7ff; padding: 6px 8px; border-radius: 4px;
+          font-family: inherit; outline: none; resize: vertical; box-sizing: border-box; }
+        .karta-note-popup textarea:focus { border-color: #6ad9ff; }
+        .karta-note-popup .row { display: flex; gap: 6px; margin-top: 8px; }
+        .karta-note-popup button { flex: 1; background: rgba(106,217,255,0.15);
+          border: 1px solid #1f4e68; color: #aee6ff; padding: 5px 10px; border-radius: 4px;
+          cursor: pointer; font-family: inherit; font-size: 12px; }
+        .karta-note-popup button:hover { background: rgba(106,217,255,0.3); border-color: #6ad9ff; }
+        .karta-note-popup .name { font-size: 11px; color: #6ad9ff; margin-bottom: 4px;
+          text-transform: uppercase; letter-spacing: 1px; }
+        .maplibregl-popup-content { background: #0a1622 !important; color: #dff7ff !important;
+          border: 1px solid #1f4e68 !important; box-shadow: 0 0 20px rgba(80,200,255,0.25) !important;
+          border-radius: 6px !important; }
+        .maplibregl-popup-tip { border-top-color: #1f4e68 !important; border-bottom-color: #1f4e68 !important; }
+        .karta-glass { position:absolute; background:rgba(3,15,28,0.85); border:1px solid #1f4e68;
+          border-radius:6px; padding:10px 12px; color:#dff7ff; backdrop-filter:blur(8px);
+          box-shadow:0 0 20px rgba(80,200,255,0.15); z-index:10; }
+        .karta-glass-title { font-size:11px; letter-spacing:1.5px; text-transform:uppercase;
+          color:#aee6ff; opacity:0.8; margin-bottom:6px; }
+        .karta-search { top:14px; left:14px; min-width:280px; }
+        .karta-search input { width:100%; background:#03070d; border:1px solid #1f4e68;
+          color:#dff7ff; padding:6px 10px; border-radius:4px; font-family:inherit; outline:none; font-size:13px; }
+        .karta-search input:focus { border-color:#6ad9ff; box-shadow:0 0 8px rgba(106,217,255,0.3); }
+        .karta-help { font-size:10px; opacity:0.6; margin-top:6px; line-height:1.4; }
+        .karta-info { top:14px; right:14px; min-width:200px; max-width:300px; font-size:12px; }
+        .karta-stat { display:flex; justify-content:space-between; padding:2px 0; }
+        .karta-stat-label { opacity:0.65; }
+        .karta-stat-val { color:#aee6ff; font-family:monospace; }
+        .karta-mini-chat { bottom:14px; right:14px; width:280px; }
+        .karta-mini-chat input { width:100%; background:#03070d; border:1px solid #1f4e68;
+          color:#dff7ff; padding:6px 10px; border-radius:4px; font-family:inherit; outline:none; font-size:12px; }
+        .karta-controls { bottom:14px; left:14px; display:flex; gap:6px; }
+        .karta-btn { background:rgba(106,217,255,0.12); border:1px solid #1f4e68; color:#aee6ff;
+          padding:4px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:11px;
+          position:relative; transition: background 0.15s, border-color 0.15s, color 0.15s; }
+        .karta-btn:hover { background:rgba(106,217,255,0.25); border-color:#6ad9ff; }
+        .karta-btn.is-active {
+          background: linear-gradient(135deg, rgba(80,200,255,0.55), rgba(80,200,255,0.22));
+          border-color: #6ad9ff; color: #ffffff;
+          box-shadow: 0 0 12px rgba(80,200,255,0.55), inset 0 0 8px rgba(80,200,255,0.25);
+        }
+        .karta-btn.is-active::after { content: "●"; color: #5fffaa; font-size: 9px;
+          margin-left: 6px; text-shadow: 0 0 6px #5fffaa; }
+        /* POI-info-popup (klick på byggnad/butik/station) */
+        .karta-poi-popup { font-family: inherit; color: #0a1622; font-size: 13px;
+          max-width: 340px; max-height: 60vh; overflow-y: auto; }
+        .karta-poi-popup .poi-image-wrap { width: 100%; max-height: 200px;
+          overflow: hidden; border-radius: 4px; margin-bottom: 8px; background: #02080f; }
+        .karta-poi-popup .poi-image-wrap img { display: block; width: 100%; height: auto; }
+        .karta-poi-popup .poi-name { font-weight: 700; font-size: 15px; color: #0a1622;
+          margin-bottom: 2px; }
+        .karta-poi-popup .poi-type { font-size: 11px; color: #2a6688; text-transform: uppercase;
+          letter-spacing: 1px; margin-bottom: 8px; }
+        .karta-poi-popup .poi-row { display: flex; gap: 8px; padding: 3px 0;
+          border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .karta-poi-popup .poi-k { color: #2a6688; min-width: 80px; font-weight: 600; }
+        .karta-poi-popup .poi-v { color: #0a1622; flex: 1; word-break: break-word; }
+        .karta-poi-popup .poi-loading { color: #2a6688; font-style: italic; padding: 6px 0; }
+        .karta-poi-popup .poi-links { margin-top: 10px; padding-top: 8px;
+          border-top: 1px solid rgba(0,0,0,0.1); font-size: 12px; }
+        .karta-poi-popup .poi-links a { color: #1f4e68; text-decoration: none; font-weight: 600; }
+        .karta-poi-popup .poi-links a:hover { text-decoration: underline; }
+        /* Väder-overlay (live från open-meteo) */
+        .weather-drop { position: absolute; top: -10%;
+          width: 2px; height: 18px;
+          background: linear-gradient(180deg, rgba(180,210,255,0.0), rgba(180,210,255,0.85));
+          animation: weatherDropFall linear infinite;
+          filter: drop-shadow(0 0 2px rgba(180,210,255,0.6)); }
+        @keyframes weatherDropFall {
+          0%   { transform: translateY(0); }
+          100% { transform: translateY(110vh); }
+        }
+        .weather-flake { position: absolute; top: -2%;
+          color: rgba(255,255,255,0.85); font-size: 14px; font-weight: 700;
+          animation: weatherFlakeFall linear infinite; }
+        @keyframes weatherFlakeFall {
+          0%   { transform: translateY(0) translateX(0); opacity: 0.0; }
+          5%   { opacity: 1; }
+          100% { transform: translateY(110vh) translateX(40px); opacity: 0.5; }
+        }
+        #kartaWeatherOverlay.has-lightning::after {
+          content: ""; position: absolute; inset: 0; background: rgba(255,255,255,0);
+          animation: weatherLightning 7s ease-in-out infinite; pointer-events: none;
+        }
+        @keyframes weatherLightning {
+          0%, 92%, 100% { background: rgba(255,255,255,0); }
+          93% { background: rgba(255,255,255,0.85); }
+          94% { background: rgba(255,255,255,0.0); }
+          95% { background: rgba(255,255,255,0.6); }
+          97% { background: rgba(255,255,255,0.0); }
+        }
+      </style>
+      <div id="mapPanel">
+        <div id="kartaMap"></div>
+        <div class="karta-glass karta-search">
+          <div class="karta-glass-title">Sök plats</div>
+          <input id="kartaSearchInput" placeholder="Stockholm, Tokyo, Mt Everest..." autocomplete="off">
+          <div class="karta-help">Enter = flyga till plats. Klick på karta = marker.<br>Drag = rotera. Scroll = zoom.</div>
+        </div>
+        <div class="karta-glass karta-info">
+          <div class="karta-glass-title">Position</div>
+          <div class="karta-stat"><span class="karta-stat-label">Lat</span><span class="karta-stat-val" id="kartaLat">--</span></div>
+          <div class="karta-stat"><span class="karta-stat-label">Lon</span><span class="karta-stat-val" id="kartaLon">--</span></div>
+          <div class="karta-stat"><span class="karta-stat-label">Zoom</span><span class="karta-stat-val" id="kartaZoom">--</span></div>
+          <div class="karta-stat"><span class="karta-stat-label">Markörer</span><span class="karta-stat-val" id="kartaMarkerCount">0</span></div>
+        </div>
+        <div class="karta-glass karta-controls">
+          <button class="karta-btn" id="kartaResetBtn" title="Tillbaka till hela jorden">⌂ Hem</button>
+          <button class="karta-btn" id="kartaClearBtn" title="Rensa alla markörer">⊘ Rensa</button>
+          <button class="karta-btn" id="kartaToggleFilterBtn" title="Växla Jarvis-blå-filter">◐ Filter</button>
+          <button class="karta-btn" id="kartaToggle3DBtn" title="Slå på/av 3D-byggnader">▲ Byggnader</button>
+          <button class="karta-btn" id="kartaToggleSatBtn" title="Slå på/av satellitbild (Esri World Imagery)">◉ Satellit</button>
+          <button class="karta-btn" id="kartaToggleFlightsBtn" title="Live-flygplan från OpenSky Network">✈ Flyg</button>
+          <button class="karta-btn" id="kartaToggleShipsBtn" title="Live-båtar från AISStream (kräver AISSTREAM_API_KEY)">⛴ Båtar</button>
+          <button class="karta-btn" id="kartaToggleWeatherBtn" title="Live-väder för kartans mitt (open-meteo)">☁ Väder</button>
+          <button class="karta-btn" id="kartaToggleGoogleBtn" title="Växla Google Photorealistic 3D (kräver API-key)" style="display:none;">⊕ Google 3D</button>
+        </div>
+        <div class="karta-glass karta-mini-chat">
+          <div class="karta-glass-title">Fråga Jarvis</div>
+          <input id="kartaMiniChatInput" placeholder="ex: visa Tokyo, var ligger Mt Everest..." autocomplete="off">
+          <div class="karta-help">Enter = skicka till Jarvis. Svaret syns i högra chatten.</div>
+        </div>
+      </div>
+
+      <!-- Scen / Cinematic Workspace V3 — proffsig vertikal layout: hero / summary / video / källor -->
+      <style>
+        #scenePanel { display:none; flex-direction:column; flex:1; min-height:0;
+          overflow-y:auto; overflow-x:hidden;
+          padding:18px 24px 28px 24px;
+          background: radial-gradient(ellipse at top, #061a2a 0%, #02060c 70%);
+          scroll-behavior: smooth; }
+        #scenePanel::-webkit-scrollbar { width: 10px; }
+        #scenePanel::-webkit-scrollbar-track { background: rgba(106,217,255,0.05); }
+        #scenePanel::-webkit-scrollbar-thumb { background: #1f4e68; border-radius: 5px; }
+        #scenePanel::-webkit-scrollbar-thumb:hover { background: #2c6688; }
+        .scene-kicker { font-size: 11px; color: #6ad9ff; letter-spacing: 2px;
+          text-transform: uppercase; opacity: 0.7; }
+        .scene-title { font-size: 26px; color: #aee6ff; margin: 4px 0 18px 0;
+          text-shadow: 0 0 12px rgba(80,200,255,0.4); line-height: 1.2; }
+        .scene-stack { display:flex; flex-direction:column; gap:16px;
+          max-width: 1080px; margin: 0 auto; width: 100%; }
+        .scene-card { background: linear-gradient(135deg, rgba(10,30,50,0.85), rgba(5,15,30,0.85));
+          border: 1px solid #1f4e68; border-radius: 10px; padding: 18px 22px;
+          box-shadow: 0 0 28px rgba(80,200,255,0.08), inset 0 1px 0 rgba(255,255,255,0.04);
+          opacity: 0; transform: translateY(12px); animation: sceneCardIn 0.5s ease-out forwards;
+          position: relative; overflow: hidden; }
+        .scene-card::before { content:""; position:absolute; top:0; left:0; right:0; height:1px;
+          background: linear-gradient(90deg, transparent, #6ad9ff, transparent); opacity: 0.6; }
+        @keyframes sceneCardIn { to { opacity: 1; transform: translateY(0); } }
+        .scene-card-title { font-size: 12px; color: #aee6ff; letter-spacing: 1.5px;
+          text-transform: uppercase; margin-bottom: 10px; opacity: 0.85; }
+        .scene-card-body { font-size: 15px; color: #dff7ff; line-height: 1.6; opacity: 0.95; }
+        /* Hero — stor bild överst. Behåller bildens egen aspect ratio (ingen stretch). */
+        .scene-card.hero { padding: 0; overflow: hidden; }
+        .scene-card.hero .hero-image-wrap { position: relative; width: 100%;
+          min-height: 120px; max-height: 70vh; background: #02080f;
+          display:flex; align-items:center; justify-content:center; }
+        .scene-card.hero img.hero-image { display:block; max-width:100%; max-height:70vh;
+          width:auto; height:auto; opacity:0; transition: opacity 0.6s; }
+        .scene-card.hero img.hero-image.loaded { opacity: 1; }
+        .scene-card.hero .hero-placeholder { color:#6ad9ff; opacity:0.55;
+          font-size:13px; letter-spacing: 1px; text-transform: uppercase;
+          background: linear-gradient(90deg, rgba(106,217,255,0.0), rgba(106,217,255,0.12), rgba(106,217,255,0.0));
+          background-size: 200% 100%; animation: sceneShimmer 1.8s ease-in-out infinite;
+          padding: 12px 18px; border-radius: 4px; }
+        .scene-card.hero .hero-caption { position: absolute; left: 0; right: 0; bottom: 0;
+          background: linear-gradient(180deg, transparent, rgba(2,8,15,0.92));
+          padding: 14px 18px; color: #dff7ff; font-size: 14px;
+          display:flex; align-items:center; justify-content: space-between; gap: 10px; }
+        .scene-card.hero .hero-caption a { color: #6ad9ff; text-decoration: none;
+          border: 1px solid #1f4e68; padding: 4px 10px; border-radius: 4px;
+          background: rgba(106,217,255,0.1); font-size: 12px; }
+        .scene-card.hero .hero-caption a:hover { background: rgba(106,217,255,0.25); }
+        /* Summary */
+        .scene-card.summary { background: linear-gradient(135deg, rgba(20,50,80,0.92), rgba(5,15,30,0.92));
+          border-color: #2c6688; }
+        .scene-card.summary .scene-card-body { font-size: 16px; line-height: 1.65; }
+        .scene-card.skeleton .scene-card-body { color: #6ad9ff; opacity: 0.55; font-style: italic;
+          background: linear-gradient(90deg, rgba(106,217,255,0.0) 0%, rgba(106,217,255,0.15) 50%, rgba(106,217,255,0.0) 100%);
+          background-size: 200% 100%; animation: sceneShimmer 1.6s ease-in-out infinite;
+          border-radius: 4px; padding: 8px 10px; }
+        @keyframes sceneShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        /* Video */
+        .scene-card.video iframe { width: 100%; aspect-ratio: 16/9; border: none;
+          border-radius: 6px; margin-top: 12px; background: #000; }
+        /* Källor — grid på smal yta, lista på stor */
+        .scene-sources { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+          gap: 12px; }
+        .scene-card.source { background: linear-gradient(135deg, rgba(8,24,40,0.9), rgba(4,10,20,0.9));
+          border-color: #245c7c; padding: 14px 16px; }
+        .scene-card.source .scene-card-title { color: #c4ebff; text-transform: none;
+          letter-spacing: 0.3px; font-size: 14px; opacity: 1; }
+        .scene-card.source .scene-card-body { font-size: 13px; opacity: 0.85; }
+        .scene-empty { color: #6ad9ff; opacity: 0.6; text-align: center; padding: 80px 20px;
+          font-size: 14px; }
+      </style>
+      <div id="scenePanel">
+        <div class="scene-kicker">Cinematic Workspace V3</div>
+        <div id="sceneTitle" class="scene-title">Scen väntar</div>
+        <div id="sceneEmpty" class="scene-empty">
+          Skriv <code>/scen &lt;fråga&gt;</code> i chatten eller säg <em>"presentera ..."</em><br>
+          Exempel: <code>/scen Stockholm</code>, <code>/scen kvantfysik</code>, <code>/scen senaste nyheterna om AI</code>
+        </div>
+        <div id="sceneStack" class="scene-stack" style="display:none;">
+          <div id="sceneHeroSlot"></div>
+          <div id="sceneSummarySlot"></div>
+          <div id="sceneVideoSlot"></div>
+          <div id="sceneSourcesSlot" class="scene-sources"></div>
+        </div>
+      </div>
+
+      <!-- Settings panel: Röst + API-nycklar -->
+      <div id="settingsPanel" style="display:none; flex:1; overflow:auto; padding:14px 16px 18px 16px;">
+        <div style="max-width:780px; margin:0 auto; display:flex; flex-direction:column; gap:18px;">
+          <div>
+            <h3 style="margin:0 0 4px 0;">Inställningar</h3>
+            <div style="opacity:0.7; font-size:13px;">Röst, modellval, autospeak, API-nycklar. Allt sparas lokalt — API-nycklar i <code>.env</code> (gitignorerad).</div>
+          </div>
+
+          <!-- VOICE SECTION -->
+          <section class="settings-card" style="background:#0a1622; border:1px solid #1f4e68; border-radius:8px; padding:14px 16px;">
+            <h4 style="margin:0 0 10px 0; color:#aee6ff;">Röst</h4>
+            <div class="settings-row" style="display:grid; grid-template-columns:160px 1fr; gap:10px 14px; align-items:center;">
+              <label for="settingsVoiceEnabled">Aktivera röst</label>
+              <input type="checkbox" id="settingsVoiceEnabled">
+
+              <label for="settingsVoiceMute">Tysta TTS (mute)</label>
+              <input type="checkbox" id="settingsVoiceMute">
+
+              <label for="settingsVoiceAutoSpeak">Autospeak Jarvis-svar</label>
+              <input type="checkbox" id="settingsVoiceAutoSpeak">
+
+              <label for="settingsVoiceSttModel">STT-modell</label>
+              <select id="settingsVoiceSttModel" style="background:#0d1f2e; color:#dff7ff; border:1px solid #1f4e68; padding:4px 8px; border-radius:4px;">
+                <option value="small">small (~470 MB, snabbare)</option>
+                <option value="medium">medium (~1.5 GB, bättre svenska)</option>
+              </select>
+
+              <label for="settingsVoiceTtsVoice">TTS-röst</label>
+              <select id="settingsVoiceTtsVoice" style="background:#0d1f2e; color:#dff7ff; border:1px solid #1f4e68; padding:4px 8px; border-radius:4px;"></select>
+            </div>
+
+            <div id="settingsVoiceAssets" style="margin-top:12px; font-size:12px; opacity:0.85; line-height:1.55;"></div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+              <button id="settingsVoiceSaveBtn" class="monitor-action" type="button">Spara röstinställningar</button>
+              <button id="settingsOpenWhisperBtn" class="monitor-action" type="button">Ladda Whisper-modeller</button>
+              <button id="settingsOpenPiperBinBtn" class="monitor-action" type="button">Ladda Piper-binär</button>
+              <button id="settingsOpenPiperVoicesBtn" class="monitor-action" type="button">Ladda Piper-röster</button>
+            </div>
+          </section>
+
+          <!-- API KEYS SECTION -->
+          <section class="settings-card" style="background:#0a1622; border:1px solid #1f4e68; border-radius:8px; padding:14px 16px;">
+            <h4 style="margin:0 0 6px 0; color:#aee6ff;">API-nycklar</h4>
+            <div style="opacity:0.7; font-size:12px; margin-bottom:10px;">
+              Sparas i <code>.env</code> (gitignorerad). Värdet visas aldrig efter att du sparat — bara status. Whitelist: bara dessa nycklar accepteras.
+            </div>
+            <div id="settingsEnvList" style="display:flex; flex-direction:column; gap:8px;"></div>
+            <div style="opacity:0.55; font-size:11px; margin-top:10px;">
+              <code id="settingsEnvFilePath">.env</code>
+            </div>
+          </section>
+        </div>
+      </div>
+
       <textarea id="editorArea" spellcheck="false" placeholder="Klicka på en fil i Project Explorer för att visa den här." readonly></textarea>
       <div id="terminalPanel">
         <div class="terminal-header">
@@ -1152,6 +1519,8 @@
         <div id="pendingApprovalHint"></div>
         <div class="input-row">
           <input id="input" placeholder="Skriv till Jarvis..." autocomplete="off">
+          <button id="micBtn" type="button" title="Håll inne för att tala. Släpp för att skicka. Ctrl+Space togglar.">🎙</button>
+          <span id="micPulse" class="brain-pulse" style="display:none; margin: 0 4px;"></span>
           <button id="send">Skicka</button>
         </div>
       </div>
@@ -1216,6 +1585,10 @@
     const visualTasksState = document.getElementById("visualTasksState");
     const visualModelProviderState = document.getElementById("visualModelProviderState");
     const visualAutopilotState = document.getElementById("visualAutopilotState");
+    const visualAutopilotCapabilityState = document.getElementById("desktopAutopilotCapabilityState");
+    const visualVoiceState = document.getElementById("visualVoiceState");
+    const micBtn = document.getElementById("micBtn");
+    const micPulse = document.getElementById("micPulse");
     const desktopAutopilotContinueBtn = document.getElementById("desktopAutopilotContinueBtn");
     const visualTaskChangeState = document.getElementById("visualTaskChangeState");
     const taskQuickInput = document.getElementById("taskQuickInput");
@@ -1290,7 +1663,10 @@
       const btnMap = {
         files: document.getElementById("showWorkspaceBtn"),
         visual: document.getElementById("showVisualBtn"),
-        brain: document.getElementById("showBrainBtn")
+        brain: document.getElementById("showBrainBtn"),
+        scene: document.getElementById("showSceneBtn"),
+        map: document.getElementById("showMapBtn"),
+        settings: document.getElementById("showSettingsBtn")
       };
       for (const [m, btn] of Object.entries(btnMap)) {
         if (!btn) continue;
@@ -1299,6 +1675,8 @@
       }
       // Brain-mode: dölj Project Explorer (vänster) + editor-knappar via body-class
       try { document.body && document.body.classList && document.body.classList.toggle("brain-mode", mode === "brain"); } catch {}
+      // Map-mode: dölj andra workspace-element så kartan får hela utrymmet
+      try { document.body && document.body.classList && document.body.classList.toggle("map-mode", mode === "map"); } catch {}
     }
 
     function computeActiveFolderLabelV1(path) {
@@ -1346,6 +1724,11 @@
       const tasks = String(overview.tasks || overview.Tasks || "Inga öppna tasks.");
       const modelProvider = String(overview.modelProvider || overview.ModelProvider || "Lokal Ollama");
       const autopilot = String(overview.autopilot || overview.Autopilot || "Nivå 1 Safe");
+      const desktopAutopilotCapability = String(
+        overview.desktopAutopilotCapability ||
+        overview.DesktopAutopilotCapability ||
+        "Enkla appsteg körs lokalt.\nSkärmvision kräver UI-TARS."
+      );
       const continueRaw = String(overview.desktopAutopilotCanContinue || overview.DesktopAutopilotCanContinue || "").toLowerCase();
       const canContinue = continueRaw === "true" || continueRaw === "1" || continueRaw === "ja";
       const continueCommand = String(overview.desktopAutopilotContinueCommand || overview.DesktopAutopilotContinueCommand || "/autopilot desktop fortsätt");
@@ -1355,6 +1738,10 @@
       if (visualTasksState) visualTasksState.textContent = tasks;
       if (visualModelProviderState) visualModelProviderState.textContent = modelProvider;
       if (visualAutopilotState) visualAutopilotState.textContent = autopilot;
+      if (visualAutopilotCapabilityState) visualAutopilotCapabilityState.textContent = desktopAutopilotCapability;
+      const voice = String(overview.voice || overview.Voice || "Röst: Av");
+      if (visualVoiceState) visualVoiceState.textContent = voice;
+      if (micPulse) micPulse.style.display = /Lyssnar/i.test(voice) ? "inline-block" : "none";
       if (desktopAutopilotContinueBtn) {
         if (typeof desktopAutopilotContinueBtn.setAttribute === "function") {
           desktopAutopilotContinueBtn.setAttribute("data-command", continueCommand);
@@ -1420,7 +1807,1534 @@
       editorArea.style.display = "none";
       const brain = document.getElementById("brainPanel");
       if (brain) brain.style.display = "none";
+      const settings = document.getElementById("settingsPanel");
+      if (settings) settings.style.display = "none";
+      const scene = document.getElementById("scenePanel");
+      if (scene) scene.style.display = "none";
+      const map = document.getElementById("mapPanel");
+      if (map) map.style.display = "none";
     }
+
+    // Karta / Map panel — 3D globe via MapLibre 5.x med OpenFreeMap + 3D-byggnader
+    let _kartaMap = null;
+    let _kartaMarkers = [];
+    let _kartaNoteMarkers = [];
+    let _kartaNotes = [];
+    let _kartaUseGlobe = true;
+    let _karta3dBuildingsOn = true;
+    let _kartaFilterMode = 0; // 0=normal jarvis, 1=strong, 2=no filter
+
+    window.jarvisShowMapPanelV1 = function() {
+      workspacePanelModeV1 = "map";
+      workspaceTitle.textContent = "Karta — 3D Globe";
+      setPanelButtonStateV1("map");
+      hideAllWorkspacePanelsV2();
+      const map = document.getElementById("mapPanel");
+      if (map) map.style.display = "block";
+      _kartaInitWhenReady(0);
+    };
+
+    function _kartaInitWhenReady(attempts) {
+      if (typeof maplibregl === "undefined") {
+        if (attempts > 30) return;
+        setTimeout(function() { _kartaInitWhenReady(attempts + 1); }, 100);
+        return;
+      }
+      if (_kartaMap !== null) {
+        _kartaMap.resize();
+        postMessage({ type: "karta_get_notes" });
+        postMessage({ type: "karta_get_google_key" });
+        return;
+      }
+      _kartaMap = new maplibregl.Map({
+        container: "kartaMap",
+        // OpenFreeMap liberty - free vector tiles med byggnadsdata och bra detaljer
+        style: "https://tiles.openfreemap.org/styles/liberty",
+        center: [10, 30],
+        zoom: 0.5,
+        minZoom: 0,
+        maxZoom: 19,
+        pitch: 0,
+        antialias: true,
+        projection: { type: "globe" }
+      });
+      _kartaMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
+      _kartaMap.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
+
+      _kartaMap.on("load", function() {
+        // OpenFreeMap-stilen kan override:a vår globe-projection. Tvinga den explicit.
+        try { _kartaMap.setProjection({ type: "globe" }); } catch (_) {}
+
+        // Atmosfär + rymd-bakgrund med stjärnor (MapLibre 5.x globe-feature)
+        try {
+          _kartaMap.setSky({
+            "sky-color": "#0a1a2e",
+            "horizon-color": "#1e4d7b",
+            "fog-color": "#0a1a2e",
+            "fog-ground-blend": 0.5,
+            "horizon-fog-blend": 0.5,
+            "sky-horizon-blend": 0.8,
+            "atmosphere-blend": 0.8
+          });
+        } catch (_) {}
+
+        _kartaAddSatelliteLayer();
+        _kartaAdd3dBuildings();
+        // Be om existerande noter och Google-key från C#
+        postMessage({ type: "karta_get_notes" });
+        postMessage({ type: "karta_get_google_key" });
+      });
+
+      // Fallback om OpenFreeMap inte svarar: byt till demotiles
+      let _kartaTileErrors = 0;
+      _kartaMap.on("error", function(e) {
+        const msg = (e && e.error && e.error.message) ? e.error.message : "";
+        if (msg && (msg.indexOf("tiles.openfreemap.org") >= 0 || msg.indexOf("openmaptiles") >= 0)) {
+          _kartaTileErrors++;
+          if (_kartaTileErrors === 5) {
+            window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+              "OpenFreeMap svarar inte — växlar till demotiles fallback.");
+            try {
+              _kartaMap.setStyle("https://demotiles.maplibre.org/style.json");
+            } catch (_) {}
+          }
+        }
+      });
+
+      _kartaMap.on("move", _kartaUpdateInfo);
+      _kartaMap.on("zoom", _kartaUpdateInfo);
+      // Marker-systemet (fix 2026-05-14):
+      //   - Enkelklick på tom karta  → INGEN marker (suppress accidental clicks)
+      //   - Dubbelklick på tom karta → skapa marker + öppna popup
+      //   - Enkelklick på existerande marker → ta bort den
+      // Vi disablar MapLibre's inbyggda dblclick-zoom så våra clicks går igenom.
+      _kartaMap.doubleClickZoom.disable();
+      _kartaMap.on("dblclick", function(e) {
+        _kartaOnMapClick(e);
+      });
+
+      // Search box
+      const searchInput = document.getElementById("kartaSearchInput");
+      if (searchInput) {
+        searchInput.addEventListener("keydown", function(e) {
+          if (e.key !== "Enter") return;
+          const q = String(searchInput.value || "").trim();
+          if (!q) return;
+          _kartaGeocode(q);
+        });
+      }
+
+      // Mini-chat — "Fråga Jarvis" i kart-hörnet (fix 2026-05-14).
+      // Tidigare bug: vissa frågor hängde tyst eftersom router tolkade dem som okänd intent.
+      // Ny logik: kort plats (≤ 3 ord, bara bokstäver) flyger DIREKT på kartan + skickar
+      // även till chatten. Annars skickas frågan som vanlig chat och vi visar en hint
+      // direkt så användaren ser att meddelandet gick fram.
+      const miniInput = document.getElementById("kartaMiniChatInput");
+      if (miniInput) {
+        miniInput.addEventListener("keydown", function(e) {
+          if (e.key !== "Enter") return;
+          const text = String(miniInput.value || "").trim();
+          if (!text) return;
+          miniInput.value = "";
+
+          const isShortPlace = /^[A-ZÅÄÖa-zåäö][A-ZÅÄÖa-zåäö\s.,'\-]{1,40}$/.test(text)
+            && text.split(/\s+/).length <= 3;
+
+          if (typeof window.jarvisAddMessage === "function")
+            window.jarvisAddMessage("user", text);
+
+          if (isShortPlace) {
+            _kartaGeocode(text);
+            postMessage({ type: "jarvis_chat", text: "karta " + text });
+          } else {
+            postMessage({ type: "jarvis_chat", text: text });
+          }
+        });
+      }
+
+      // Controls
+      const resetBtn = document.getElementById("kartaResetBtn");
+      if (resetBtn) resetBtn.addEventListener("click", function() {
+        _kartaMap.flyTo({ center: [10, 30], zoom: 1.5, speed: 1.4 });
+      });
+      const clearBtn = document.getElementById("kartaClearBtn");
+      if (clearBtn) clearBtn.addEventListener("click", function() {
+        _kartaMarkers.forEach(function(m) { try { m.remove(); } catch (_) {} });
+        _kartaMarkers = [];
+        _kartaUpdateInfo();
+      });
+      // 2D/3D-toggle borttagen - alltid globe-projection
+
+      // Jarvis-filter-toggle (3 lägen: standard / strong / off)
+      const filterBtn = document.getElementById("kartaToggleFilterBtn");
+      if (filterBtn) filterBtn.addEventListener("click", function() {
+        _kartaFilterMode = (_kartaFilterMode + 1) % 3;
+        const el = document.getElementById("kartaMap");
+        if (!el) return;
+        el.classList.remove("jarvis-strong", "no-filter");
+        if (_kartaFilterMode === 1) el.classList.add("jarvis-strong");
+        else if (_kartaFilterMode === 2) el.classList.add("no-filter");
+      });
+
+      // 3D-byggnader-toggle
+      const buildBtn = document.getElementById("kartaToggle3DBtn");
+      if (buildBtn) buildBtn.addEventListener("click", function() {
+        _karta3dBuildingsOn = !_karta3dBuildingsOn;
+        if (_kartaMap.getLayer("3d-buildings"))
+          _kartaMap.setLayoutProperty("3d-buildings", "visibility", _karta3dBuildingsOn ? "visible" : "none");
+        if (_karta3dBuildingsOn && _kartaMap.getZoom() < 14) {
+          _kartaMap.easeTo({ pitch: 60, zoom: 16 });
+        } else if (!_karta3dBuildingsOn) {
+          _kartaMap.easeTo({ pitch: 0 });
+        }
+        _kartaSyncLayerButtonsV1();
+      });
+
+      // Google Photorealistic 3D toggle (visas bara om key satt)
+      const googleBtn = document.getElementById("kartaToggleGoogleBtn");
+      if (googleBtn) googleBtn.addEventListener("click", function() {
+        _kartaToggleGoogle3D();
+      });
+
+      // Satellit-toggle (Esri World Imagery)
+      const satBtn = document.getElementById("kartaToggleSatBtn");
+      if (satBtn) satBtn.addEventListener("click", function() {
+        _kartaToggleSatellite();
+      });
+
+      // Live-flygplan (OpenSky Network)
+      const flightBtn = document.getElementById("kartaToggleFlightsBtn");
+      if (flightBtn) flightBtn.addEventListener("click", function() { _kartaToggleFlights(); });
+
+      // Live-båtar (AISStream WebSocket)
+      const shipBtn = document.getElementById("kartaToggleShipsBtn");
+      if (shipBtn) shipBtn.addEventListener("click", function() { _kartaToggleShips(); });
+
+      // Live-väder (open-meteo, gratis, ingen nyckel)
+      const weatherBtn = document.getElementById("kartaToggleWeatherBtn");
+      if (weatherBtn) weatherBtn.addEventListener("click", function() { _kartaToggleWeather(); });
+
+      // Be om AIS key vid init
+      postMessage({ type: "karta_get_ais_key" });
+    }
+
+    // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
+    let _kartaWeatherOn = false;
+    let _kartaWeatherTimer = null;
+    let _kartaWeatherOverlay = null;
+
+    function _kartaToggleWeather() {
+      _kartaWeatherOn = !_kartaWeatherOn;
+      if (_kartaWeatherOn) {
+        _kartaFetchWeatherForCenter();
+        _kartaWeatherTimer = setInterval(_kartaFetchWeatherForCenter, 60000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Live-väder PÅ (open-meteo, uppdaterar var minut). Animation visar regn/snö/blixt om det förekommer.");
+      } else {
+        if (_kartaWeatherTimer) clearInterval(_kartaWeatherTimer);
+        _kartaWeatherTimer = null;
+        _kartaSetWeatherEffect("clear", 0, "");
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-väder AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+
+    async function _kartaFetchWeatherForCenter() {
+      if (!_kartaMap || !_kartaWeatherOn) return;
+      const c = _kartaMap.getCenter();
+      const lat = c.lat.toFixed(3), lon = c.lng.toFixed(3);
+      const url = "https://api.open-meteo.com/v1/forecast?latitude=" + lat
+                + "&longitude=" + lon
+                + "&current=temperature_2m,weather_code,precipitation,wind_speed_10m,is_day";
+      try {
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Väder-fel: HTTP " + resp.status);
+          return;
+        }
+        const data = await resp.json();
+        const cur = data.current || {};
+        const code = Number(cur.weather_code);
+        const temp = cur.temperature_2m;
+        const wind = cur.wind_speed_10m;
+        const precip = Number(cur.precipitation || 0);
+        const effect = _kartaWmoToEffect(code, precip);
+        _kartaSetWeatherEffect(effect.kind, effect.intensity, _kartaWmoLabel(code));
+        const label = _kartaWmoLabel(code);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Väder vid kart-mitten: " + label + " · " + temp + "°C · vind " + wind + " m/s · regn " + precip + " mm/h.");
+      } catch (e) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Väder-fel: " + e.message);
+      }
+    }
+
+    function _kartaWmoToEffect(code, precip) {
+      // WMO weather codes: 0 clear, 1-3 mostly clear/cloudy, 45/48 fog,
+      // 51-67 drizzle/rain, 71-77 snow, 80-82 rain showers, 85-86 snow showers,
+      // 95-99 thunderstorm.
+      if (code >= 95) return { kind: "storm",    intensity: Math.min(1, 0.6 + precip / 10) };
+      if (code >= 80) return { kind: "rain",     intensity: Math.min(1, 0.5 + precip / 10) };
+      if (code >= 71 && code <= 77) return { kind: "snow", intensity: 0.7 };
+      if (code >= 85 && code <= 86) return { kind: "snow", intensity: 0.7 };
+      if (code >= 51 && code <= 67) return { kind: "rain", intensity: Math.min(1, 0.4 + precip / 8) };
+      if (code === 45 || code === 48) return { kind: "fog", intensity: 0.6 };
+      return { kind: "clear", intensity: 0 };
+    }
+
+    function _kartaWmoLabel(code) {
+      if (code === 0) return "Klart";
+      if (code >= 1 && code <= 3) return "Lätta moln";
+      if (code === 45 || code === 48) return "Dimma";
+      if (code >= 51 && code <= 67) return "Regn";
+      if (code >= 71 && code <= 77) return "Snö";
+      if (code >= 80 && code <= 82) return "Regnskurar";
+      if (code >= 85 && code <= 86) return "Snöbyar";
+      if (code >= 95) return "Åska";
+      return "Väder";
+    }
+
+    function _kartaSetWeatherEffect(kind, intensity, label) {
+      const mapEl = document.getElementById("mapPanel");
+      if (!mapEl) return;
+      if (!_kartaWeatherOverlay) {
+        _kartaWeatherOverlay = document.createElement("div");
+        _kartaWeatherOverlay.id = "kartaWeatherOverlay";
+        _kartaWeatherOverlay.style.cssText = "position:absolute; inset:0; pointer-events:none; z-index:4; overflow:hidden;";
+        mapEl.appendChild(_kartaWeatherOverlay);
+      }
+      _kartaWeatherOverlay.innerHTML = "";
+      _kartaWeatherOverlay.dataset.kind = kind;
+      if (kind === "clear") {
+        _kartaWeatherOverlay.style.background = "transparent";
+        return;
+      }
+      if (kind === "rain" || kind === "storm") {
+        // Skapa N regndroppar med slumpmässiga delays och positioner
+        const count = Math.floor(60 + intensity * 60);
+        for (let i = 0; i < count; i++) {
+          const drop = document.createElement("div");
+          drop.className = "weather-drop";
+          drop.style.left = (Math.random() * 100) + "%";
+          drop.style.animationDuration = (0.4 + Math.random() * 0.4) + "s";
+          drop.style.animationDelay = (Math.random() * 1.5) + "s";
+          _kartaWeatherOverlay.appendChild(drop);
+        }
+        _kartaWeatherOverlay.style.background = "linear-gradient(180deg, rgba(20,30,50,0.18), rgba(20,30,50,0.04))";
+        if (kind === "storm") _kartaWeatherOverlay.classList.add("has-lightning");
+        else _kartaWeatherOverlay.classList.remove("has-lightning");
+      } else if (kind === "snow") {
+        const count = Math.floor(40 + intensity * 60);
+        for (let i = 0; i < count; i++) {
+          const flake = document.createElement("div");
+          flake.className = "weather-flake";
+          flake.style.left = (Math.random() * 100) + "%";
+          flake.style.animationDuration = (3 + Math.random() * 4) + "s";
+          flake.style.animationDelay = (Math.random() * 4) + "s";
+          flake.textContent = "•";
+          _kartaWeatherOverlay.appendChild(flake);
+        }
+        _kartaWeatherOverlay.style.background = "linear-gradient(180deg, rgba(200,220,255,0.14), rgba(200,220,255,0.02))";
+        _kartaWeatherOverlay.classList.remove("has-lightning");
+      } else if (kind === "fog") {
+        _kartaWeatherOverlay.style.background = "radial-gradient(ellipse at center, rgba(200,210,220,0.32), rgba(200,210,220,0.06))";
+        _kartaWeatherOverlay.classList.remove("has-lightning");
+      }
+    }
+
+    // ===== LIVE-FLYGPLAN (OpenSky Network, no API key) =====
+    let _kartaFlightsOn = false;
+    let _kartaFlightMarkers = [];
+    let _kartaFlightTimer = null;
+    const _kartaFlightByIcao = {};
+
+    function _kartaToggleFlights() {
+      _kartaFlightsOn = !_kartaFlightsOn;
+      if (_kartaFlightsOn) {
+        _kartaFlightConsecutiveErrors = 0;
+        _kartaFetchFlights();
+        // OpenSky anonymous: 100 credits/dag totalt. Bbox <500°² = 1 credit, global = 4 credits.
+        // 15s = 240 calls/h → slut på 25-100 min beroende på bbox. När rate-limit hits backar vi
+        // upp till 60s automatiskt och visar varning i chat.
+        _kartaFlightTimer = setInterval(_kartaFetchFlights, 15000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Live-flygplan PÅ (OpenSky Network, 15s interval). Zooma in över Europa/USA för flest plan.");
+      } else {
+        if (_kartaFlightTimer) clearInterval(_kartaFlightTimer);
+        _kartaFlightTimer = null;
+        _kartaFlightMarkers.forEach(function(m) { try { m.remove(); } catch (_) {} });
+        _kartaFlightMarkers = [];
+        Object.keys(_kartaFlightByIcao).forEach(function(k) { delete _kartaFlightByIcao[k]; });
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-flygplan AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    let _kartaFlightConsecutiveErrors = 0;
+    let _kartaFlightLastReportedCount = -1;
+
+    function _kartaFetchFlights() {
+      if (!_kartaMap || !_kartaFlightsOn) return;
+      const bounds = _kartaMap.getBounds();
+      postMessage({
+        type: "karta_get_flights",
+        minLat: bounds.getSouth(), maxLat: bounds.getNorth(),
+        minLon: bounds.getWest(), maxLon: bounds.getEast()
+      });
+    }
+
+    window.jarvisKartaFlightsResultV1 = function(payload) {
+      if (!_kartaMap || !payload || !_kartaFlightsOn) return;
+      if (payload.error) {
+        _kartaFlightConsecutiveErrors += 1;
+        console.warn("Flygplan-fel:", payload.error);
+        // Visa fel i chatten — minst hälften av "no plan visible"-buggar är tysta HTTP-fel.
+        if (_kartaFlightConsecutiveErrors === 1 || _kartaFlightConsecutiveErrors === 3) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Flygplan-fel från OpenSky: " + String(payload.error || "okänt"));
+        }
+        // 3+ fel i rad → backa till 60s interval (rate-limit-skydd)
+        if (_kartaFlightConsecutiveErrors === 3 && _kartaFlightTimer) {
+          clearInterval(_kartaFlightTimer);
+          _kartaFlightTimer = setInterval(_kartaFetchFlights, 60000);
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "OpenSky troligen rate-limit — bytt till 60s polling. Anonymous-kontot har 100 credits/dag.");
+        }
+        return;
+      }
+      _kartaFlightConsecutiveErrors = 0;
+      let data;
+      try { data = JSON.parse(payload.json || "{}"); } catch (_) { return; }
+      const states = Array.isArray(data.states) ? data.states : [];
+
+      // Visa antal mottagna flyg första gången + om antalet förändras drastiskt.
+      const liveCount = states.filter(function(s) {
+        return typeof s[5] === "number" && typeof s[6] === "number" && !s[8];
+      }).length;
+      if (_kartaFlightLastReportedCount < 0 ||
+          (_kartaFlightLastReportedCount === 0 && liveCount > 0)) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Flygplan mottagna: " + liveCount + " (zoom = " + _kartaMap.getZoom().toFixed(1) + ").");
+      }
+      _kartaFlightLastReportedCount = liveCount;
+
+      // Rensa gamla markers
+      _kartaFlightMarkers.forEach(function(m) { try { m.remove(); } catch (_) {} });
+      _kartaFlightMarkers = [];
+
+      states.slice(0, 250).forEach(function(s) {
+        const icao24 = s[0], callsign = (s[1] || "").trim();
+        const country = s[2];
+        const lon = s[5], lat = s[6], baroAlt = s[7], onGround = s[8];
+        const velocity = s[9], track = s[10] || 0;
+        if (typeof lon !== "number" || typeof lat !== "number") return;
+        if (onGround) return;
+
+        const el = document.createElement("div");
+        // Större markörer (24px) så de syns även på globe-vy.
+        el.style.cssText = "width:24px; height:24px; cursor:pointer; pointer-events:auto;";
+        el.innerHTML = '<svg viewBox="0 0 24 24" style="width:100%; height:100%; transform: rotate(' + track + 'deg); filter: drop-shadow(0 0 8px rgba(255,200,80,0.95));">'
+          + '<path d="M12 2 L13.5 9 L22 11 L13.5 13 L12 22 L10.5 13 L2 11 L10.5 9 Z" fill="#ffc850" stroke="#fff" stroke-width="1.2"/>'
+          + '</svg>';
+        const marker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]);
+        const popup = new maplibregl.Popup({ offset: 14 }).setHTML(
+          '<div class="karta-note-popup">'
+          + '<div class="name">✈ ' + (callsign || "okänd").replace(/</g, "&lt;") + '</div>'
+          + '<div style="font-size:12px;">Land: ' + String(country || "?").replace(/</g, "&lt;") + '</div>'
+          + '<div style="font-size:12px;">Höjd: ' + (baroAlt ? Math.round(baroAlt) + " m" : "?") + '</div>'
+          + '<div style="font-size:12px;">Hastighet: ' + (velocity ? Math.round(velocity * 3.6) + " km/h" : "?") + '</div>'
+          + '<div style="font-size:12px;">Riktning: ' + Math.round(track) + '°</div>'
+          + '<div style="font-size:10px; opacity:0.5; margin-top:6px;">ICAO24: ' + String(icao24 || "").replace(/</g, "&lt;") + '</div>'
+          + '</div>'
+        );
+        marker.setPopup(popup);
+        marker.addTo(_kartaMap);
+        _kartaFlightMarkers.push(marker);
+      });
+    };
+
+    // ===== LIVE-BÅTAR (AISStream WebSocket, kräver AISSTREAM_API_KEY) =====
+    let _kartaShipsOn = false;
+    let _kartaShipWebSocket = null;
+    let _kartaAisKey = "";
+    let _kartaShipMarkers = {}; // mmsi → marker
+
+    window.jarvisKartaApplyAisKeyV1 = function(payload) {
+      if (!payload) return;
+      _kartaAisKey = String(payload.key || "");
+    };
+
+    let _kartaShipFirstSeen = false;
+    function _kartaToggleShips() {
+      if (!_kartaAisKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Live-båtar kräver AISSTREAM_API_KEY. Registrera dig GRATIS på https://aisstream.io/authenticate och spara nyckeln i Inställningar → API-nycklar.");
+        _kartaSyncLayerButtonsV1();
+        return;
+      }
+      _kartaShipsOn = !_kartaShipsOn;
+      if (_kartaShipsOn) {
+        _kartaShipFirstSeen = false;
+        _kartaConnectAisStream();
+        // Re-skicka bounding box när användaren panorerar/zoomar — annars ser man inga båtar
+        // efter man flyttat kartan, eftersom AISStream-subscription är "frusen" på initial bounds.
+        if (!_kartaShipBoundsTimer) {
+          _kartaShipBoundsTimer = setInterval(function() {
+            if (_kartaShipsOn && _kartaShipWebSocket && _kartaShipWebSocket.readyState === 1) {
+              _kartaResendShipBounds();
+            }
+          }, 5000);
+        }
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Live-båtar PÅ (AISStream WebSocket). Båtar visas där shipping-lanes finns — zooma in mot hav/hamn.");
+      } else {
+        if (_kartaShipWebSocket) { try { _kartaShipWebSocket.close(); } catch (_) {} }
+        _kartaShipWebSocket = null;
+        if (_kartaShipBoundsTimer) { clearInterval(_kartaShipBoundsTimer); _kartaShipBoundsTimer = null; }
+        Object.values(_kartaShipMarkers).forEach(function(m) { try { m.remove(); } catch (_) {} });
+        _kartaShipMarkers = {};
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-båtar AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+
+    let _kartaShipBoundsTimer = null;
+
+    function _kartaCurrentBoundingBoxesV1() {
+      // Om kartan är väldigt utzoomad (zoom < 3 = nästan global vy) — använd hela världen så
+      // användaren ser något. Annars använd nuvarande viewport.
+      if (!_kartaMap) return [[[-90, -180], [90, 180]]];
+      const z = _kartaMap.getZoom();
+      if (z < 3) return [[[-85, -180], [85, 180]]];
+      const b = _kartaMap.getBounds();
+      // Clamp för att undvika att world-wrap bryter AISStream-subscription
+      const south = Math.max(-89.9, b.getSouth());
+      const north = Math.min(89.9, b.getNorth());
+      let west = b.getWest(); let east = b.getEast();
+      if (east - west > 359) { west = -179.9; east = 179.9; }
+      return [[[south, west], [north, east]]];
+    }
+
+    function _kartaResendShipBounds() {
+      if (!_kartaShipWebSocket || _kartaShipWebSocket.readyState !== 1) return;
+      try {
+        _kartaShipWebSocket.send(JSON.stringify({
+          APIKey: _kartaAisKey,
+          BoundingBoxes: _kartaCurrentBoundingBoxesV1(),
+          FilterMessageTypes: ["PositionReport"]
+        }));
+      } catch (_) { /* nästa interval försöker igen */ }
+    }
+
+    function _kartaConnectAisStream() {
+      if (!_kartaMap || !_kartaAisKey) return;
+      try {
+        _kartaShipWebSocket = new WebSocket("wss://stream.aisstream.io/v0/stream");
+      } catch (e) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "AISStream WebSocket-fel: " + e.message);
+        return;
+      }
+
+      _kartaShipWebSocket.onopen = function() {
+        const sub = {
+          APIKey: _kartaAisKey,
+          BoundingBoxes: _kartaCurrentBoundingBoxesV1(),
+          FilterMessageTypes: ["PositionReport"]
+        };
+        _kartaShipWebSocket.send(JSON.stringify(sub));
+      };
+
+      _kartaShipWebSocket.onmessage = function(event) {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.MessageType !== "PositionReport") {
+            // AISStream skickar även "Error"-meddelanden om auth/quota — visa dem i chatten.
+            if (msg.error || msg.Error) {
+              window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+                "AISStream-fel: " + String(msg.error || msg.Error));
+            }
+            return;
+          }
+          const pos = msg.Message && msg.Message.PositionReport;
+          if (!pos) return;
+          const mmsi = pos.UserID || (msg.MetaData && msg.MetaData.MMSI);
+          const lat = pos.Latitude, lon = pos.Longitude;
+          const heading = pos.TrueHeading >= 0 && pos.TrueHeading < 360 ? pos.TrueHeading : (pos.Cog || 0);
+          const sog = pos.Sog || 0; // speed over ground (knots)
+          const name = (msg.MetaData && msg.MetaData.ShipName) ? msg.MetaData.ShipName.trim() : "okänd";
+          if (typeof lat !== "number" || typeof lon !== "number") return;
+
+          // Räkna första båten så användaren vet att stream funkar.
+          if (!_kartaShipFirstSeen) {
+            _kartaShipFirstSeen = true;
+            window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+              "Båt-stream igång — första båten mottagen (" + name + ").");
+          }
+
+          if (_kartaShipMarkers[mmsi]) {
+            _kartaShipMarkers[mmsi].setLngLat([lon, lat]);
+          } else {
+            const el = document.createElement("div");
+            el.style.cssText = "width:20px; height:20px; cursor:pointer; pointer-events:auto;";
+            el.innerHTML = '<svg viewBox="0 0 24 24" style="width:100%; height:100%; transform: rotate(' + heading + 'deg); filter: drop-shadow(0 0 6px rgba(80,180,255,0.95));">'
+              + '<path d="M12 2 L18 14 L15 22 L12 19 L9 22 L6 14 Z" fill="#5fb3ff" stroke="#fff" stroke-width="1.0"/>'
+              + '</svg>';
+            const marker = new maplibregl.Marker({ element: el }).setLngLat([lon, lat]);
+            const popup = new maplibregl.Popup({ offset: 12 }).setHTML(
+              '<div class="karta-note-popup">'
+              + '<div class="name">⛴ ' + String(name).replace(/</g, "&lt;") + '</div>'
+              + '<div style="font-size:12px;">MMSI: ' + String(mmsi || "?") + '</div>'
+              + '<div style="font-size:12px;">Hastighet: ' + sog.toFixed(1) + ' knop</div>'
+              + '<div style="font-size:12px;">Heading: ' + Math.round(heading) + '°</div>'
+              + '</div>'
+            );
+            marker.setPopup(popup);
+            marker.addTo(_kartaMap);
+            _kartaShipMarkers[mmsi] = marker;
+          }
+        } catch (_) {}
+      };
+
+      _kartaShipWebSocket.onerror = function() {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "AISStream WebSocket-fel.");
+      };
+      _kartaShipWebSocket.onclose = function() {
+        if (_kartaShipsOn) {
+          // Reconnect efter 5 sek
+          setTimeout(function() { if (_kartaShipsOn) _kartaConnectAisStream(); }, 5000);
+        }
+      };
+    }
+
+    let _kartaSatelliteOn = false;
+    const _kartaReverseCallbacks = {};
+
+    window.jarvisKartaReverseGeocodeResultV1 = function(payload) {
+      if (!payload || !payload.id) return;
+      const cb = _kartaReverseCallbacks[payload.id];
+      if (!cb) return;
+      delete _kartaReverseCallbacks[payload.id];
+      try {
+        const data = payload.json ? JSON.parse(payload.json) : null;
+        cb(data, payload.error || null);
+      } catch (e) {
+        cb(null, e.message);
+      }
+    };
+
+    // Sparar original visibility för alla vector-layers så vi kan återställa när satellit stängs av
+    let _kartaOriginalLayerVisibility = {};
+
+    function _kartaAddSatelliteLayer() {
+      if (!_kartaMap) return;
+      try {
+        if (!_kartaMap.getSource("esri-satellite")) {
+          _kartaMap.addSource("esri-satellite", {
+            type: "raster",
+            // Esri World Imagery - gratis, high-res, no API key
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            minzoom: 0,
+            maxzoom: 18,
+            attribution: "Tiles © Esri — Source: Esri, Maxar, Earthstar Geographics"
+          });
+        }
+        if (!_kartaMap.getLayer("esri-satellite-layer")) {
+          // Lägg satelliten direkt EFTER background så den ritas under alla vector-layers
+          // (när vector är synlig får man Jarvis-stil; när vector döljs får man ren satellit)
+          let beforeId = null;
+          const layers = _kartaMap.getStyle().layers || [];
+          for (let i = 0; i < layers.length; i++) {
+            if (layers[i].id !== "background") { beforeId = layers[i].id; break; }
+          }
+          _kartaMap.addLayer({
+            id: "esri-satellite-layer",
+            type: "raster",
+            source: "esri-satellite",
+            layout: { visibility: "none" },
+            paint: { "raster-opacity": 1, "raster-fade-duration": 200 }
+          }, beforeId);
+        }
+      } catch (err) {
+        console.warn("Kunde inte lägga till satellit-layer:", err);
+      }
+    }
+
+    function _kartaToggleSatellite() {
+      if (!_kartaMap) return;
+      _kartaSatelliteOn = !_kartaSatelliteOn;
+      const mapEl = document.getElementById("kartaMap");
+
+      try {
+        // Toggla CSS Jarvis-filtret - bort när satellit är på (vill se riktiga färger)
+        if (mapEl) mapEl.classList.toggle("satellite-on", _kartaSatelliteOn);
+
+        if (_kartaMap.getLayer("esri-satellite-layer")) {
+          _kartaMap.setLayoutProperty("esri-satellite-layer", "visibility",
+            _kartaSatelliteOn ? "visible" : "none");
+        }
+
+        const layers = _kartaMap.getStyle().layers || [];
+        if (_kartaSatelliteOn) {
+          // Spara nuvarande visibility och göm ALLA vector-layers så ren satellit visas.
+          // Detta inkluderar 3D-buildings (annars täcker blå klossarna satelliten).
+          // Etiketter (symbol-layers) behålls så vägnamn/ortnamn syns ovanpå.
+          _kartaOriginalLayerVisibility = {};
+          layers.forEach(function(l) {
+            if (l.id === "esri-satellite-layer") return;
+            if (l.type === "symbol") return;
+            try {
+              const current = _kartaMap.getLayoutProperty(l.id, "visibility");
+              _kartaOriginalLayerVisibility[l.id] = current || "visible";
+              _kartaMap.setLayoutProperty(l.id, "visibility", "none");
+            } catch (_) {}
+          });
+          if (_kartaMap.getLayer("background")) {
+            _kartaMap.setPaintProperty("background", "background-color", "rgba(0,0,0,0)");
+          }
+        } else {
+          // Återställ alla vector-layers till sin tidigare visibility
+          Object.keys(_kartaOriginalLayerVisibility).forEach(function(id) {
+            try {
+              _kartaMap.setLayoutProperty(id, "visibility", _kartaOriginalLayerVisibility[id]);
+            } catch (_) {}
+          });
+          _kartaOriginalLayerVisibility = {};
+          if (_kartaMap.getLayer("background")) {
+            _kartaMap.setPaintProperty("background", "background-color", "#e8e8e8");
+          }
+        }
+
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          _kartaSatelliteOn
+            ? "Satellitbild PÅ (Esri World Imagery). Tryck ▲ Byggnader för att lägga 3D-klossar ovanpå."
+            : "Satellitbild AV - tillbaka till Jarvis-vektorvy.");
+      } catch (err) {
+        console.warn("Satellit-toggle fel:", err);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Satellit-toggle fel: " + err.message);
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+
+    // Synkar visuell on/off-indikering på alla layer-toggle-knappar.
+    function _kartaSyncLayerButtonsV1() {
+      const map = {
+        kartaToggle3DBtn: !!_karta3dBuildingsOn,
+        kartaToggleSatBtn: !!_kartaSatelliteOn,
+        kartaToggleFlightsBtn: !!_kartaFlightsOn,
+        kartaToggleShipsBtn: !!_kartaShipsOn,
+        kartaToggleWeatherBtn: !!_kartaWeatherOn,
+        kartaToggleGoogleBtn: !!_kartaGoogleActive
+      };
+      Object.keys(map).forEach(function(id) {
+        const b = document.getElementById(id);
+        if (!b) return;
+        if (map[id]) b.classList.add("is-active");
+        else b.classList.remove("is-active");
+      });
+    }
+
+    function _kartaAdd3dBuildings() {
+      if (!_kartaMap) return;
+      try {
+        // OpenFreeMap liberty använder OpenMapTiles schema: source = "openmaptiles", layer = "building"
+        // Property render_height ger byggnadens höjd i meter.
+        _kartaMap.addLayer({
+          id: "3d-buildings",
+          source: "openmaptiles",
+          "source-layer": "building",
+          type: "fill-extrusion",
+          minzoom: 13,
+          paint: {
+            "fill-extrusion-color": [
+              "interpolate", ["linear"], ["get", "render_height"],
+              0, "#1f4e68",
+              30, "#2a6a8c",
+              100, "#3d8cb0",
+              250, "#5fb3d6"
+            ],
+            "fill-extrusion-height": ["coalesce", ["get", "render_height"], 8],
+            "fill-extrusion-base": ["coalesce", ["get", "render_min_height"], 0],
+            "fill-extrusion-opacity": 0.88
+          }
+        });
+      } catch (err) {
+        console.warn("3D-buildings layer kunde inte läggas till:", err);
+      }
+    }
+
+    function _kartaOnMapClick(e) {
+      // Dubbelklick på karta — kolla först om vi träffat en POI (butik/restaurang/station/skola).
+      // Om ja → öppna POI-info-popup med OSM-data + ev. Wikidata-bild.
+      // Annars → vanlig "spara note"-popup.
+      const lat = e.lngLat.lat;
+      const lon = e.lngLat.lng;
+
+      // Snabb tile-feature-check: OpenMapTiles "poi" och "building"-layer.
+      // De finns inte alltid med id som vi tror — så vi tar alla renderade features under cursor
+      // och letar efter property "class" + "name" eller "render_height".
+      const features = _kartaMap.queryRenderedFeatures(e.point) || [];
+      const namedFeature = features.find(function(f) {
+        return f.properties && (f.properties.name || f.properties.class);
+      });
+      const hitBuilding = features.some(function(f) {
+        return f.layer && (f.layer.id === "3d-buildings"
+            || (f.layer["source-layer"] === "building"));
+      });
+
+      if (namedFeature || hitBuilding) {
+        _kartaOpenPoiPopupV1(lat, lon, namedFeature);
+        return;
+      }
+      _kartaOpenNotePopup(lat, lon, null);
+    }
+
+    // POI-info-popup (fix 2026-05-14) — Google-Maps-like info: namn, typ, öppettider,
+    // telefon, hemsida, foto från Wikimedia Commons om Wikidata-tag finns.
+    //
+    // Källor: Overpass API (free, no auth) + Wikidata + Wikimedia Commons.
+    function _kartaOpenPoiPopupV1(lat, lon, tileFeature) {
+      if (!_kartaMap) return;
+      const tileTags = (tileFeature && tileFeature.properties) || {};
+      const initialName = tileTags.name || tileTags["name:en"] || "Plats";
+
+      const popup = new maplibregl.Popup({ closeOnClick: false, maxWidth: "360px" })
+        .setLngLat([lon, lat])
+        .setHTML(_kartaRenderPoiHtml({ name: initialName, _loading: true }, lat, lon))
+        .addTo(_kartaMap);
+
+      // Hämta riktiga OSM-tags via Overpass + ev. Wikidata-bild parallellt.
+      _kartaQueryOsmAround(lat, lon).then(function(element) {
+        const tags = (element && element.tags) ? element.tags : tileTags;
+        if (!tags.name && initialName) tags.name = initialName;
+        popup.setHTML(_kartaRenderPoiHtml(tags, lat, lon));
+
+        // Om Wikidata QID finns — hämta bild från Wikimedia Commons.
+        if (tags.wikidata) {
+          _kartaFetchWikidataImageV1(tags.wikidata).then(function(imageUrl) {
+            if (!imageUrl) return;
+            const enriched = Object.assign({}, tags, { _imageUrl: imageUrl });
+            popup.setHTML(_kartaRenderPoiHtml(enriched, lat, lon));
+          });
+        }
+      });
+    }
+
+    async function _kartaQueryOsmAround(lat, lon) {
+      // 30 m radius runt klickpunkten. Tar närmaste named element.
+      const query = "[out:json][timeout:8];"
+        + "(node(around:30," + lat + "," + lon + ")[name];"
+        + " way(around:30," + lat + "," + lon + ")[name];"
+        + " relation(around:30," + lat + "," + lon + ")[name];);"
+        + "out tags center 5;";
+      try {
+        const resp = await fetch("https://overpass-api.de/api/interpreter", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: "data=" + encodeURIComponent(query)
+        });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const elements = Array.isArray(data.elements) ? data.elements : [];
+        if (elements.length === 0) return null;
+        // Föredra POI:er (amenity/shop/tourism osv.) över anonyma vägar/zoner.
+        const poiTags = ["amenity","shop","tourism","leisure","public_transport",
+                         "railway","aeroway","office","building","historic"];
+        const poiHit = elements.find(function(el) {
+          return el.tags && poiTags.some(function(k) { return el.tags[k]; });
+        });
+        return poiHit || elements[0];
+      } catch (_) { return null; }
+    }
+
+    async function _kartaFetchWikidataImageV1(qid) {
+      if (!/^Q\d+$/.test(qid)) return "";
+      try {
+        const resp = await fetch("https://www.wikidata.org/wiki/Special:EntityData/" + encodeURIComponent(qid) + ".json");
+        if (!resp.ok) return "";
+        const data = await resp.json();
+        const entity = data.entities && data.entities[qid];
+        const claims = entity && entity.claims;
+        const p18 = claims && claims.P18 && claims.P18[0];
+        const fname = p18 && p18.mainsnak && p18.mainsnak.datavalue && p18.mainsnak.datavalue.value;
+        if (!fname) return "";
+        // Special:FilePath ger original — för thumbnail lägg ?width=500
+        return "https://commons.wikimedia.org/wiki/Special:FilePath/" + encodeURIComponent(fname) + "?width=500";
+      } catch (_) { return ""; }
+    }
+
+    function _kartaPoiEscape(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c];
+      });
+    }
+
+    function _kartaPoiTypeLabel(tags) {
+      const typeKeys = ["amenity","shop","tourism","leisure","public_transport","railway",
+                        "aeroway","office","historic","building","craft","emergency"];
+      for (let i = 0; i < typeKeys.length; i++) {
+        if (tags[typeKeys[i]]) return typeKeys[i] + ": " + tags[typeKeys[i]];
+      }
+      if (tags["class"]) return String(tags["class"]);
+      return "";
+    }
+
+    function _kartaRenderPoiHtml(tags, lat, lon) {
+      const esc = _kartaPoiEscape;
+      const parts = ['<div class="karta-poi-popup">'];
+      // Bild (Wikidata)
+      if (tags._imageUrl) {
+        parts.push('<div class="poi-image-wrap"><img src="' + esc(tags._imageUrl) + '" alt="" /></div>');
+      }
+      parts.push('<div class="poi-name">' + esc(tags.name || "Plats") + '</div>');
+      const typeLabel = _kartaPoiTypeLabel(tags);
+      if (typeLabel) parts.push('<div class="poi-type">' + esc(typeLabel) + '</div>');
+
+      if (tags._loading) {
+        parts.push('<div class="poi-loading">Hämtar info...</div>');
+      } else {
+        const rows = [];
+        if (tags.cuisine)       rows.push(["Kök",         tags.cuisine]);
+        if (tags.brand)         rows.push(["Brand",       tags.brand]);
+        if (tags["addr:street"]) rows.push(["Adress",     [tags["addr:street"], tags["addr:housenumber"]].filter(Boolean).join(" ")]);
+        if (tags["addr:postcode"] || tags["addr:city"])
+          rows.push(["Stad",     [tags["addr:postcode"], tags["addr:city"]].filter(Boolean).join(" ")]);
+        if (tags.opening_hours) rows.push(["Öppettider", tags.opening_hours]);
+        if (tags.phone || tags["contact:phone"])
+          rows.push(["Tel",      tags.phone || tags["contact:phone"]]);
+        if (tags.email || tags["contact:email"])
+          rows.push(["E-post",   tags.email || tags["contact:email"]]);
+        if (tags.wheelchair)    rows.push(["Rullstol",    tags.wheelchair]);
+        if (tags.capacity)      rows.push(["Kapacitet",   tags.capacity]);
+        if (tags.operator)      rows.push(["Operatör",    tags.operator]);
+        if (tags.network)       rows.push(["Nätverk",     tags.network]);
+
+        rows.forEach(function(r) {
+          parts.push('<div class="poi-row"><span class="poi-k">' + esc(r[0]) + '</span><span class="poi-v">' + esc(r[1]) + '</span></div>');
+        });
+
+        // Länkar
+        const links = [];
+        if (tags.website || tags["contact:website"]) {
+          const url = tags.website || tags["contact:website"];
+          links.push('<a href="' + esc(url) + '" target="_blank" rel="noopener">Hemsida</a>');
+        }
+        if (tags.wikipedia) {
+          const wp = String(tags.wikipedia);
+          const m = wp.match(/^([a-z\-]+):(.+)$/i);
+          if (m) {
+            const url = "https://" + m[1] + ".wikipedia.org/wiki/" + encodeURIComponent(m[2].replace(/ /g, "_"));
+            links.push('<a href="' + esc(url) + '" target="_blank" rel="noopener">Wikipedia</a>');
+          }
+        }
+        if (tags.wikidata) {
+          links.push('<a href="https://www.wikidata.org/wiki/' + esc(tags.wikidata) + '" target="_blank" rel="noopener">Wikidata</a>');
+        }
+        // Google-sökning som fallback för reviews (vi har ingen Places API)
+        const gName = tags.name || "";
+        if (gName) {
+          links.push('<a href="https://www.google.com/maps/search/' + encodeURIComponent(gName) + '/@' + lat + ',' + lon + ',18z" target="_blank" rel="noopener">Google Maps</a>');
+        }
+        if (links.length > 0) parts.push('<div class="poi-links">' + links.join(" · ") + '</div>');
+      }
+      parts.push('</div>');
+      return parts.join("");
+    }
+
+    function _kartaOpenNotePopup(lat, lon, prefillName) {
+      if (!_kartaMap) return;
+      const containerId = "kartaNotePopupContent_" + Date.now();
+      const html = '<div class="karta-note-popup">'
+        + '<div class="name" id="' + containerId + '_name">' + (prefillName || "Hämtar plats...") + '</div>'
+        + '<textarea id="' + containerId + '_text" placeholder="Skriv en anteckning... (Jarvis kommer ihåg)"></textarea>'
+        + '<div class="row">'
+        + '<button id="' + containerId + '_save">Spara minne</button>'
+        + '<button id="' + containerId + '_cancel">Avbryt</button>'
+        + "</div></div>";
+      const popup = new maplibregl.Popup({ closeOnClick: false, maxWidth: "300px" })
+        .setLngLat([lon, lat])
+        .setHTML(html)
+        .addTo(_kartaMap);
+
+      // Reverse-geocode via C# proxy (WebView2 file:// origin blockas av Nominatim CORS)
+      const reverseReqId = "rev_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      _kartaReverseCallbacks[reverseReqId] = function(data, error) {
+        const nameEl = document.getElementById(containerId + "_name");
+        if (!nameEl) return;
+        if (data && data.display_name) {
+          nameEl.textContent = String(data.display_name).split(",").slice(0, 2).join(",");
+        } else if (!prefillName) {
+          nameEl.textContent = "Plats vid " + lat.toFixed(3) + ", " + lon.toFixed(3);
+        }
+      };
+      postMessage({ type: "karta_reverse_geocode", id: reverseReqId, lat: lat, lon: lon });
+
+      // Wire up Save/Cancel
+      setTimeout(function() {
+        const saveBtn = document.getElementById(containerId + "_save");
+        const cancelBtn = document.getElementById(containerId + "_cancel");
+        const textArea = document.getElementById(containerId + "_text");
+        const nameEl = document.getElementById(containerId + "_name");
+        if (saveBtn) saveBtn.addEventListener("click", function() {
+          const note = String((textArea && textArea.value) || "").trim();
+          const name = String((nameEl && nameEl.textContent) || "Plats").trim();
+          if (!note) {
+            if (textArea) textArea.focus();
+            return;
+          }
+          postMessage({
+            type: "karta_add_note",
+            lat: lat, lon: lon, name: name, note: note
+          });
+          popup.remove();
+        });
+        if (cancelBtn) cancelBtn.addEventListener("click", function() { popup.remove(); });
+        if (textArea) textArea.focus();
+      }, 50);
+    }
+
+    window.jarvisKartaSetNotesV1 = function(notes) {
+      _kartaNotes = Array.isArray(notes) ? notes : [];
+      // Rensa befintliga note-markers
+      _kartaNoteMarkers.forEach(function(m) { try { m.remove(); } catch (_) {} });
+      _kartaNoteMarkers = [];
+      if (!_kartaMap) return;
+      _kartaNotes.forEach(function(n) {
+        if (typeof n.lat !== "number" || typeof n.lon !== "number") return;
+        const el = document.createElement("div");
+        el.style.cssText = "width:18px; height:18px; border-radius:50%; background:#ffaa44; border:2px solid #fff; box-shadow:0 0 12px rgba(255,170,68,0.7); cursor:pointer;";
+        const marker = new maplibregl.Marker({ element: el })
+          .setLngLat([n.lon, n.lat])
+          .addTo(_kartaMap);
+        const popup = new maplibregl.Popup({ offset: 14 }).setHTML(
+          '<div class="karta-note-popup">'
+          + '<div class="name">' + String(n.name || "Plats").replace(/</g, "&lt;") + "</div>"
+          + '<div style="font-size:13px; margin:4px 0;">' + String(n.note || "").replace(/</g, "&lt;") + "</div>"
+          + '<div style="font-size:10px; opacity:0.5;">' + String(n.createdAt || "") + "</div>"
+          + '<div class="row"><button data-delete-note="' + String(n.id || "") + '">⊘ Ta bort</button></div>'
+          + "</div>"
+        );
+        marker.setPopup(popup);
+        el.addEventListener("click", function() { marker.togglePopup(); });
+        _kartaNoteMarkers.push(marker);
+      });
+      _kartaUpdateInfo();
+    };
+
+    // Wire popup delete-knappar globally (event delegation)
+    document.addEventListener("click", function(e) {
+      const id = e.target && e.target.getAttribute && e.target.getAttribute("data-delete-note");
+      if (id) {
+        postMessage({ type: "karta_delete_note", id: id });
+      }
+    });
+
+    // Google Photorealistic 3D Tiles support (när GOOGLE_MAPS_API_KEY finns)
+    let _kartaGoogleKey = "";
+    let _kartaGoogleActive = false;
+    let _kartaGoogleScriptLoaded = false;
+
+    window.jarvisKartaApplyGoogleKeyV1 = function(payload) {
+      if (!payload) return;
+      _kartaGoogleKey = String(payload.key || "");
+      const btn = document.getElementById("kartaToggleGoogleBtn");
+      if (btn) btn.style.display = payload.hasKey ? "inline-block" : "none";
+    };
+
+    function _kartaToggleGoogle3D() {
+      if (!_kartaGoogleKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Google 3D kräver GOOGLE_MAPS_API_KEY. Lägg in nyckeln i Inställningar → API-nycklar.");
+        return;
+      }
+      _kartaGoogleActive = !_kartaGoogleActive;
+      if (_kartaGoogleActive) _kartaActivateGoogle3D();
+      else _kartaDeactivateGoogle3D();
+      _kartaSyncLayerButtonsV1();
+    }
+
+    function _kartaActivateGoogle3D() {
+      // Skapa overlay-container för Google 3D (täcker MapLibre-canvasen)
+      let overlay = document.getElementById("kartaGoogleOverlay");
+      if (!overlay) {
+        overlay = document.createElement("div");
+        overlay.id = "kartaGoogleOverlay";
+        overlay.style.cssText = "position:absolute; inset:0; z-index:5; background:#000;";
+        document.getElementById("mapPanel").appendChild(overlay);
+      }
+      overlay.style.display = "block";
+      overlay.innerHTML = '<gmp-map-3d center="59.3293, 18.0686, 1000" tilt="60" heading="0" range="2500" style="height:100%; width:100%;"></gmp-map-3d>';
+      // Ladda Google Maps JS API (alpha + maps3d library)
+      if (!_kartaGoogleScriptLoaded) {
+        const s = document.createElement("script");
+        s.src = "https://maps.googleapis.com/maps/api/js?key=" + encodeURIComponent(_kartaGoogleKey) + "&v=alpha&libraries=maps3d";
+        s.async = true;
+        document.head.appendChild(s);
+        _kartaGoogleScriptLoaded = true;
+      }
+    }
+
+    function _kartaDeactivateGoogle3D() {
+      const overlay = document.getElementById("kartaGoogleOverlay");
+      if (overlay) overlay.style.display = "none";
+    }
+
+    function _kartaUpdateInfo() {
+      if (!_kartaMap) return;
+      const c = _kartaMap.getCenter();
+      const z = _kartaMap.getZoom();
+      const latEl = document.getElementById("kartaLat");
+      const lonEl = document.getElementById("kartaLon");
+      const zoomEl = document.getElementById("kartaZoom");
+      const cntEl = document.getElementById("kartaMarkerCount");
+      if (latEl) latEl.textContent = c.lat.toFixed(3);
+      if (lonEl) lonEl.textContent = c.lng.toFixed(3);
+      if (zoomEl) zoomEl.textContent = z.toFixed(1);
+      if (cntEl) cntEl.textContent = String(_kartaMarkers.length);
+    }
+
+    function _kartaAddMarker(lon, lat, label) {
+      if (!_kartaMap) return;
+      const marker = new maplibregl.Marker({ color: "#6ad9ff" }).setLngLat([lon, lat]);
+      if (label) {
+        const popup = new maplibregl.Popup({ offset: 24, closeButton: true }).setHTML(
+          '<div style="font-family:monospace; color:#0a1622;">' + String(label) + "</div>"
+        );
+        marker.setPopup(popup);
+      }
+      marker.addTo(_kartaMap);
+      _kartaMarkers.push(marker);
+      // Enkelklick på marker → ta bort. Vi stoppar event så MapLibre inte triggar map-click.
+      try {
+        const el = marker.getElement();
+        if (el) {
+          el.style.cursor = "pointer";
+          el.title = "Klicka för att ta bort marker";
+          el.addEventListener("click", function(ev) {
+            ev.stopPropagation();
+            try { marker.remove(); } catch (_) {}
+            const idx = _kartaMarkers.indexOf(marker);
+            if (idx >= 0) _kartaMarkers.splice(idx, 1);
+            _kartaUpdateInfo();
+          });
+        }
+      } catch (_) { /* MapLibre <4 saknar getElement i vissa builds */ }
+      _kartaUpdateInfo();
+    }
+
+    function _kartaGeocode(query) {
+      if (!_kartaMap) return;
+      // Proxy via C# - WebView2 file:// origin avvisas av Nominatim CORS direkt.
+      // C# har inga CORS-restriktioner + kan sätta korrekt User-Agent.
+      postMessage({ type: "karta_geocode", query: query });
+    }
+
+    window.jarvisKartaGeocodeResultV1 = function(payload) {
+      if (!_kartaMap || !payload) return;
+      if (payload.error) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Geocoding-fel: " + payload.error);
+        return;
+      }
+      let results;
+      try { results = JSON.parse(payload.json || "[]"); }
+      catch (e) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Geocoding: kunde inte parsa svar.");
+        return;
+      }
+      _kartaApplyGeocodeResults(payload.query || "", results);
+    };
+
+    function _kartaApplyGeocodeResults(query, results) {
+      if (!_kartaMap) return;
+          if (!Array.isArray(results) || results.length === 0) {
+            window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Hittade ingen plats för: " + query);
+            return;
+          }
+          const result = results[0];
+          const lat = parseFloat(result.lat);
+          const lon = parseFloat(result.lon);
+          const name = String(result.display_name || query).split(",")[0];
+          if (isNaN(lat) || isNaN(lon)) return;
+
+          const klass = String(result.class || "").toLowerCase();
+          const typ = String(result.type || "").toLowerCase();
+          const bbox = result.boundingbox;
+
+          // Klassificera platsen för att välja rätt zoom-strategi
+          const isAddressOrBuilding = (klass === "building" || klass === "amenity"
+                                      || klass === "shop" || klass === "tourism"
+                                      || typ === "house" || typ === "apartment"
+                                      || typ === "residential" || typ === "yes");
+          const isPoiOrStreet = (klass === "highway" || typ === "street"
+                                || typ === "road" || klass === "leisure");
+
+          if (isAddressOrBuilding) {
+            // Specifik byggnad/adress → zoomar hela vägen + tilt för 3D-vinkel
+            _kartaMap.flyTo({
+              center: [lon, lat],
+              zoom: 18.5,
+              pitch: 55,
+              bearing: 0,
+              speed: 1.1,
+              curve: 1.4,
+              essential: true
+            });
+            _kartaAddMarker(lon, lat, name);
+          } else if (bbox && bbox.length === 4) {
+            // Stad/by/region med bounding box → fitBounds ger exakt rätt zoom
+            const minLat = parseFloat(bbox[0]);
+            const maxLat = parseFloat(bbox[1]);
+            const minLon = parseFloat(bbox[2]);
+            const maxLon = parseFloat(bbox[3]);
+            if (!isNaN(minLat) && !isNaN(maxLat) && !isNaN(minLon) && !isNaN(maxLon)) {
+              _kartaMap.fitBounds(
+                [[minLon, minLat], [maxLon, maxLat]],
+                { padding: 80, duration: 2400, pitch: 25, essential: true, maxZoom: 16 }
+              );
+              _kartaAddMarker(lon, lat, name);
+            } else {
+              _kartaMap.flyTo({ center: [lon, lat], zoom: 12, speed: 1.3, essential: true });
+              _kartaAddMarker(lon, lat, name);
+            }
+          } else {
+            // Fallback: zoom baserat på typ
+            let targetZoom = 12;
+            if (typ === "city" || typ === "town") targetZoom = 12;
+            else if (typ === "village" || typ === "hamlet") targetZoom = 14;
+            else if (typ === "suburb" || typ === "neighbourhood") targetZoom = 15;
+            else if (isPoiOrStreet) targetZoom = 16;
+            else if (typ === "country") targetZoom = 5;
+            else if (typ === "state" || typ === "region") targetZoom = 8;
+            _kartaMap.flyTo({ center: [lon, lat], zoom: targetZoom, speed: 1.3, essential: true });
+            _kartaAddMarker(lon, lat, name);
+          }
+    }
+
+    // Exponera så C# kan trigga flyTo via JS
+    window.jarvisKartaFlyToV1 = function(query) {
+      if (typeof query !== "string" || !query.trim()) return;
+      if (workspacePanelModeV1 !== "map") window.jarvisShowMapPanelV1();
+      _kartaGeocode(query.trim());
+    };
+
+    window.jarvisShowScenePanelV1 = function() {
+      workspacePanelModeV1 = "scene";
+      workspaceTitle.textContent = "Scen — Cinematic Workspace";
+      setPanelButtonStateV1("scene");
+      hideAllWorkspacePanelsV2();
+      const scene = document.getElementById("scenePanel");
+      if (scene) scene.style.display = "flex";
+    };
+
+    function _sceneMakeCard(type, title, body) {
+      const card = document.createElement("div");
+      card.className = "scene-card" + (type === "summary" ? " summary" : "");
+      const t = document.createElement("div"); t.className = "scene-card-title"; t.textContent = String(title || "");
+      const b = document.createElement("div"); b.className = "scene-card-body"; b.textContent = String(body || "");
+      card.appendChild(t); card.appendChild(b);
+      return card;
+    }
+
+    // Cinematic V3 — hero-card med stor bild + caption + ev. källänk.
+    function _sceneRenderHero(c) {
+      const card = document.createElement("div");
+      card.className = "scene-card hero";
+      card.dataset.sceneRole = "hero";
+
+      const wrap = document.createElement("div");
+      wrap.className = "hero-image-wrap";
+
+      const placeholder = document.createElement("div");
+      placeholder.className = "hero-placeholder";
+      placeholder.textContent = String(c.body || "Söker en relevant bild...");
+      wrap.appendChild(placeholder);
+
+      if (c.imageUrl) {
+        _sceneApplyHeroImage(wrap, String(c.imageUrl), String(c.title || ""), "");
+      }
+
+      card.appendChild(wrap);
+      return card;
+    }
+
+    function _sceneApplyHeroImage(wrap, imgUrl, caption, sourceUrl) {
+      const img = document.createElement("img");
+      img.className = "hero-image";
+      img.alt = caption || "";
+      img.src = imgUrl;
+      img.onload = function() {
+        const ph = wrap.querySelector(".hero-placeholder");
+        if (ph) ph.remove();
+        img.classList.add("loaded");
+      };
+      img.onerror = function() {
+        const ph = wrap.querySelector(".hero-placeholder");
+        if (ph) ph.textContent = "Kunde inte ladda bilden.";
+      };
+      wrap.appendChild(img);
+
+      if (caption || sourceUrl) {
+        const cap = document.createElement("div");
+        cap.className = "hero-caption";
+        const txt = document.createElement("span");
+        txt.textContent = caption || "";
+        cap.appendChild(txt);
+        if (sourceUrl) {
+          const a = document.createElement("a");
+          a.href = sourceUrl; a.target = "_blank"; a.rel = "noopener";
+          a.textContent = "Källa →";
+          cap.appendChild(a);
+        }
+        wrap.appendChild(cap);
+      }
+    }
+
+    function _sceneRenderImage(c) {
+      // V3 fallback — gammal "image"-typ landar som hero om hero saknas, annars i sources.
+      return _sceneRenderHero(c);
+    }
+
+    function _sceneRenderChart(c) {
+      const card = _sceneMakeCard("chart", c.title, c.body);
+      const canvas = document.createElement("canvas");
+      canvas.style.cssText = "margin-top:10px; max-height:240px;";
+      card.appendChild(canvas);
+      // Wait for Chart.js to be available
+      const tryRender = function(attempts) {
+        if (typeof Chart === "undefined") {
+          if (attempts > 20) return;
+          setTimeout(function() { tryRender(attempts + 1); }, 100);
+          return;
+        }
+        // Demo-data (V2.1 kopplar till riktig stock API)
+        new Chart(canvas, {
+          type: "line",
+          data: {
+            labels: ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"],
+            datasets: [{
+              label: "Kurs (demo)",
+              data: [100, 105, 102, 108, 115, 112, 118, 122, 119, 125],
+              borderColor: "#6ad9ff",
+              backgroundColor: "rgba(106,217,255,0.15)",
+              tension: 0.35,
+              fill: true
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { labels: { color: "#aee6ff" } }
+            },
+            scales: {
+              x: { ticks: { color: "#6ad9ff" }, grid: { color: "rgba(106,217,255,0.1)" } },
+              y: { ticks: { color: "#6ad9ff" }, grid: { color: "rgba(106,217,255,0.1)" } }
+            }
+          }
+        });
+      };
+      tryRender(0);
+      return card;
+    }
+
+    function _sceneRenderMap(c) {
+      const card = _sceneMakeCard("map", c.title, c.body);
+      const mapDiv = document.createElement("div");
+      mapDiv.style.cssText = "margin-top:10px; height:280px; border-radius:6px; overflow:hidden;";
+      card.appendChild(mapDiv);
+      const tryRender = function(attempts) {
+        if (typeof maplibregl === "undefined") {
+          if (attempts > 20) return;
+          setTimeout(function() { tryRender(attempts + 1); }, 100);
+          return;
+        }
+        // Default Stockholm — försök geocode via Nominatim
+        const defaultCenter = [18.0686, 59.3293];
+        const map = new maplibregl.Map({
+          container: mapDiv,
+          style: "https://demotiles.maplibre.org/style.json",
+          center: defaultCenter,
+          zoom: 5
+        });
+        const query = String(c.body || "").trim();
+        if (query.length > 0) {
+          fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(query))
+            .then(function(r) { return r.json(); })
+            .then(function(results) {
+              if (Array.isArray(results) && results.length > 0) {
+                const lat = parseFloat(results[0].lat);
+                const lon = parseFloat(results[0].lon);
+                if (!isNaN(lat) && !isNaN(lon)) {
+                  map.flyTo({ center: [lon, lat], zoom: 9, speed: 1.5 });
+                  new maplibregl.Marker({ color: "#6ad9ff" }).setLngLat([lon, lat]).addTo(map);
+                }
+              }
+            }).catch(function() {});
+        }
+      };
+      tryRender(0);
+      return card;
+    }
+
+    function _sceneRenderVideo(c) {
+      const card = _sceneMakeCard("video", c.title, c.body);
+      card.classList.add("video");
+      if (c.imageUrl) {
+        const iframe = document.createElement("iframe");
+        iframe.src = String(c.imageUrl);
+        iframe.setAttribute("allowfullscreen", "true");
+        iframe.setAttribute("allow", "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture");
+        card.appendChild(iframe);
+      }
+      return card;
+    }
+
+    function _sceneRenderLink(c) {
+      const card = _sceneMakeCard("link", c.title, c.body);
+      if (c.imageUrl) {
+        const a = document.createElement("a");
+        a.href = String(c.imageUrl); a.target = "_blank"; a.rel = "noopener";
+        a.textContent = "Öppna i webbläsare →";
+        a.style.cssText = "display:inline-block; margin-top:10px; padding:6px 12px; background:rgba(106,217,255,0.15); color:#aee6ff; text-decoration:none; border:1px solid #1f4e68; border-radius:4px;";
+        card.appendChild(a);
+      }
+      return card;
+    }
+
+    // Cinematic Workspace V2 — riktig källa från DuckDuckGo, klickbar.
+    function _sceneRenderSource(c) {
+      const card = _sceneMakeCard("source", c.title, "");
+      card.classList.add("source");
+      const url = String(c.imageUrl || "");
+      let host = "";
+      try { host = url ? new URL(url).hostname.replace(/^www\./, "") : ""; } catch (_) { host = ""; }
+      if (host) {
+        const hostEl = document.createElement("div");
+        hostEl.style.cssText = "font-size:11px; color:#6ad9ff; letter-spacing:1px; text-transform:uppercase; opacity:0.75; margin-bottom:6px;";
+        hostEl.textContent = host;
+        card.insertBefore(hostEl, card.firstChild.nextSibling);
+      }
+      const snippetEl = card.querySelector(".scene-card-body");
+      if (snippetEl) snippetEl.textContent = String(c.body || "");
+      if (url) {
+        const a = document.createElement("a");
+        a.href = url; a.target = "_blank"; a.rel = "noopener";
+        a.textContent = "Öppna källa →";
+        a.style.cssText = "display:inline-block; margin-top:10px; padding:6px 12px; background:rgba(106,217,255,0.15); color:#aee6ff; text-decoration:none; border:1px solid #1f4e68; border-radius:4px; font-size:13px;";
+        card.appendChild(a);
+      }
+      return card;
+    }
+
+    function _sceneBuildCardElement(c) {
+      switch (c.type) {
+        case "hero":   return _sceneRenderHero(c);
+        case "image":  return _sceneRenderImage(c);
+        case "chart":  return _sceneRenderChart(c);
+        case "map":    return _sceneRenderMap(c);
+        case "video":  return _sceneRenderVideo(c);
+        case "link":   return _sceneRenderLink(c);
+        case "source": return _sceneRenderSource(c);
+        default:       return _sceneMakeCard(c.type || "summary", c.title, c.body);
+      }
+    }
+
+    function _sceneSlot(id) { return document.getElementById(id); }
+
+    window.jarvisApplyScenePayloadV1 = function(payload) {
+      if (!payload) return;
+      const titleEl = document.getElementById("sceneTitle");
+      const emptyEl = document.getElementById("sceneEmpty");
+      const stack = _sceneSlot("sceneStack");
+      if (!stack) return;
+      if (titleEl) titleEl.textContent = String(payload.title || "Scen");
+      if (emptyEl) emptyEl.style.display = "none";
+      stack.style.display = "flex";
+
+      const heroSlot = _sceneSlot("sceneHeroSlot");
+      const summarySlot = _sceneSlot("sceneSummarySlot");
+      const videoSlot = _sceneSlot("sceneVideoSlot");
+      const sourcesSlot = _sceneSlot("sceneSourcesSlot");
+      if (heroSlot) heroSlot.innerHTML = "";
+      if (summarySlot) summarySlot.innerHTML = "";
+      if (videoSlot) videoSlot.innerHTML = "";
+      if (sourcesSlot) sourcesSlot.innerHTML = "";
+
+      const cards = Array.isArray(payload.cards) ? payload.cards : [];
+      cards.forEach(function(c) {
+        const card = _sceneBuildCardElement(c);
+        if (c.type === "summary") card.dataset.sceneRole = "summary";
+        if (c.type === "hero" || c.type === "image") {
+          if (heroSlot) heroSlot.appendChild(card);
+        } else if (c.type === "summary") {
+          if (summarySlot) summarySlot.appendChild(card);
+        } else if (c.type === "video") {
+          if (videoSlot) videoSlot.appendChild(card);
+        } else {
+          if (sourcesSlot) sourcesSlot.appendChild(card);
+        }
+      });
+      _sceneApplySummaryShimmer();
+    };
+
+    // Append en enskild card (källa) — landar alltid i sources-slotten.
+    window.jarvisAddSceneCardV1 = function(c) {
+      if (!c) return;
+      const target = (c.type === "video") ? _sceneSlot("sceneVideoSlot") : _sceneSlot("sceneSourcesSlot");
+      if (!target) return;
+      target.appendChild(_sceneBuildCardElement(c));
+    };
+
+    // Hero-bilden uppdateras separat när research hittat thumbnail.
+    window.jarvisUpdateSceneHeroV1 = function(payload) {
+      if (!payload) return;
+      const heroSlot = _sceneSlot("sceneHeroSlot");
+      if (!heroSlot) return;
+      const card = heroSlot.querySelector('[data-scene-role="hero"]') || heroSlot.querySelector(".scene-card.hero");
+      if (!card) return;
+      const wrap = card.querySelector(".hero-image-wrap");
+      if (!wrap) return;
+      // Rensa gammalt content (placeholder + ev. tidigare img) — bygg om från payload.
+      wrap.innerHTML = "";
+      _sceneApplyHeroImage(wrap, String(payload.imageUrl || ""),
+        String(payload.caption || ""), String(payload.sourceUrl || ""));
+    };
+
+    window.jarvisUpdateSceneSummaryV1 = function(summary) {
+      const summarySlot = _sceneSlot("sceneSummarySlot");
+      if (!summarySlot) return;
+      const summaryCard = summarySlot.querySelector('[data-scene-role="summary"]');
+      if (!summaryCard) return;
+      const bodyEl = summaryCard.querySelector(".scene-card-body");
+      if (!bodyEl) return;
+      summaryCard.classList.remove("skeleton");
+      bodyEl.textContent = String(summary || "(ingen sammanfattning)");
+    };
+
+    function _sceneApplySummaryShimmer() {
+      const summarySlot = _sceneSlot("sceneSummarySlot");
+      if (!summarySlot) return;
+      const summaryCard = summarySlot.querySelector('[data-scene-role="summary"]');
+      if (!summaryCard) return;
+      const bodyEl = summaryCard.querySelector(".scene-card-body");
+      if (!bodyEl) return;
+      if (!bodyEl.textContent || !bodyEl.textContent.trim()) {
+        summaryCard.classList.add("skeleton");
+        bodyEl.textContent = "Bygger sammanfattning från lokal AI…";
+      }
+    }
+
+    window.jarvisShowSettingsPanelV1 = function() {
+      workspacePanelModeV1 = "settings";
+      workspaceTitle.textContent = "Inställningar";
+      setPanelButtonStateV1("settings");
+      hideAllWorkspacePanelsV2();
+      const settings = document.getElementById("settingsPanel");
+      if (settings) settings.style.display = "block";
+      // Be C# om en färsk snapshot
+      postMessage({ type: "settings_get" });
+    };
 
     window.jarvisShowVisualPanelV1 = function() {
       workspacePanelModeV1 = "visual";
@@ -1588,8 +3502,211 @@
       window.jarvisShowVisualPanelV1();
     });
 
+    // Sidopanel-toggles (V2 2026-05-14):
+    //   - "‹ Explorer" döljer Project Explorer (vänster). Edge-flik dyker upp till vänster.
+    //   - "Chat ›" döljer Jarvis Chat (höger). Edge-flik dyker upp till höger.
+    //   - Klick på edge-flik öppnar respektive sida igen.
+    //   - Esc öppnar båda igen.
+    function _resizeWorkspacePanelsV1() {
+      try { if (_kartaMap) _kartaMap.resize(); } catch (_) {}
+      try { if (window._brainGraphResize) window._brainGraphResize(); } catch (_) {}
+    }
+    function _setSidePanelHiddenV1(side, hidden) {
+      const cls = side === "left" ? "hide-left" : "hide-right";
+      if (hidden) document.body.classList.add(cls);
+      else document.body.classList.remove(cls);
+      const btn = document.getElementById(side === "left" ? "toggleLeftPanelBtn" : "toggleRightPanelBtn");
+      if (btn) btn.classList.toggle("is-collapsed", hidden);
+      // Uppdatera knappetiketten så det är tydligt vad klick gör
+      if (btn && side === "left")  btn.textContent = hidden ? "› Explorer" : "‹ Explorer";
+      if (btn && side === "right") btn.textContent = hidden ? "Chat ‹" : "Chat ›";
+      _resizeWorkspacePanelsV1();
+    }
+    document.getElementById("toggleLeftPanelBtn")?.addEventListener("click", function() {
+      _setSidePanelHiddenV1("left", !document.body.classList.contains("hide-left"));
+    });
+    document.getElementById("toggleRightPanelBtn")?.addEventListener("click", function() {
+      _setSidePanelHiddenV1("right", !document.body.classList.contains("hide-right"));
+    });
+    document.getElementById("reopenLeftTab")?.addEventListener("click", function() {
+      _setSidePanelHiddenV1("left", false);
+    });
+    document.getElementById("reopenRightTab")?.addEventListener("click", function() {
+      _setSidePanelHiddenV1("right", false);
+    });
+    document.addEventListener("keydown", function(e) {
+      if (e.key !== "Escape") return;
+      if (document.body.classList.contains("hide-left") || document.body.classList.contains("hide-right")) {
+        _setSidePanelHiddenV1("left", false);
+        _setSidePanelHiddenV1("right", false);
+      }
+    });
+
     document.getElementById("showBrainBtn")?.addEventListener("click", function() {
       window.jarvisShowBrainPanelV1();
+    });
+
+    document.getElementById("showSettingsBtn")?.addEventListener("click", function() {
+      window.jarvisShowSettingsPanelV1();
+    });
+
+    document.getElementById("showSceneBtn")?.addEventListener("click", function() {
+      window.jarvisShowScenePanelV1();
+    });
+
+    document.getElementById("showMapBtn")?.addEventListener("click", function() {
+      window.jarvisShowMapPanelV1();
+    });
+
+    // Settings panel — apply payload from C#
+    // Fyll chat-input med text (används av voice STT-flödet — användaren granskar och skickar manuellt).
+    window.jarvisFillChatInputV1 = function(text) {
+      const input = document.getElementById("input");
+      if (!input) return;
+      const value = String(text || "");
+      input.value = value;
+      input.focus();
+      try { input.setSelectionRange(value.length, value.length); } catch {}
+    };
+
+    window.jarvisApplySettingsV1 = function(payload) {
+      if (!payload) return;
+      const v = payload.voice || {};
+      const env = payload.env || {};
+
+      const enabledEl = document.getElementById("settingsVoiceEnabled");
+      const mutedEl = document.getElementById("settingsVoiceMute");
+      const autoEl = document.getElementById("settingsVoiceAutoSpeak");
+      const sttEl = document.getElementById("settingsVoiceSttModel");
+      const ttsEl = document.getElementById("settingsVoiceTtsVoice");
+      const assetsEl = document.getElementById("settingsVoiceAssets");
+
+      if (enabledEl) enabledEl.checked = !!v.enabled;
+      if (mutedEl) mutedEl.checked = !!v.muted;
+      if (autoEl) autoEl.checked = v.ttsAutoSpeak !== false;
+      if (sttEl) sttEl.value = String(v.sttModel || "small");
+
+      // Populate TTS voice dropdown
+      if (ttsEl) {
+        ttsEl.innerHTML = "";
+        const installed = Array.isArray(v.installedVoices) ? v.installedVoices : [];
+        const currentVoice = String(v.ttsVoice || "sv_SE-nst-medium");
+        // Always include the currently-configured voice even if file missing
+        const seen = new Set();
+        const list = [currentVoice].concat(installed).filter(function(x) {
+          if (!x) return false;
+          if (seen.has(x)) return false;
+          seen.add(x);
+          return true;
+        });
+        list.forEach(function(name) {
+          const opt = document.createElement("option");
+          opt.value = name;
+          opt.textContent = name + (installed.indexOf(name) < 0 ? "  (ej installerad)" : "");
+          if (name === currentVoice) opt.selected = true;
+          ttsEl.appendChild(opt);
+        });
+      }
+
+      // Asset status block
+      if (assetsEl) {
+        const a = v.assets || {};
+        const rows = [];
+        const ok = function(b) { return b ? "✔" : "✘"; };
+        rows.push(ok(a.whisperModelExists) + " STT-modell: " + (a.whisperModelPath || "?"));
+        rows.push(ok(a.piperExecutableExists) + " Piper-binär: " + (a.piperExecutablePath || "?"));
+        rows.push(ok(a.piperVoiceExists) + " Piper-röst: " + (a.piperVoicePath || "?"));
+        rows.push(ok(a.piperVoiceConfigExists) + " Piper-röstkonfig: " + (a.piperVoiceConfigPath || "?"));
+        assetsEl.innerHTML = rows.map(function(r) {
+          const isOk = r.charAt(0) === "✔";
+          return '<div style="color:' + (isOk ? "#80ff96" : "#ff8c8c") + ';">' + r.replace(/</g, "&lt;") + "</div>";
+        }).join("");
+      }
+
+      // API keys list
+      const listEl = document.getElementById("settingsEnvList");
+      const pathEl = document.getElementById("settingsEnvFilePath");
+      if (pathEl && env.envFilePath) pathEl.textContent = String(env.envFilePath);
+      if (listEl) {
+        listEl.innerHTML = "";
+        const allowed = Array.isArray(env.allowedKeys) ? env.allowedKeys : [];
+        const status = env.status || {};
+        allowed.forEach(function(key) {
+          const isSet = !!status[key];
+          const row = document.createElement("div");
+          row.style.cssText = "display:grid; grid-template-columns:200px 1fr auto auto; gap:8px; align-items:center;";
+
+          const label = document.createElement("label");
+          label.textContent = key;
+          label.style.fontFamily = "monospace";
+          row.appendChild(label);
+
+          const input = document.createElement("input");
+          input.type = "password";
+          input.placeholder = isSet ? "(satt — skriv nytt värde för att uppdatera)" : "(inte satt — klistra in nyckel här)";
+          input.autocomplete = "off";
+          input.style.cssText = "background:#0d1f2e; color:#dff7ff; border:1px solid #1f4e68; padding:5px 8px; border-radius:4px; font-family:monospace;";
+          row.appendChild(input);
+
+          const saveBtn = document.createElement("button");
+          saveBtn.type = "button";
+          saveBtn.className = "monitor-action";
+          saveBtn.textContent = isSet ? "Uppdatera" : "Spara";
+          saveBtn.addEventListener("click", function() {
+            const value = String(input.value || "").trim();
+            if (!value) return;
+            postMessage({ type: "settings_save_env_key", key: key, value: value });
+            input.value = "";
+          });
+          row.appendChild(saveBtn);
+
+          const clearBtn = document.createElement("button");
+          clearBtn.type = "button";
+          clearBtn.className = "monitor-action";
+          clearBtn.textContent = "Rensa";
+          clearBtn.style.opacity = isSet ? "1" : "0.4";
+          clearBtn.disabled = !isSet;
+          clearBtn.addEventListener("click", function() {
+            postMessage({ type: "settings_clear_env_key", key: key });
+          });
+          row.appendChild(clearBtn);
+
+          const status2 = document.createElement("div");
+          status2.style.cssText = "grid-column:1/-1; font-size:11px; opacity:0.7; padding-left:4px;";
+          status2.textContent = isSet ? "Status: satt (värdet visas aldrig)" : "Status: inte satt";
+          status2.style.color = isSet ? "#80ff96" : "#888";
+          row.appendChild(status2);
+
+          listEl.appendChild(row);
+        });
+      }
+    };
+
+    // Settings save-buttons
+    document.getElementById("settingsVoiceSaveBtn")?.addEventListener("click", function() {
+      const enabled = document.getElementById("settingsVoiceEnabled")?.checked;
+      const muted = document.getElementById("settingsVoiceMute")?.checked;
+      const ttsAutoSpeak = document.getElementById("settingsVoiceAutoSpeak")?.checked;
+      const sttModel = document.getElementById("settingsVoiceSttModel")?.value || "small";
+      const ttsVoice = document.getElementById("settingsVoiceTtsVoice")?.value || "sv_SE-nst-medium";
+      postMessage({
+        type: "settings_save_voice",
+        enabled: !!enabled,
+        muted: !!muted,
+        ttsAutoSpeak: !!ttsAutoSpeak,
+        sttModel: sttModel,
+        ttsVoice: ttsVoice
+      });
+    });
+
+    document.getElementById("settingsOpenWhisperBtn")?.addEventListener("click", function() {
+      postMessage({ type: "settings_open_download", target: "whisper" });
+    });
+    document.getElementById("settingsOpenPiperBinBtn")?.addEventListener("click", function() {
+      postMessage({ type: "settings_open_download", target: "piper-binary" });
+    });
+    document.getElementById("settingsOpenPiperVoicesBtn")?.addEventListener("click", function() {
+      postMessage({ type: "settings_open_download", target: "piper-voices" });
     });
 
     if (document.querySelectorAll) {
@@ -2300,6 +4417,31 @@
     }
 
     send.addEventListener("click", sendMessage);
+
+    if (micBtn) {
+      // Hold-to-talk: håll musen → spelar in, släpp → transkriberar.
+      // Touch-events: stöd även för pekskärm.
+      let micHeld = false;
+      const pressMic = function(e) {
+        if (e && e.button !== undefined && e.button !== 0) return; // bara vänsterklick
+        if (micHeld) return;
+        micHeld = true;
+        if (e && e.preventDefault) e.preventDefault();
+        postMessage({ type: "voice_ptt_press" });
+      };
+      const releaseMic = function(e) {
+        if (!micHeld) return;
+        micHeld = false;
+        if (e && e.preventDefault) e.preventDefault();
+        postMessage({ type: "voice_ptt_release" });
+      };
+      micBtn.addEventListener("mousedown", pressMic);
+      micBtn.addEventListener("mouseup", releaseMic);
+      micBtn.addEventListener("mouseleave", releaseMic);
+      micBtn.addEventListener("touchstart", pressMic);
+      micBtn.addEventListener("touchend", releaseMic);
+      micBtn.addEventListener("touchcancel", releaseMic);
+    }
 
     input.addEventListener("keydown", function(event) {
       if (event.key === "Enter") {
