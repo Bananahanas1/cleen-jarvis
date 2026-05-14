@@ -99,6 +99,14 @@ weather-animationer och andra stora future-features.
 - [x] Brain Relations-First: dolj runtime/generated-brus, bygg stabil graf-meta
   och prioritera riktiga kod/vault/markdown-relationer.
 
+## Amy Windows Standalone 2026-05-14
+
+- [x] Skapa separat `amy-windows/` med egen `.env`, FastAPI backend, SQLite och Vite/Three.js dashboard.
+- [x] Installera Amy dependencies i `.venv` via Python 3.13 och `frontend/node_modules`.
+- [x] Lagg till setup-status for Claude, Groq Whisper, ElevenLabs och fal.ai utan secret-lackage.
+- [x] Lagg till approval-first Playwright browser-plan som startar i dry-run utan nycklar.
+- [ ] Koppla riktiga Claude/Groq/ElevenLabs/fal-floden nar API-nycklar laggs i `amy-windows/.env`.
+
 ## Produktroll
 
 - `cleen-jarvis` är huvudprodukt.

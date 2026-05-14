@@ -1,5 +1,12 @@
 # SESSION_LOG.md
 
+## 2026-05-14 - Amy Windows Standalone V1
+
+Skapade `amy-windows/` med FastAPI, SQLite, Vite/Three.js orb-dashboard,
+provider-status for Claude/Groq/ElevenLabs/fal.ai och approval-first
+Playwright-plan. Install klar via Python 3.13 `.venv`. Verifierat med Node-test,
+Python compile, frontend build, Playwright Chromium och `/api/setup` smoke.
+
 ## 2026-05-14 - Brain Relations-First Graph
 
 Andringar:
