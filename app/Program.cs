@@ -485,6 +485,7 @@ public sealed class JarvisForm : Form
 
         await _webView.EnsureCoreWebView2Async(env);
         _webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+        _webView.CoreWebView2.ProcessFailed += OnWebViewProcessFailedV1;
 
         // Virtual host så dashboarden kan importera Three.js från /vendor/ och graph.json
         // utan CDN-beroende. Refaktor 2026-05-10: gick från NavigateToString till virtual host
@@ -510,6 +511,29 @@ public sealed class JarvisForm : Form
 
         // Navigera till dashboard via virtual host så relativa /vendor/ och /graphify-out/ fungerar.
         _webView.CoreWebView2.Navigate("https://jarvis.local/dashboard/index.html");
+    }
+
+    private void OnWebViewProcessFailedV1(object? sender, CoreWebView2ProcessFailedEventArgs e)
+    {
+        LogDashboardRuntimeV1("WEBVIEW_PROCESS_FAILED kind=" + e.ProcessFailedKind +
+                              " reason=" + e.Reason +
+                              " exitCode=" + e.ExitCode +
+                              " description=" + e.ProcessDescription);
+    }
+
+    private static void LogDashboardRuntimeV1(string message)
+    {
+        try
+        {
+            var dir = Path.Combine(ProjectRoot, "data");
+            Directory.CreateDirectory(dir);
+            var line = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "  " + message;
+            File.AppendAllText(Path.Combine(dir, "dashboard-runtime.log"), line + Environment.NewLine);
+        }
+        catch
+        {
+            // Runtime logging must never crash Jarvis.
+        }
     }
 
     // Skickar NeuroLinked-statusen till dashboarden så användaren ser om brain är redo.
@@ -670,6 +694,16 @@ public sealed class JarvisForm : Form
             if (type == "karta_get_ais_key")
             {
                 await SendKartaAisKeyAsync();
+                return;
+            }
+            if (type == "karta_transit_departures")
+            {
+                await HandleKartaTransitDeparturesAsync(root);
+                return;
+            }
+            if (type == "karta_get_tomtom_key")
+            {
+                await SendKartaTomTomKeyAsync();
                 return;
             }
 
@@ -3249,20 +3283,10 @@ public sealed class JarvisForm : Form
 
     private static string ListProjectFilesByExtension(string extension, string title)
     {
-        var excludedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget", "backups", "data", ".tmp", ".checkpoints"
-        };
-
         try
         {
-            var files = Directory.GetFiles(ProjectRoot, "*" + extension, SearchOption.AllDirectories)
-                .Where(file =>
-                {
-                    var relative = Path.GetRelativePath(ProjectRoot, file);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    return !parts.Any(part => excludedDirs.Contains(part));
-                })
+            var files = EnumerateProjectFilesPrunedV1(ProjectRoot)
+                .Where(file => string.Equals(Path.GetExtension(file), extension, StringComparison.OrdinalIgnoreCase))
                 .Select(file => Path.GetRelativePath(ProjectRoot, file))
                 .OrderBy(x => x)
                 .Take(120)
@@ -3281,11 +3305,6 @@ public sealed class JarvisForm : Form
 
     private static string ListProjectFilesCompact()
     {
-        var excludedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget", "backups", "data", ".tmp", ".checkpoints"
-        };
-
         var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".md", ".txt", ".json", ".cs", ".html", ".css", ".js", ".ps1", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs"
@@ -3293,15 +3312,9 @@ public sealed class JarvisForm : Form
 
         try
         {
-            var files = Directory.GetFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+            var files = EnumerateProjectFilesPrunedV1(ProjectRoot)
                 .Where(file =>
                 {
-                    var relative = Path.GetRelativePath(ProjectRoot, file);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                    if (parts.Any(part => excludedDirs.Contains(part)))
-                        return false;
-
                     if (Path.GetFileName(file).Equals("build-error.txt", StringComparison.OrdinalIgnoreCase))
                         return false;
 
@@ -3330,38 +3343,20 @@ public sealed class JarvisForm : Form
         {
             Directory.CreateDirectory(Path.Combine(ProjectRoot, "docs"));
 
-            var excludedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget", "backups", "data", ".tmp", ".checkpoints", ".tmp", ".vs", ".nuget", "backups", "data"
-            };
-
             var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
                 ".md", ".txt", ".json", ".cs", ".html", ".css", ".js", ".ps1", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs"
             };
 
-            var directories = Directory.GetDirectories(ProjectRoot, "*", SearchOption.AllDirectories)
-                .Where(dir =>
-                {
-                    var parts = Path.GetRelativePath(ProjectRoot, dir)
-                        .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                    return !parts.Any(part => excludedDirs.Contains(part));
-                })
+            var directories = EnumerateProjectDirectoriesPrunedV1(ProjectRoot)
                 .Select(dir => Path.GetRelativePath(ProjectRoot, dir))
                 .OrderBy(x => x)
                 .Take(120)
                 .ToList();
 
-            var files = Directory.GetFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+            var files = EnumerateProjectFilesPrunedV1(ProjectRoot)
                 .Where(file =>
                 {
-                    var relative = Path.GetRelativePath(ProjectRoot, file);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                    if (parts.Any(part => excludedDirs.Contains(part)))
-                        return false;
-
                     if (Path.GetFileName(file).Equals("build-error.txt", StringComparison.OrdinalIgnoreCase))
                         return false;
 
@@ -3628,25 +3623,14 @@ public sealed class JarvisForm : Form
 
     private static List<string> GetCheckpointFiles()
     {
-        var excludedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget", "backups", "data", ".tmp", ".checkpoints", ".checkpoints"
-        };
-
         var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".md", ".txt", ".json", ".cs", ".html", ".css", ".js", ".ps1", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs", ".csproj", ".sln", ".xml", ".yml", ".yaml", ".config", ".props", ".targets", ".editorconfig", ".gitignore", ".lock", ".log", ".csv", ".vbs"
         };
 
-        return Directory.GetFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+        return EnumerateProjectFilesPrunedV1(ProjectRoot)
             .Where(file =>
             {
-                var relative = Path.GetRelativePath(ProjectRoot, file);
-                var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                if (parts.Any(part => excludedDirs.Contains(part)))
-                    return false;
-
                 if (Path.GetFileName(file).Equals("build-error.txt", StringComparison.OrdinalIgnoreCase))
                     return false;
 
@@ -6455,11 +6439,6 @@ public sealed class JarvisForm : Form
 
     private static List<string> GetProjectFilesForUi()
     {
-        var excludedDirs = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget", "backups", "data", ".tmp", ".checkpoints"
-        };
-
         var readableExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             ".md", ".txt", ".json", ".cs", ".html", ".css", ".js", ".ps1",
@@ -6470,14 +6449,10 @@ public sealed class JarvisForm : Form
 
         try
         {
-            return Directory.GetFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+            return EnumerateProjectFilesPrunedV1(ProjectRoot)
                 .Where(file =>
                 {
                     var relative = Path.GetRelativePath(ProjectRoot, file);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                    if (parts.Any(part => excludedDirs.Contains(part)))
-                        return false;
 
                     if (Path.GetFileName(file).Equals("build-error.txt", StringComparison.OrdinalIgnoreCase))
                         return false;
@@ -6977,15 +6952,9 @@ public sealed class JarvisForm : Form
 
         try
         {
-            return Directory.GetFiles(ProjectRoot, "*", SearchOption.AllDirectories)
+            return EnumerateProjectFilesPrunedV1(ProjectRoot)
                 .Where(file =>
                 {
-                    var relative = Path.GetRelativePath(ProjectRoot, file);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-                    if (parts.Any(IsExcludedProjectDirV7))
-                        return false;
-
                     if (Path.GetFileName(file).Equals("build-error.txt", StringComparison.OrdinalIgnoreCase))
                         return false;
 
@@ -7005,13 +6974,7 @@ public sealed class JarvisForm : Form
     {
         try
         {
-            return Directory.GetDirectories(ProjectRoot, "*", SearchOption.AllDirectories)
-                .Where(dir =>
-                {
-                    var relative = Path.GetRelativePath(ProjectRoot, dir);
-                    var parts = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-                    return !parts.Any(IsExcludedProjectDirV7);
-                })
+            return EnumerateProjectDirectoriesPrunedV1(ProjectRoot)
                 .Select(dir => Path.GetRelativePath(ProjectRoot, dir).Replace("\\", "/"))
                 .OrderBy(dir => dir)
                 .ToList();
@@ -7041,10 +7004,55 @@ public sealed class JarvisForm : Form
         var excluded = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
             "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget",
-            "backups", "data", ".tmp", ".checkpoints"
+            "backups", "data", ".tmp", ".checkpoints", ".venv", "logs", "runtimes"
         };
 
         return excluded.Contains(name);
+    }
+
+    private static IEnumerable<string> EnumerateProjectFilesPrunedV1(string root)
+    {
+        foreach (var dir in EnumerateProjectDirectoriesIncludingRootPrunedV1(root))
+        {
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(dir); }
+            catch { continue; }
+
+            foreach (var file in files)
+                yield return file;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateProjectDirectoriesPrunedV1(string root)
+    {
+        foreach (var dir in EnumerateProjectDirectoriesIncludingRootPrunedV1(root))
+        {
+            if (!string.Equals(Path.GetFullPath(dir), Path.GetFullPath(root), StringComparison.OrdinalIgnoreCase))
+                yield return dir;
+        }
+    }
+
+    private static IEnumerable<string> EnumerateProjectDirectoriesIncludingRootPrunedV1(string root)
+    {
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            var dir = pending.Pop();
+            yield return dir;
+
+            IEnumerable<string> children;
+            try { children = Directory.EnumerateDirectories(dir); }
+            catch { continue; }
+
+            foreach (var child in children)
+            {
+                if (IsExcludedProjectDirV7(Path.GetFileName(child)))
+                    continue;
+                pending.Push(child);
+            }
+        }
     }
 
     private static string CurrentTreeFolderV7Path()
@@ -7788,6 +7796,153 @@ public sealed class JarvisForm : Form
         }
     }
 
+    // Trafiklab ResRobot v2.1 — Skånetrafiken + alla svenska kollektivtrafikbolag i samma API.
+    // Två-stegs-flow: 1) location.nearbystops för att hitta stopId nära klickpunkten,
+    // 2) departureBoard för nästa avgångar. Cachar inget — Jarvis håller koll på request-id.
+    private async Task HandleKartaTransitDeparturesAsync(JsonElement root)
+    {
+        var requestId = root.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+            ? idEl.GetString() ?? "" : "";
+        var lat = root.TryGetProperty("lat", out var laEl) && laEl.ValueKind == JsonValueKind.Number
+            ? laEl.GetDouble() : double.NaN;
+        var lon = root.TryGetProperty("lon", out var loEl) && loEl.ValueKind == JsonValueKind.Number
+            ? loEl.GetDouble() : double.NaN;
+
+        if (double.IsNaN(lat) || double.IsNaN(lon))
+        {
+            await SendTransitResultAsync(requestId, null, "Saknar lat/lon.");
+            return;
+        }
+
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "TRAFIKLAB_API_KEY", out var apiKey)
+            || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendTransitResultAsync(requestId, null,
+                "TRAFIKLAB_API_KEY saknas. Registrera gratis nyckel på trafiklab.se (\"ResRobot - Stops and Departures\") och lägg in via Inställningar.");
+            return;
+        }
+
+        try
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+
+            // 1) Närmaste hållplats inom 250m runt klickpunkten.
+            var nearbyUrl = "https://api.resrobot.se/v2.1/location.nearbystops"
+                + "?originCoordLat=" + lat.ToString("F6", inv)
+                + "&originCoordLong=" + lon.ToString("F6", inv)
+                + "&maxNo=1&r=250&accessId=" + Uri.EscapeDataString(apiKey)
+                + "&format=json";
+            using var nearbyReq = new HttpRequestMessage(HttpMethod.Get, nearbyUrl);
+            nearbyReq.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var nearbyResp = await Http.SendAsync(nearbyReq);
+            if (!nearbyResp.IsSuccessStatusCode)
+            {
+                await SendTransitResultAsync(requestId, null,
+                    "Trafiklab nearbystops: HTTP " + (int)nearbyResp.StatusCode);
+                return;
+            }
+            var nearbyBody = await nearbyResp.Content.ReadAsStringAsync();
+            using var nearbyDoc = JsonDocument.Parse(nearbyBody);
+
+            string? stopId = null;
+            string stopName = "";
+            if (nearbyDoc.RootElement.TryGetProperty("stopLocationOrCoordLocation", out var stops)
+                && stops.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var s in stops.EnumerateArray())
+                {
+                    if (!s.TryGetProperty("StopLocation", out var sl)) continue;
+                    var ext = TryStr(sl, "extId");
+                    if (string.IsNullOrEmpty(ext)) ext = TryStr(sl, "id");
+                    if (!string.IsNullOrEmpty(ext))
+                    {
+                        stopId = ext;
+                        stopName = TryStr(sl, "name");
+                        break;
+                    }
+                }
+            }
+
+            if (string.IsNullOrEmpty(stopId))
+            {
+                await SendTransitResultAsync(requestId, null,
+                    "Hittade ingen Trafiklab-hållplats inom 250 m från klickpunkten.");
+                return;
+            }
+
+            // 2) Departure board — 60 min framåt, max 10 avgångar.
+            var depUrl = "https://api.resrobot.se/v2.1/departureBoard"
+                + "?id=" + Uri.EscapeDataString(stopId)
+                + "&accessId=" + Uri.EscapeDataString(apiKey)
+                + "&duration=60&maxJourneys=10&format=json";
+            using var depReq = new HttpRequestMessage(HttpMethod.Get, depUrl);
+            depReq.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var depResp = await Http.SendAsync(depReq);
+            if (!depResp.IsSuccessStatusCode)
+            {
+                await SendTransitResultAsync(requestId, null,
+                    "Trafiklab departureBoard: HTTP " + (int)depResp.StatusCode);
+                return;
+            }
+            var depBody = await depResp.Content.ReadAsStringAsync();
+            using var depDoc = JsonDocument.Parse(depBody);
+
+            var departures = new List<object>();
+            if (depDoc.RootElement.TryGetProperty("Departure", out var depArr)
+                && depArr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var d in depArr.EnumerateArray())
+                {
+                    var time = TryStr(d, "time");
+                    var rtTime = TryStr(d, "rtTime");
+                    var date = TryStr(d, "date");
+                    var direction = TryStr(d, "direction");
+                    var name = TryStr(d, "name");
+                    var transportType = "";
+                    var operatorName = "";
+                    if (d.TryGetProperty("ProductAtStop", out var pas))
+                    {
+                        if (pas.TryGetProperty("catOutS", out var co) && co.ValueKind == JsonValueKind.String)
+                            transportType = co.GetString() ?? "";
+                        if (pas.TryGetProperty("operator", out var op) && op.ValueKind == JsonValueKind.String)
+                            operatorName = op.GetString() ?? "";
+                    }
+                    departures.Add(new
+                    {
+                        name,
+                        direction,
+                        time,
+                        rtTime,
+                        date,
+                        transportType,
+                        operatorName
+                    });
+                    if (departures.Count >= 10) break;
+                }
+            }
+
+            await SendTransitResultAsync(requestId, new
+            {
+                stopId,
+                stopName,
+                departures
+            }, null);
+        }
+        catch (Exception ex)
+        {
+            await SendTransitResultAsync(requestId, null,
+                "Trafiklab fel: " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    private async Task SendTransitResultAsync(string requestId, object? data, string? error)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new { id = requestId, data, error = error ?? "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaTransitResultV1 && window.jarvisKartaTransitResultV1({payload});");
+    }
+
     private async Task SendFlightsResultAsync(string? json, string? error)
     {
         if (_webView.CoreWebView2 is null) return;
@@ -7803,6 +7958,15 @@ public sealed class JarvisForm : Form
         var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
         await _webView.CoreWebView2.ExecuteScriptAsync(
             $"window.jarvisKartaApplyAisKeyV1 && window.jarvisKartaApplyAisKeyV1({payload});");
+    }
+
+    private async Task SendKartaTomTomKeyAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var hasKey = EnvVaultV1.TryGetValue(ProjectRoot, "TOMTOM_API_KEY", out var key);
+        var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaApplyTomTomKeyV1 && window.jarvisKartaApplyTomTomKeyV1({payload});");
     }
 
     private async Task SendKartaGoogleKeyAsync()

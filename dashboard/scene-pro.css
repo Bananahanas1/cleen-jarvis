@@ -1,0 +1,275 @@
+body #scenePanel {
+  background:
+    radial-gradient(circle at 50% 24%, rgba(106, 217, 255, 0.18), transparent 28%),
+    linear-gradient(rgba(106, 217, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(106, 217, 255, 0.05) 1px, transparent 1px),
+    radial-gradient(ellipse at top, #061a2a 0%, #02060c 70%) !important;
+  background-size: auto, 42px 42px, 42px 42px, auto !important;
+  position: relative;
+  isolation: isolate;
+}
+
+body #scenePanel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent, rgba(106, 217, 255, 0.08), transparent),
+    radial-gradient(circle at 50% 46%, rgba(106, 217, 255, 0.08), transparent 18%);
+  opacity: 0.48;
+  animation: sceneProSweep 9s linear infinite;
+  z-index: -1;
+}
+
+body #scenePanel .scene-kicker,
+body #scenePanel .scene-title {
+  position: relative;
+  z-index: 1;
+}
+
+body #scenePanel .scene-kicker {
+  color: var(--jarvis-cyan);
+  text-shadow: var(--jarvis-glow-sm);
+}
+
+body #scenePanel .scene-title {
+  color: var(--jarvis-cyan-soft);
+  letter-spacing: 0;
+}
+
+body #scenePanel .scene-empty {
+  opacity: 1 !important;
+  text-align: initial !important;
+  padding: 0 !important;
+}
+
+.scene-idle-screen {
+  min-height: clamp(520px, 68vh, 760px);
+  width: min(1120px, 100%);
+  margin: 4px auto 0 auto;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(300px, 1.2fr) minmax(260px, 0.9fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.scene-command-panel,
+.scene-system-panel,
+.scene-orb-panel,
+.scene-tool-dock {
+  background: linear-gradient(145deg, rgba(7, 20, 34, 0.84), rgba(2, 8, 15, 0.72));
+  border: 1px solid var(--jarvis-line);
+  border-radius: var(--jarvis-radius-lg);
+  box-shadow: var(--jarvis-glow-sm), inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+.scene-command-panel,
+.scene-system-panel {
+  padding: 16px;
+}
+
+.scene-panel-label {
+  color: var(--jarvis-cyan);
+  font-size: 11px;
+  letter-spacing: 1.8px;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+  opacity: 0.82;
+}
+
+.scene-command-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.scene-command-feed code {
+  display: block;
+  color: var(--jarvis-text);
+  background: rgba(106, 217, 255, 0.08);
+  border: 1px solid rgba(106, 217, 255, 0.15);
+  border-radius: var(--jarvis-radius-sm);
+  padding: 9px 10px;
+  white-space: normal;
+}
+
+.scene-orb-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 440px;
+  overflow: hidden;
+}
+
+.scene-orb-panel::before,
+.scene-orb-panel::after {
+  content: "";
+  position: absolute;
+  border: 1px solid rgba(106, 217, 255, 0.18);
+  border-radius: 50%;
+  inset: 18%;
+  animation: sceneOrbRing 9s linear infinite;
+}
+
+.scene-orb-panel::after {
+  inset: 28%;
+  animation-duration: 6s;
+  animation-direction: reverse;
+}
+
+.scene-jarvis-orb {
+  width: clamp(160px, 20vw, 250px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  position: relative;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255,255,255,0.72), transparent 9%),
+    radial-gradient(circle at 50% 52%, rgba(174,230,255,0.95), rgba(106,217,255,0.42) 34%, rgba(8,28,48,0.34) 58%, transparent 72%);
+  box-shadow:
+    inset 0 0 34px rgba(255,255,255,0.18),
+    0 0 34px rgba(106,217,255,0.38),
+    0 0 92px rgba(106,217,255,0.24);
+  animation: sceneOrbPulse 3.8s ease-in-out infinite;
+}
+
+.scene-jarvis-orb::before,
+.scene-jarvis-orb::after {
+  content: "";
+  position: absolute;
+  inset: 13%;
+  border-radius: 50%;
+  border: 1px solid rgba(223, 247, 255, 0.42);
+}
+
+.scene-jarvis-orb::after {
+  inset: 30%;
+  border-color: rgba(106, 217, 255, 0.54);
+  box-shadow: inset 0 0 22px rgba(106,217,255,0.22);
+}
+
+.scene-orb-title {
+  margin-top: 22px;
+  color: var(--jarvis-text);
+  font-size: clamp(18px, 2vw, 28px);
+  letter-spacing: 0;
+  text-align: center;
+}
+
+.scene-orb-subtitle {
+  margin-top: 8px;
+  color: var(--jarvis-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.scene-system-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.scene-status-widget {
+  border: 1px solid rgba(106, 217, 255, 0.16);
+  border-radius: var(--jarvis-radius-md);
+  padding: 11px 12px;
+  background: rgba(3, 12, 22, 0.56);
+}
+
+.scene-status-widget strong {
+  display: block;
+  color: var(--jarvis-cyan-soft);
+  font-size: 13px;
+  margin-bottom: 4px;
+}
+
+.scene-status-widget span {
+  color: var(--jarvis-muted);
+  font-size: 12px;
+}
+
+.scene-tool-dock {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(72px, 1fr));
+  gap: 10px;
+  padding: 12px;
+}
+
+.scene-tool-icon {
+  min-height: 72px;
+  border: 1px solid rgba(106, 217, 255, 0.14);
+  border-radius: var(--jarvis-radius-md);
+  background: rgba(106, 217, 255, 0.06);
+  color: var(--jarvis-text);
+  display: grid;
+  place-items: center;
+  gap: 4px;
+}
+
+.scene-tool-icon span:first-child {
+  color: var(--jarvis-cyan);
+  font-size: 18px;
+  text-shadow: var(--jarvis-glow-sm);
+}
+
+.scene-tool-icon span:last-child {
+  font-size: 11px;
+  color: var(--jarvis-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+body #scenePanel .scene-stack {
+  max-width: 1160px !important;
+}
+
+body #scenePanel .scene-card {
+  border-color: var(--jarvis-line);
+  border-radius: var(--jarvis-radius-lg);
+  background: linear-gradient(145deg, rgba(7, 20, 34, 0.9), rgba(2, 8, 15, 0.82));
+}
+
+body #scenePanel .scene-card.hero {
+  box-shadow: var(--jarvis-glow-md), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+body #scenePanel .scene-card.source {
+  background: linear-gradient(145deg, rgba(6, 18, 30, 0.92), rgba(3, 10, 20, 0.88));
+}
+
+@keyframes sceneOrbPulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.035); filter: brightness(1.14); }
+}
+
+@keyframes sceneOrbRing {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(360deg) scale(1.02); }
+}
+
+@keyframes sceneProSweep {
+  from { transform: translateX(-18%); }
+  to { transform: translateX(18%); }
+}
+
+@media (max-width: 1050px) {
+  .scene-idle-screen {
+    grid-template-columns: 1fr;
+  }
+
+  .scene-tool-dock {
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  body #scenePanel {
+    padding: 14px !important;
+  }
+
+  .scene-tool-dock {
+    grid-template-columns: repeat(2, minmax(80px, 1fr));
+  }
+}

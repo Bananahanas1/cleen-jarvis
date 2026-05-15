@@ -8,7 +8,7 @@ namespace JarvisClean;
 internal static class FileGraphBuilder
 {
     private const string ProjectRoot = @"F:\Jarvis-clean";
-    private const string BuilderVersion = "relations-first-v1-20260514";
+    private const string BuilderVersion = "relations-first-v1-20260515-pruned";
     private const long MaxFileSizeBytes = 200_000;
     private const int MaxProjectNodes = 300;
     private const int MaxVaultNodes = 250;
@@ -29,7 +29,7 @@ internal static class FileGraphBuilder
         "bin", "obj", "dist", ".git", "node_modules", ".vs", ".nuget",
         "backups", ".tmp", ".checkpoints", "build-verify", "github-brain",
         "third_party", "__pycache__", "vendor", "data", "graphify-out",
-        ".claude", "Obsidian valv"
+        ".claude", "Obsidian valv", ".venv", "logs", "runtimes"
     };
 
     internal sealed class Node
@@ -208,7 +208,7 @@ internal static class FileGraphBuilder
         if (!Directory.Exists(root)) return new List<ProjectCandidate>();
 
         var list = new List<ProjectCandidate>();
-        foreach (var f in EnumerateSafe(root).OrderBy(p => NormalizeRelPath(Path.GetRelativePath(root, p)), StringComparer.OrdinalIgnoreCase))
+        foreach (var f in EnumerateSafePruned(root).OrderBy(p => NormalizeRelPath(Path.GetRelativePath(root, p)), StringComparer.OrdinalIgnoreCase))
         {
             var rel = NormalizeRelPath(Path.GetRelativePath(root, f));
             var parts = rel.Split('/', StringSplitOptions.RemoveEmptyEntries);
@@ -302,10 +302,34 @@ internal static class FileGraphBuilder
         };
     }
 
-    private static IEnumerable<string> EnumerateSafe(string root)
+    private static IEnumerable<string> EnumerateSafePruned(string root)
     {
-        try { return Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories); }
-        catch { return Enumerable.Empty<string>(); }
+        var pending = new Stack<string>();
+        pending.Push(root);
+
+        while (pending.Count > 0)
+        {
+            var dir = pending.Pop();
+
+            IEnumerable<string> files;
+            try { files = Directory.EnumerateFiles(dir); }
+            catch { continue; }
+
+            foreach (var file in files)
+                yield return file;
+
+            IEnumerable<string> children;
+            try { children = Directory.EnumerateDirectories(dir); }
+            catch { continue; }
+
+            foreach (var child in children)
+            {
+                var name = Path.GetFileName(child);
+                if (RuntimeOrGeneratedDirs.Contains(name))
+                    continue;
+                pending.Push(child);
+            }
+        }
     }
 
     private static void AddEdge(string source, string target, string kind, List<Edge> edges, HashSet<string> seen)

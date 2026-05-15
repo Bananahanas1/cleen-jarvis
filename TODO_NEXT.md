@@ -1,49 +1,78 @@
-# TODO_NEXT.md - nästa praktiska steg
+﻿# TODO_NEXT.md - nÃ¤sta praktiska steg
 
-Senast uppdaterad: 2026-05-13
+Senast uppdaterad: 2026-05-15
+
+## Karta-utvidgning 2026-05-15
+
+- [x] Lägg `TRAFIKLAB_API_KEY` i `EnvVaultV1`-whitelist.
+- [x] Lägg `karta_transit_departures`-handler i Program.cs med
+  ResRobot nearbystops + departureBoard.
+- [x] Visa "Nästa avgångar"-sektion i POI-sidopanelen vid klick på
+  busshållplats/spårvagn/tåg-station.
+- [x] Höj alla OSM-symbol-lager (text + ikoner) ovanpå 3D-byggnader
+  så de aldrig döljs vid tilt; återapplicera vid styledata-event.
+- [x] Regression `tests/karta-transit-and-label-z-order.test.js`.
+- [ ] Användare: registrera gratis Trafiklab-nyckel på trafiklab.se
+  ("ResRobot - Stops and Departures") och lägg in via Inställningar.
+- [ ] Manuell visuell verifiering: tilt > 30° över Lund/Malmö, klicka
+  busshållplats, kontrollera att text syns ovanpå byggnader och
+  tidtabell laddas.
+- [ ] Senare: auto-refresh av avgångar var 30:e sek när panelen är öppen.
 
 ## Huvudprioritet
 
-Nästa riktiga build:
+NÃ¤sta riktiga build:
 
 **Jarvis Project Index + Background Jobs MVP**
 
-Detta går före Kartan, liveflyg, livebåtar, avancerad 3D Earth,
+Detta gÃ¥r fÃ¶re Kartan, liveflyg, livebÃ¥tar, avancerad 3D Earth,
 weather-animationer och andra stora future-features.
 
-## Aktiv nästa-lista
+## Aktiv nÃ¤sta-lista
 
-- [x] Skapa job data model för background jobs.
+- [x] Skapa job data model fÃ¶r background jobs.
 - [x] Skapa enkel job queue och background worker.
-- [x] Lägg till status/progress/log/result för jobs.
-- [x] Lägg till `/jobb`, `/jobb status`, `/jobb start`, `/jobb avbryt`.
-- [x] Starta read-only project scan när användaren ber Jarvis läsa/analysera allt.
-- [x] Svara direkt: "Jag börjar läsa och indexera projektet i bakgrunden. Du kan fortsätta skriva under tiden."
+- [x] LÃ¤gg till status/progress/log/result fÃ¶r jobs.
+- [x] LÃ¤gg till `/jobb`, `/jobb status`, `/jobb start`, `/jobb avbryt`.
+- [x] Starta read-only project scan nÃ¤r anvÃ¤ndaren ber Jarvis lÃ¤sa/analysera allt.
+- [x] Svara direkt: "Jag bÃ¶rjar lÃ¤sa och indexera projektet i bakgrunden. Du kan fortsÃ¤tta skriva under tiden."
 - [x] Skapa `data/project-index` med filmetadata, modified time och filhash.
-- [x] Gör scan incremental: återanvänd hash/summaries för oförändrade filer.
-- [x] Lägg till summaries per fil och mapp.
-- [x] Lägg till enkel sökning och RAG/smart context från projektindex.
-- [x] Lägg till deep audit som background job och sparad rapport.
+- [x] GÃ¶r scan incremental: Ã¥teranvÃ¤nd hash/summaries fÃ¶r ofÃ¶rÃ¤ndrade filer.
+- [x] LÃ¤gg till summaries per fil och mapp.
+- [x] LÃ¤gg till enkel sÃ¶kning och RAG/smart context frÃ¥n projektindex.
+- [x] LÃ¤gg till deep audit som background job och sparad rapport.
 - [x] Dokumentera Project Index incremental/search/audit-slicen i `docs/SESSION_LOG.md`.
-- [x] Kör relevanta tester och `dotnet build` efter denna runtime-ändring.
-- [x] Publish/restart efter grön runtime-ändring.
-- [x] Commit och push efter gröna build/test för denna slice.
+- [x] KÃ¶r relevanta tester och `dotnet build` efter denna runtime-Ã¤ndring.
+- [x] Publish/restart efter grÃ¶n runtime-Ã¤ndring.
+- [x] Commit och push efter grÃ¶na build/test fÃ¶r denna slice.
 
-## Nästa efter denna slice
+## NÃ¤sta efter denna slice
 
-- [ ] Lägg till riktig pause/resume för background jobs.
-- [x] Lägg till background status-events: steg, progress, senaste handling och token/context-estimat där det går.
-- [ ] Lägg till mer avancerad chunk/map-reduce summary vid stora filer.
-- [x] Lägg till `BrowserPolicyV1`: OperaGX/Opera som enda synliga browsermål och isolerad Playwright Chromium som intern automation engine.
-- [ ] Använd `BrowserPolicyV1` när framtida Browser Autopilot byggs.
-- [ ] Fortsätt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till små services.
+- [x] Skapa planfiler for Cinematic Workspace Pro och relaterade delsystem.
+- [x] Fas 1: lagg till `dashboard/theme.css` och `dashboard/scene-pro.css`.
+- [x] Fas 1: bygg pro idle screen med central orb, grid, command feed,
+  system widgets och tool dock.
+- [x] Fas 1: lagg regression `tests/scene-pro-phase1.test.js`.
+- [x] Hotfix: pruned scan for Project Explorer och Brain Graph sa `.venv`,
+  `logs` och `runtimes` inte gor folder/graph-laddning seg.
+- [x] Hotfix: lagg regression `tests/project-scan-pruning-performance.test.js`.
+- [ ] Fas 2: lagg `SystemHealthPanelV1` och samla repetitiva tekniska fel.
+- [ ] Fas 3: lagg `SceneComposerV1` och `dashboard/scene-renderer-v1.js`.
+- [ ] Fas 4: forbattra news brief med timeline, confirmed/uncertain, impact
+  och next questions.
+- [ ] LÃ¤gg till riktig pause/resume fÃ¶r background jobs.
+- [x] LÃ¤gg till background status-events: steg, progress, senaste handling och token/context-estimat dÃ¤r det gÃ¥r.
+- [ ] LÃ¤gg till mer avancerad chunk/map-reduce summary vid stora filer.
+- [x] LÃ¤gg till `BrowserPolicyV1`: OperaGX/Opera som enda synliga browsermÃ¥l och isolerad Playwright Chromium som intern automation engine.
+- [ ] AnvÃ¤nd `BrowserPolicyV1` nÃ¤r framtida Browser Autopilot byggs.
+- [ ] FortsÃ¤tt Program.cs-refaktor: flytta terminal-, memory- och file-tool-logik till smÃ¥ services.
 
 ## Amy Windows Autopilot beslut 2026-05-13
 
-- [x] Dokumenterade att Amy-idén ska porteras Windows-native, inte kopieras från macOS.
+- [x] Dokumenterade att Amy-idÃ©n ska porteras Windows-native, inte kopieras frÃ¥n macOS.
 - [x] Dokumenterade OperaGX/Opera-only browser policy.
-- [x] Dokumenterade scoped Autopilot i stället för permanent fri datormakt.
-- [x] Dokumenterade att bakgrundsarbete ska visa kort arbetsstatus och token/context-estimat när möjligt.
+- [x] Dokumenterade scoped Autopilot i stÃ¤llet fÃ¶r permanent fri datormakt.
+- [x] Dokumenterade att bakgrundsarbete ska visa kort arbetsstatus och token/context-estimat nÃ¤r mÃ¶jligt.
 - [x] Skapade `docs/AMY_WINDOWS_AUTOPILOT_PLAN.md`.
 
 ## Amy parity runtime 2026-05-13
@@ -51,10 +80,10 @@ weather-animationer och andra stora future-features.
 - [x] Synlig browser-policy: OperaGX/Opera only.
 - [x] Intern browser-agent-motor: isolerad Playwright Chromium.
 - [x] Token/context-estimat i vanliga Ollama-svar.
-- [x] Steg, nästa handling och token/context-estimat i `/jobb status`.
-- [x] Lokal TaskStore V1 med röd/orange/blå prioritet och pending approval för task-skrivning.
-- [x] Panel-first monitor i Översikt: livearbete, bakgrundsjobb, tasks, pending, terminal och mini-agent.
-- [x] Snabb task-input i Översikt så tasks kan skapas visuellt utan att minnas `/task add`.
+- [x] Steg, nÃ¤sta handling och token/context-estimat i `/jobb status`.
+- [x] Lokal TaskStore V1 med rÃ¶d/orange/blÃ¥ prioritet och pending approval fÃ¶r task-skrivning.
+- [x] Panel-first monitor i Ã–versikt: livearbete, bakgrundsjobb, tasks, pending, terminal och mini-agent.
+- [x] Snabb task-input i Ã–versikt sÃ¥ tasks kan skapas visuellt utan att minnas `/task add`.
 
 ## Agent Autopilot Modes V1 2026-05-13
 
@@ -109,15 +138,15 @@ weather-animationer och andra stora future-features.
 
 ## Produktroll
 
-- `cleen-jarvis` är huvudprodukt.
-- `F:\Jarvis-clean` är lokal arbetsmapp.
-- `f-drive-projects` är referens/backup/inspiration.
-- `F:\New project` är read-only reference.
+- `cleen-jarvis` Ã¤r huvudprodukt.
+- `F:\Jarvis-clean` Ã¤r lokal arbetsmapp.
+- `f-drive-projects` Ã¤r referens/backup/inspiration.
+- `F:\New project` Ã¤r read-only reference.
 
 ## Docs-pass 2026-05-12
 
-- [x] Läste `JARVIS_UPDATE_TASK.md`.
-- [x] Delade långa Markdown-filer i PART-filer.
+- [x] LÃ¤ste `JARVIS_UPDATE_TASK.md`.
+- [x] Delade lÃ¥nga Markdown-filer i PART-filer.
 - [x] Skapade `JARVIS_MEGA_MASTER_PROMPT.md`.
 - [x] Skapade `PLANNING_INDEX.md`.
 - [x] Skapade `JARVIS_CORE_INDEX.md`.
@@ -126,13 +155,14 @@ weather-animationer och andra stora future-features.
 - [x] Skapade `NEXT_AI_AGENT_TODO.md`.
 - [x] Skapade `JARVIS_MASTER_PLAN.md`.
 - [x] Skapade `CURRENT_PROJECT_AUDIT.md`.
-- [x] Verifierade att alla Markdown-filer är under 14 000 tecken.
-- [x] Kör `dotnet build` för docs-only sanity check: 0 errors, känd `MSB3277`.
+- [x] Verifierade att alla Markdown-filer Ã¤r under 14 000 tecken.
+- [x] KÃ¶r `dotnet build` fÃ¶r docs-only sanity check: 0 errors, kÃ¤nd `MSB3277`.
 
 ## Historik
 
-Den tidigare långa TODO-listan är bevarad i delar:
+Den tidigare lÃ¥nga TODO-listan Ã¤r bevarad i delar:
 
 - [PART 01](TODO_NEXT_PART_01.md)
 - [PART 02](TODO_NEXT_PART_02.md)
 - [PART 03](TODO_NEXT_PART_03.md)
+

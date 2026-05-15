@@ -18,7 +18,13 @@ internal static class EnvVaultV1
         "OPENSKY_CLIENT_ID",
         "OPENSKY_CLIENT_SECRET",
         "OPENSKY_USERNAME",
-        "OPENSKY_PASSWORD"
+        "OPENSKY_PASSWORD",
+        // Trafiklab ResRobot v2.1 — täcker Skånetrafiken + alla svenska kollektivtrafikbolag.
+        // Registreras gratis på https://www.trafiklab.se/ → "ResRobot - Stops and Departures".
+        "TRAFIKLAB_API_KEY",
+        // TomTom Traffic Flow — live trafikfärger på gator (grön/orange/röd efter hastighet).
+        // Gratis 2 500 anrop/dag. Registreras på https://developer.tomtom.com/.
+        "TOMTOM_API_KEY"
     };
 
     public static string EnvFilePath(string projectRoot)

@@ -930,6 +930,8 @@
       font-variant-numeric: tabular-nums;
     }
   </style>
+  <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="scene-pro.css">
 </head>
 <body>
   <!-- Reopen-flikar — visas på edge när motsv. sidopanel är dold -->
@@ -1381,6 +1383,31 @@ Skärmvision kräver UI-TARS.</div>
         .poi-weather-now { display: flex; align-items: center; gap: 10px; font-size: 13px; color: #dff7ff; }
         .poi-weather-now .poi-w-temp { font-size: 22px; font-weight: 700; color: #ffd680; }
         .poi-loading-shimmer { color: #6ad9ff; font-style: italic; padding: 8px 0; opacity: 0.7; }
+        /* Transit/Skånetrafiken — nästa avgångar (2026-05-15) */
+        .poi-transit .poi-transit-stopname { font-size: 13px; color: #aee6ff; opacity: 0.85;
+          margin-bottom: 8px; }
+        .poi-transit-list { list-style: none; margin: 0; padding: 0;
+          border-top: 1px solid rgba(31,78,104,0.4); }
+        .poi-transit-row { display: grid; grid-template-columns: 70px 1fr auto;
+          gap: 10px; align-items: center; padding: 8px 0;
+          border-bottom: 1px solid rgba(31,78,104,0.3); font-size: 13px; color: #dff7ff; }
+        .poi-transit-row:last-child { border-bottom: none; }
+        .poi-transit-left { display: flex; flex-direction: column; }
+        .poi-transit-line { font-weight: 700; color: #6ad9ff; font-size: 13.5px; }
+        .poi-transit-type { font-size: 10.5px; color: #aee6ff; opacity: 0.7;
+          text-transform: uppercase; letter-spacing: 0.5px; }
+        .poi-transit-mid { color: #dff7ff; opacity: 0.92; line-height: 1.3;
+          word-break: break-word; }
+        .poi-transit-right { color: #ffd680; font-weight: 600; white-space: nowrap;
+          font-variant-numeric: tabular-nums; }
+        .poi-transit-rt { color: #6aff9e; margin-right: 4px; font-size: 10px;
+          vertical-align: middle; }
+        .poi-transit-empty { color: #aee6ff; opacity: 0.7; font-style: italic;
+          padding: 6px 0; }
+        .poi-transit-error { color: #ffb380; padding: 6px 0; font-size: 12.5px;
+          line-height: 1.45; }
+        .poi-transit-meta { color: #aee6ff; opacity: 0.55; font-size: 11px;
+          padding-top: 8px; }
         #kartaWeatherOverlay.has-lightning::after {
           content: ""; position: absolute; inset: 0; background: rgba(255,255,255,0);
           animation: weatherLightning 7s ease-in-out infinite; pointer-events: none;
@@ -1416,6 +1443,7 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaToggleFlightsBtn" title="Live-flygplan från OpenSky Network">✈ Flyg</button>
           <button class="karta-btn" id="kartaToggleShipsBtn" title="Live-båtar från AISStream (kräver AISSTREAM_API_KEY)">⛴ Båtar</button>
           <button class="karta-btn" id="kartaToggleWeatherBtn" title="Live-väder för kartans mitt (open-meteo)">☁ Väder</button>
+          <button class="karta-btn" id="kartaToggleTrafficBtn" title="Live trafikfärg på gator (TomTom, kräver TOMTOM_API_KEY)">🚗 Trafik</button>
           <button class="karta-btn" id="kartaToggleGoogleBtn" title="Växla Google Photorealistic 3D (kräver API-key)" style="display:none;">⊕ Google 3D</button>
         </div>
         <div class="karta-glass karta-mini-chat">
@@ -1512,8 +1540,42 @@ Skärmvision kräver UI-TARS.</div>
         <div class="scene-kicker">Cinematic Workspace V3</div>
         <div id="sceneTitle" class="scene-title">Scen väntar</div>
         <div id="sceneEmpty" class="scene-empty">
-          Skriv <code>/scen &lt;fråga&gt;</code> i chatten eller säg <em>"presentera ..."</em><br>
-          Exempel: <code>/scen Stockholm</code>, <code>/scen kvantfysik</code>, <code>/scen senaste nyheterna om AI</code>
+          <div id="sceneIdleScreen" class="scene-idle-screen" aria-label="Jarvis mission control idle">
+            <section class="scene-command-panel">
+              <div class="scene-panel-label">Command Feed</div>
+              <div class="scene-command-feed">
+                <code>/scen senaste nyheterna om AI</code>
+                <code>/scen jämför Claude, Gemini och lokala modeller</code>
+                <code>/scen visa Stockholm på kartan</code>
+                <code>/scen bygg en projektplan för Jarvis voice</code>
+              </div>
+            </section>
+
+            <section class="scene-orb-panel" aria-label="Jarvis online">
+              <div id="sceneJarvisOrb" class="scene-jarvis-orb"></div>
+              <div class="scene-orb-title">JARVIS ONLINE</div>
+              <div class="scene-orb-subtitle">Mission Control redo för research, karta, media och kod.</div>
+            </section>
+
+            <section class="scene-system-panel">
+              <div class="scene-panel-label">System Status</div>
+              <div class="scene-system-grid">
+                <div class="scene-status-widget"><strong>Local Brain</strong><span>Ollama och router i säkert läge</span></div>
+                <div class="scene-status-widget"><strong>Voice Layer</strong><span>Push-to-talk och TTS redo när modeller finns</span></div>
+                <div class="scene-status-widget"><strong>Workspace</strong><span>Explorer, terminal och approval skyddar writes</span></div>
+                <div class="scene-status-widget"><strong>Intel Feed</strong><span>Sources visas här när en scen byggs</span></div>
+              </div>
+            </section>
+
+            <nav class="scene-tool-dock" aria-label="Jarvis tools">
+              <div class="scene-tool-icon" title="Chat"><span>CH</span><span>Chat</span></div>
+              <div class="scene-tool-icon" title="Camera"><span>CM</span><span>Camera</span></div>
+              <div class="scene-tool-icon" title="Map"><span>MP</span><span>Map</span></div>
+              <div class="scene-tool-icon" title="Media"><span>MD</span><span>Media</span></div>
+              <div class="scene-tool-icon" title="Files"><span>FL</span><span>Files</span></div>
+              <div class="scene-tool-icon" title="Terminal"><span>TR</span><span>Terminal</span></div>
+            </nav>
+          </div>
         </div>
         <div id="sceneStack" class="scene-stack" style="display:none;">
           <div id="sceneHeroSlot"></div>
@@ -1972,6 +2034,35 @@ Skärmvision kräver UI-TARS.</div>
         postMessage({ type: "karta_get_google_key" });
       });
 
+      // När stilen omladdas (demotiles-fallback eller setStyle) tappas BÅDE
+      // globe-projection, sky-konfiguration, satellit-/buildings-lager OCH vår
+      // label-z-ordning. style.load skjuts en gång per faktisk style-laddning;
+      // styledata är för spammig för tunga operationer.
+      _kartaMap.on("style.load", function() {
+        try { _kartaMap.setProjection({ type: "globe" }); } catch (_) {}
+        try {
+          _kartaMap.setSky({
+            "sky-color": "#0a1a2e",
+            "horizon-color": "#1e4d7b",
+            "fog-color": "#0a1a2e",
+            "fog-ground-blend": 0.5,
+            "horizon-fog-blend": 0.5,
+            "sky-horizon-blend": 0.8,
+            "atmosphere-blend": 0.8
+          });
+        } catch (_) {}
+        _kartaAddSatelliteLayer();
+        _kartaAdd3dBuildings();
+        if (_kartaTrafficOn) _kartaAddTrafficLayer();
+        _kartaRaiseLabelsAboveBuildings();
+      });
+
+      // styledata triggas även när bara visibility/paint ändras (satellit-toggle).
+      // Då behövs bara label-höjning, inte att lägga om lager.
+      _kartaMap.on("styledata", function() {
+        _kartaRaiseLabelsAboveBuildings();
+      });
+
       // Fallback om OpenFreeMap inte svarar: byt till demotiles
       let _kartaTileErrors = 0;
       _kartaMap.on("error", function(e) {
@@ -2101,6 +2192,13 @@ Skärmvision kräver UI-TARS.</div>
       const weatherBtn = document.getElementById("kartaToggleWeatherBtn");
       if (weatherBtn) weatherBtn.addEventListener("click", function() { _kartaToggleWeather(); });
 
+      // Live trafikfärg på gator (TomTom Flow)
+      const trafficBtn = document.getElementById("kartaToggleTrafficBtn");
+      if (trafficBtn) trafficBtn.addEventListener("click", function() { _kartaToggleTraffic(); });
+
+      // Be om TomTom-nyckel vid init så toggle-knappen vet om nyckel finns
+      postMessage({ type: "karta_get_tomtom_key" });
+
       // POI-panel close-knapp
       const poiCloseBtn = document.getElementById("kartaPoiCloseBtn");
       if (poiCloseBtn) poiCloseBtn.addEventListener("click", function() {
@@ -2131,6 +2229,95 @@ Skärmvision kräver UI-TARS.</div>
 
       // Be om AIS key vid init
       postMessage({ type: "karta_get_ais_key" });
+    }
+
+    // ===== LIVE-TRAFIK (TomTom Traffic Flow tiles, kräver TOMTOM_API_KEY) =====
+    let _kartaTrafficOn = false;
+    let _kartaTomTomKey = "";
+    let _kartaTrafficRefreshTimer = null;
+    const _KARTA_TRAFFIC_SOURCE_ID = "tomtom-traffic-flow";
+    const _KARTA_TRAFFIC_LAYER_ID = "tomtom-traffic-flow-layer";
+
+    // C# skickar nyckel vid init via karta_get_tomtom_key. Vi cachar den så toggle-klick
+    // kan starta direkt utan ny roundtrip.
+    window.jarvisKartaApplyTomTomKeyV1 = function(payload) {
+      if (!payload) return;
+      _kartaTomTomKey = payload.hasKey ? String(payload.key || "") : "";
+    };
+
+    function _kartaToggleTraffic() {
+      if (!_kartaMap) return;
+      if (!_kartaTomTomKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Live-trafik kräver TOMTOM_API_KEY. Registrera gratis på https://developer.tomtom.com/ och spara nyckeln i Inställningar → API-nycklar.");
+        return;
+      }
+      _kartaTrafficOn = !_kartaTrafficOn;
+      try {
+        if (_kartaTrafficOn) {
+          _kartaAddTrafficLayer();
+          // TomTom flow-cache är ~2 min. Refresha var 60s genom att rotera tile-source.
+          _kartaTrafficRefreshTimer = setInterval(_kartaRefreshTrafficTiles, 60000);
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Live-trafik PÅ — TomTom flow visar färgade gator (grön = fri trafik, röd = stopp). Uppdateras var 60:e sek.");
+        } else {
+          if (_kartaTrafficRefreshTimer) clearInterval(_kartaTrafficRefreshTimer);
+          _kartaTrafficRefreshTimer = null;
+          if (_kartaMap.getLayer(_KARTA_TRAFFIC_LAYER_ID))
+            _kartaMap.removeLayer(_KARTA_TRAFFIC_LAYER_ID);
+          if (_kartaMap.getSource(_KARTA_TRAFFIC_SOURCE_ID))
+            _kartaMap.removeSource(_KARTA_TRAFFIC_SOURCE_ID);
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Live-trafik AV.");
+        }
+      } catch (err) {
+        console.warn("Trafik-toggle fel:", err);
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+
+    function _kartaTrafficTileUrl() {
+      // relative0-style: färgad efter relativ hastighet, vit/transparent bakgrund så vector-stilen
+      // syns igenom. tile-size 256, png-format, zoom 0-22.
+      return "https://api.tomtom.com/traffic/map/4/tile/flow/relative0/{z}/{x}/{y}.png?key="
+        + encodeURIComponent(_kartaTomTomKey);
+    }
+
+    function _kartaAddTrafficLayer() {
+      if (!_kartaMap || !_kartaTomTomKey) return;
+      if (!_kartaMap.getSource(_KARTA_TRAFFIC_SOURCE_ID)) {
+        _kartaMap.addSource(_KARTA_TRAFFIC_SOURCE_ID, {
+          type: "raster",
+          tiles: [_kartaTrafficTileUrl()],
+          tileSize: 256,
+          minzoom: 0,
+          maxzoom: 22,
+          attribution: "Trafikdata © TomTom"
+        });
+      }
+      if (!_kartaMap.getLayer(_KARTA_TRAFFIC_LAYER_ID)) {
+        // Lägg trafiklagret precis FÖRE första symbol-lagret så vägnamn och POI-ikoner
+        // syns ovanpå färgerna men trafiken ligger över själva vägrenderingen.
+        let beforeId = null;
+        const layers = _kartaMap.getStyle().layers || [];
+        for (let i = 0; i < layers.length; i++) {
+          if (layers[i].type === "symbol") { beforeId = layers[i].id; break; }
+        }
+        _kartaMap.addLayer({
+          id: _KARTA_TRAFFIC_LAYER_ID,
+          type: "raster",
+          source: _KARTA_TRAFFIC_SOURCE_ID,
+          paint: { "raster-opacity": 0.85, "raster-fade-duration": 200 }
+        }, beforeId);
+      }
+    }
+
+    // Force-refresh tile-source genom att uppdatera URL (cache-buster). MapLibre stödjer inte
+    // direkt cache-invalidation på en raster-source, men setTiles() finns i 5.x.
+    function _kartaRefreshTrafficTiles() {
+      if (!_kartaMap || !_kartaTrafficOn) return;
+      const src = _kartaMap.getSource(_KARTA_TRAFFIC_SOURCE_ID);
+      if (!src || typeof src.setTiles !== "function") return;
+      try { src.setTiles([_kartaTrafficTileUrl()]); } catch (_) {}
     }
 
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
@@ -2687,6 +2874,7 @@ Skärmvision kräver UI-TARS.</div>
         kartaToggleFlightsBtn: !!_kartaFlightsOn,
         kartaToggleShipsBtn: !!_kartaShipsOn,
         kartaToggleWeatherBtn: !!_kartaWeatherOn,
+        kartaToggleTrafficBtn: !!_kartaTrafficOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
@@ -2721,8 +2909,41 @@ Skärmvision kräver UI-TARS.</div>
             "fill-extrusion-opacity": 0.88
           }
         });
+        // Direkt efter byggnaderna laddats — höj alla text/ikon-labels ovanpå dem.
+        _kartaRaiseLabelsAboveBuildings();
       } catch (err) {
         console.warn("3D-buildings layer kunde inte läggas till:", err);
+      }
+    }
+
+    // Flyttar alla symbol-lager (text + ikoner: gatnamn, butiker, ortsnamn, POI-ikoner)
+    // till toppen av render-stacken så de aldrig döljs bakom 3D-byggnader vid tilt.
+    // Idempotent — kan köras varje gång stilen ändras (style-byte eller satellit-toggle).
+    function _kartaRaiseLabelsAboveBuildings() {
+      if (!_kartaMap) return;
+      try {
+        const style = _kartaMap.getStyle();
+        if (!style || !Array.isArray(style.layers)) return;
+        // moveLayer utan beforeId flyttar lagret till toppen av stacken (renderas sist = ovanpå).
+        // Vi gör det för alla symbol-lager i samma ordning de stod i stilen så relativ
+        // z-ordning mellan etiketter (t.ex. ortsnamn över gatnamn) bevaras.
+        style.layers.forEach(function(layer) {
+          if (layer && layer.type === "symbol" && _kartaMap.getLayer(layer.id)) {
+            try { _kartaMap.moveLayer(layer.id); } catch (_) {}
+          }
+        });
+        // 3D-byggnadslagret ska ligga UNDER alla symbol-lager. Hitta första symbol-lagret
+        // som finns kvar och flytta byggnaderna före det, så texten ritas ovanpå taken.
+        if (_kartaMap.getLayer("3d-buildings")) {
+          const firstSymbolAfter = (_kartaMap.getStyle().layers || []).find(function(l) {
+            return l.type === "symbol";
+          });
+          if (firstSymbolAfter) {
+            try { _kartaMap.moveLayer("3d-buildings", firstSymbolAfter.id); } catch (_) {}
+          }
+        }
+      } catch (err) {
+        console.warn("Kunde inte höja labels över byggnader:", err);
       }
     }
 
@@ -2762,6 +2983,80 @@ Skärmvision kräver UI-TARS.</div>
     //   - open-meteo (väder vid POI:n)
     //   - Overpass (nearby POI:s inom 200m)
     let _kartaPoiCurrent = null; // { lat, lon, tags, images:[], imageIndex }
+    const _kartaTransitCallbacks = {};
+
+    // Heuristik: är detta en kollektivtrafik-hållplats? OSM-taggar varierar mellan
+    // public_transport=stop_position/platform/station, highway=bus_stop, amenity=bus_station,
+    // railway=tram_stop/station/halt, samt OpenMapTiles tile-feature class.
+    function _kartaIsBusOrTransitStop(tags) {
+      if (!tags) return false;
+      const pt = tags.public_transport;
+      if (pt === "stop_position" || pt === "platform" || pt === "station" || pt === "stop_area") return true;
+      if (tags.highway === "bus_stop") return true;
+      if (tags.amenity === "bus_station") return true;
+      if (tags.railway === "tram_stop" || tags.railway === "halt" || tags.railway === "station") return true;
+      const cls = tags["class"];
+      if (cls === "bus" || cls === "railway" || cls === "tram") return true;
+      return false;
+    }
+
+    function _kartaTransitTypeLabel(transportType) {
+      const t = String(transportType || "").toUpperCase();
+      if (t.indexOf("BUSS") >= 0 || t.indexOf("BUS") >= 0) return "Buss";
+      if (t.indexOf("TÅG") >= 0 || t.indexOf("TRAIN") >= 0 || t.indexOf("RAIL") >= 0) return "Tåg";
+      if (t.indexOf("TRAM") >= 0 || t.indexOf("SPÅRVAGN") >= 0) return "Spårvagn";
+      if (t.indexOf("METRO") >= 0 || t.indexOf("TUNNELBANA") >= 0) return "Tunnelbana";
+      if (t.indexOf("FERRY") >= 0 || t.indexOf("FÄRJA") >= 0) return "Färja";
+      return transportType || "";
+    }
+
+    function _kartaFormatDepartureTime(time, rtTime, date) {
+      const now = new Date();
+      const useTime = rtTime || time;
+      if (!useTime) return "";
+      // ResRobot ger HH:MM:SS, ev. date YYYY-MM-DD
+      const m = String(useTime).match(/^(\d{1,2}):(\d{2})/);
+      if (!m) return useTime;
+      const hh = parseInt(m[1], 10);
+      const mm = parseInt(m[2], 10);
+      const dep = new Date(now.getFullYear(), now.getMonth(), now.getDate(), hh, mm, 0, 0);
+      if (date) {
+        const dm = String(date).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dm) dep.setFullYear(parseInt(dm[1], 10), parseInt(dm[2], 10) - 1, parseInt(dm[3], 10));
+      }
+      const diffMin = Math.round((dep.getTime() - now.getTime()) / 60000);
+      const clock = (hh < 10 ? "0" : "") + hh + ":" + (mm < 10 ? "0" : "") + mm;
+      if (diffMin <= 0) return clock + " · nu";
+      if (diffMin < 60) return clock + " · om " + diffMin + " min";
+      return clock;
+    }
+
+    // Globalt callback från C# — { id, data, error }
+    window.jarvisKartaTransitResultV1 = function(payload) {
+      if (!payload || !payload.id) return;
+      const cb = _kartaTransitCallbacks[payload.id];
+      if (!cb) return;
+      delete _kartaTransitCallbacks[payload.id];
+      try { cb(payload.data, payload.error); } catch (_) {}
+    };
+
+    function _kartaRequestTransitDepartures(lat, lon) {
+      const id = "transit_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      _kartaPoiCurrent._transitLoading = true;
+      _kartaTransitCallbacks[id] = function(data, error) {
+        if (!_kartaPoiCurrent) return;
+        _kartaPoiCurrent._transitLoading = false;
+        if (error) {
+          _kartaPoiCurrent._transitError = error;
+          _kartaPoiCurrent._transit = null;
+        } else {
+          _kartaPoiCurrent._transitError = "";
+          _kartaPoiCurrent._transit = data;
+        }
+        _kartaRenderPoiPanelV2();
+      };
+      postMessage({ type: "karta_transit_departures", id: id, lat: lat, lon: lon });
+    }
 
     function _kartaOpenPoiPanelV2(lat, lon, tileFeature) {
       const tileTags = (tileFeature && tileFeature.properties) || {};
@@ -2770,11 +3065,23 @@ Skärmvision kräver UI-TARS.</div>
       _kartaShowPoiPanel(true);
       _kartaRenderPoiPanelV2(true);
 
+      // Tile-feature kan redan avslöja att vi klickade på en hållplats — starta
+      // transit-fetch tidigt parallellt med Overpass.
+      if (_kartaIsBusOrTransitStop(tileTags)) {
+        _kartaRequestTransitDepartures(lat, lon);
+      }
+
       // 1) Hämta riktiga OSM-tags via Overpass
       _kartaQueryOsmAround(lat, lon).then(function(element) {
         const tags = (element && element.tags) ? element.tags : tileTags;
         if (!tags.name && initialName) tags.name = initialName;
         _kartaPoiCurrent.tags = tags;
+        // Om Overpass bekräftar hållplats (mer pålitlig än tile-feature) — starta om
+        // ifall vi inte redan har skickat request.
+        if (_kartaIsBusOrTransitStop(tags) && !_kartaPoiCurrent._transit
+            && !_kartaPoiCurrent._transitLoading && !_kartaPoiCurrent._transitError) {
+          _kartaRequestTransitDepartures(lat, lon);
+        }
         _kartaRenderPoiPanelV2(true);
 
         // 2) Wikidata: bild + extra info
@@ -2921,6 +3228,47 @@ Skärmvision kräver UI-TARS.</div>
         infoSection += '</div>';
       }
 
+      // Trafiklab/Skånetrafiken — nästa avgångar för hållplats.
+      let transitSection = "";
+      const isStop = _kartaIsBusOrTransitStop(tags);
+      const transit = _kartaPoiCurrent._transit;
+      const transitError = _kartaPoiCurrent._transitError;
+      const transitLoading = _kartaPoiCurrent._transitLoading;
+      if (isStop || transit || transitError || transitLoading) {
+        const stopHeader = transit && transit.stopName ? transit.stopName : (tags.name || "Hållplats");
+        transitSection = '<div class="poi-section poi-transit"><h4>🚌 Nästa avgångar</h4>';
+        transitSection += '<div class="poi-transit-stopname">' + esc(stopHeader) + '</div>';
+
+        if (transitLoading) {
+          transitSection += '<div class="poi-loading-shimmer">Hämtar tidtabell från Skånetrafiken/Trafiklab…</div>';
+        } else if (transitError) {
+          transitSection += '<div class="poi-transit-error">' + esc(transitError) + '</div>';
+        } else if (transit && Array.isArray(transit.departures) && transit.departures.length > 0) {
+          transitSection += '<ul class="poi-transit-list">';
+          transit.departures.forEach(function(d) {
+            const tLabel = _kartaTransitTypeLabel(d.transportType);
+            const when = _kartaFormatDepartureTime(d.time, d.rtTime, d.date);
+            const rtBadge = (d.rtTime && d.rtTime !== d.time)
+              ? '<span class="poi-transit-rt" title="Realtid">●</span>' : "";
+            transitSection += '<li class="poi-transit-row">'
+              + '<div class="poi-transit-left">'
+              + '<span class="poi-transit-line">' + esc(d.name || "") + '</span>'
+              + (tLabel ? '<span class="poi-transit-type">' + esc(tLabel) + '</span>' : "")
+              + '</div>'
+              + '<div class="poi-transit-mid">' + esc(d.direction || "") + '</div>'
+              + '<div class="poi-transit-right">' + rtBadge + esc(when) + '</div>'
+              + '</li>';
+          });
+          transitSection += '</ul>';
+          if (transit.stopId) {
+            transitSection += '<div class="poi-transit-meta">Hållplats-id: ' + esc(transit.stopId) + ' · källa: Trafiklab ResRobot</div>';
+          }
+        } else if (transit) {
+          transitSection += '<div class="poi-transit-empty">Inga avgångar närmaste 60 min.</div>';
+        }
+        transitSection += '</div>';
+      }
+
       // Wikipedia-extract
       let wikiSection = "";
       if (tags._wikiExtract) {
@@ -2964,7 +3312,7 @@ Skärmvision kräver UI-TARS.</div>
         loadingSection = '<div class="poi-section"><div class="poi-loading-shimmer">Hämtar bilder, beskrivning, närliggande och väder…</div></div>';
       }
 
-      body.innerHTML = gallery + titleBlock + actions + infoSection + wikiSection + weatherSection + nearbySection + loadingSection;
+      body.innerHTML = gallery + titleBlock + actions + infoSection + transitSection + wikiSection + weatherSection + nearbySection + loadingSection;
 
       // Wire galleri-navigation
       const gn = body.querySelectorAll(".poi-gallery-nav");

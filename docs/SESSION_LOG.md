@@ -1,4 +1,82 @@
-# SESSION_LOG.md
+﻿# SESSION_LOG.md
+
+## 2026-05-15 - Skånetrafiken tidtabell + labels över byggnader
+
+Andringar:
+
+- `EnvVaultV1` whitelistar `TRAFIKLAB_API_KEY` (ResRobot v2.1, gratis nyckel
+  fran trafiklab.se, tacker Skanetrafiken + alla svenska kollektivtrafikbolag).
+- `Program.cs` routar nya `karta_transit_departures` till
+  `HandleKartaTransitDeparturesAsync`: 250 m nearbystops-lookup + departureBoard
+  (60 min, max 10), normaliserat svar via `window.jarvisKartaTransitResultV1`.
+  Tydligt felmeddelande om nyckel saknas.
+- Dashboard detekterar hallplats via `_kartaIsBusOrTransitStop` (OSM-taggar
+  `public_transport`, `highway=bus_stop`, `amenity=bus_station`, railway-stops,
+  och tile-feature class). Transit-fetch startar parallellt med Overpass.
+- POI-sidopanelen far ny "🚌 Nasta avgangar"-sektion mellan info och Wikipedia
+  med linjenamn, riktning, klocka, "om N min" och realtid-indikator (gron prick).
+- `_kartaRaiseLabelsAboveBuildings` flyttar alla symbol-lager (gatnamn,
+  ortsnamn, butiks-labels, ikoner) ovanpa render-stacken sa de inte goms
+  bakom 3D-fastigheter vid tilt. Atterapplicerar via `styledata`-event sa
+  satellit-toggle och demotiles-fallback inte tappar z-ordningen.
+- Ny CSS-section `.poi-transit*` for tidtabell-rader.
+
+Verifiering:
+
+- Ny regression `tests/karta-transit-and-label-z-order.test.js` (23 checks)
+  passerade.
+- `node tests/scene-pro-phase1.test.js` passerade.
+- `node tests/dashboard-routing.test.js` passerade.
+- `dotnet build app/JarvisClean.csproj` passerade med 0 errors och kand
+  `MSB3277`-varning.
+
+Att gora innan ihopkoppling med riktig data:
+
+- Registrera gratis Trafiklab-nyckel pa https://www.trafiklab.se/
+  ("ResRobot - Stops and Departures"), lagg in i Installningar.
+- Verifiera i WebView2 att text overlay funkar med 3D-byggnader pa
+  (klick pa Stockholm/Lund med tilt > 30 grader).
+
+## 2026-05-15 - Cinematic Workspace Pro Phase 1
+
+Andringar:
+
+- Skapade master-/delplaner for Scene Pro, UI/UX, Composer Engine, News
+  Intelligence, Vision Analysis, System Health och Design System.
+- Lade till `dashboard/theme.css` med Jarvis design tokens.
+- Lade till `dashboard/scene-pro.css` med scoped Mission Control-styling.
+- Byggde pro idle screen i `scenePanel`: central orb, grid, command feed,
+  system widgets och tool dock.
+- Beholl V3-slots: `sceneStack`, `sceneHeroSlot`, `sceneSummarySlot`,
+  `sceneVideoSlot` och `sceneSourcesSlot`.
+- Ny regression: `tests/scene-pro-phase1.test.js`.
+- Fixade testmock i `tests/dashboard-routing.test.js` for
+  `document.addEventListener`.
+- Fixade compile-gap i `SafeAppLauncher.LocalAutopilotActionsLineV1`.
+- Hotfix efter WebView2-hang vid klick: tog bort `backdrop-filter` och fixed
+  pseudo-overlay i `scene-pro.css`, samt lade WebView process-failure logging
+  till `data/dashboard-runtime.log`.
+- Performance-hotfix efter seg Explorer/Brain: Project Explorer och Brain
+  Graph traverserar nu projektet med pruned directory-walk i stallet for
+  `SearchOption.AllDirectories` over hela rooten.
+- Exkluderar extra runtime/generated-kataloger fran scan: `.venv`, `logs` och
+  `runtimes`.
+- Bumpade Brain graph cache-version till `relations-first-v1-20260515-pruned`
+  sa gammal tung cache inte ateranvands.
+- Ny regression: `tests/project-scan-pruning-performance.test.js`.
+- Delade ut aldre sessionlogg till `docs/SESSION_LOG_PART_10.md`.
+
+Verifiering:
+
+- `node tests/scene-pro-phase1.test.js` passerade.
+- `node tests/project-scan-pruning-performance.test.js` passerade.
+- `node tests/brain-relations-first-dashboard.test.js` passerade.
+- `node tests/dashboard-routing.test.js` passerade.
+- `node tests/scene-pro-phase1.test.js` passerade efter hotfix.
+- `dotnet build app/JarvisClean.csproj` passerade med 0 errors och kand
+  `MSB3277`.
+- Publish/start klart med kand `MSB3277`-varning. Observerad process:
+  `Jarvis.exe` PID 9672, `Responding=True`.
 
 ## 2026-05-14 - Amy Windows Standalone V1
 
@@ -233,100 +311,10 @@ Verifiering:
 - Notering: kombinerat publish/start-kommando returnerade exit code 1 efter
   startdelen, men publish-output var lyckad och processen verifierades separat.
 
-## 2026-05-13 - Panel-first monitor och TaskStoreV1
+## 2026-05-13 - Panel/status/browser/autopilot historik
 
-Utgångspunkt: användaren vill inte behöva minnas många kommandon. Jarvis ska
-visa vad som händer live när den jobbar, kodar, skapar saker eller kör
-bakgrundsjobb.
-
-Ändringar:
-
-- Ny `app/Tasks/TaskStoreV1.cs` med lokala tasks i `data/tasks/tasks.json`.
-- Nya task-intents: lista, status, add, done och sök.
-- Task-skrivningar går via `PendingApprovalTypeV1.TaskChange`.
-- Översiktspanelen visar nu livearbete, bakgrundsjobb, tasks, pending,
-  terminal/build och en mini-agent som animeras när arbete pågår.
-- Panelen har snabbknappar för index, audit, jobbstatus, tasks och terminal.
-- Panelen har även snabb task-input med röd/orange/blå prioritet; den skickar
-  `/task add ...` och går fortfarande via pending approval.
-- `Program.cs` registrerar livearbete när Jarvis tänker, skapar pending filer,
-  gör kodförslag, kör terminal eller ändrar tasks.
-- Ny regression: `tests/tasks-monitor-panel.test.js`.
-
-Verifiering:
-
-- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj` passerade.
-- Full node-regression passerade: 35 tester.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
-  och känd `MSB3277`.
-
-## 2026-05-13 - Background status och token/context-estimat
-
-Utgångspunkt: användaren vill att Jarvis ska säga mer medan den tänker eller
-jobbar i bakgrunden, inklusive token/context när det går.
-
-Ändringar:
-
-- Ny `app/Brain/ContextBudgetEstimatorV1.cs`.
-- Vanliga Ollama-svar visar nu ungefärligt `ctx≈...` och `svar≈...`.
-- Background jobs sparar `CurrentStep`, `LastAction`, `NextAction` och
-  `ContextEstimateTokens`.
-- `/jobb status` visar steg, token/context-estimat och nästa handling.
-- Startmeddelanden för project index/audit säger att token/context rapporteras
-  när jobbet börjar.
-- Ny regression: `tests/background-status-token.test.js`.
-
-Verifiering:
-
-- `node F:\Jarvis-clean\tests\background-status-token.test.js` passerade.
-- `node F:\Jarvis-clean\tests\background-jobs-architecture.test.js` passerade.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
-  och känd `MSB3277`.
-
-## 2026-05-13 - BrowserPolicyV1 runtime
-
-Utgångspunkt: användaren vill att Jarvis inte ska använda andra synliga
-browsers än OperaGX/Opera, men godkände rekommendationen att intern
-agent-automation får använda isolerad Playwright Chromium när det är tekniskt
-bättre.
-
-Ändringar:
-
-- Ny `app/Desktop/BrowserPolicyV1.cs`.
-- `SafeAppLauncher` har inte längre Chrome, Edge eller Firefox som synliga
-  launch-mål.
-- `open browser`, `webbläsare`, `opera gx` och `operagx` routas till Opera.
-- Explicit Chrome, Edge, Firefox och Chromium blockeras som synliga launch-mål.
-- Webbsök/helptext säger Google i OperaGX/Opera.
-- `python/jarvis_web_agent.py` dokumenterar isolerad Playwright Chromium som
-  intern automation engine.
-- Ny regression: `tests/browser-policy.test.js`.
-
-Verifiering:
-
-- `node F:\Jarvis-clean\tests\browser-policy.test.js` passerade.
-- `node F:\Jarvis-clean\tests\b1-b2-c1-d2.test.js` passerade.
-- `node F:\Jarvis-clean\tests\help-text.test.js` passerade.
-- `dotnet run --project F:\Jarvis-clean\tests\CommandRouterV1.Tests\CommandRouterV1.Tests.csproj` passerade.
-
-## 2026-05-13 - Amy Windows Autopilot designbeslut
-
-Utgangspunkt: anvandaren vill att Jarvis pa sikt ska kunna allt Amy kan, men
-Windows-native och med agentkraft som kan ta beslut inom godkant scope.
-
-Andringar:
-
-- Skapade `docs/AMY_WINDOWS_AUTOPILOT_PLAN.md`.
-- Dokumenterade att framtida browserfloden ska vara OperaGX/Opera-only.
-- Dokumenterade scoped Autopilot: Browser Autopilot, Desktop Autopilot och
-  Build Agent utan permanent fri makt over hela datorn.
-- Dokumenterade att background jobs/langre svar ska visa kort status, progress
-  och token/context-estimat nar det finns.
-- Uppdaterade `BUILD_PLAN.md` och `TODO_NEXT.md` med beslutet.
-
-Verifiering:
-
-- Docs-only andring. Ingen runtime, build eller publish kordes.
+Flyttad till [PART 10](SESSION_LOG_PART_10.md) for att halla huvudloggen under
+14 000 tecken.
 
 ## 2026-05-12 - Project Index incremental search audit slice
 
@@ -339,7 +327,7 @@ Detaljer finns i PART-loggarna. Kort: Project Index, Background Jobs, incrementa
 
 ## Historisk session-logg
 
-Den tidigare långa `docs/SESSION_LOG.md` är bevarad i delar:
+Den tidigare lÃ¥nga `docs/SESSION_LOG.md` Ã¤r bevarad i delar:
 
 - [PART 01](SESSION_LOG_PART_01.md)
 - [PART 02](SESSION_LOG_PART_02.md)
@@ -350,3 +338,6 @@ Den tidigare långa `docs/SESSION_LOG.md` är bevarad i delar:
 - [PART 07](SESSION_LOG_PART_07.md)
 - [PART 08](SESSION_LOG_PART_08.md)
 - [PART 09](SESSION_LOG_PART_09.md)
+- [PART 10](SESSION_LOG_PART_10.md)
+
+

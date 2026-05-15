@@ -174,6 +174,12 @@ public static class SafeAppLauncher
             .ToList();
     }
 
+    public static string LocalAutopilotActionsLineV1()
+    {
+        var allowed = string.Join(", ", ListAllowed());
+        return "Lokala autopilot-snabbÃ¥tgÃ¤rder: Ã¶ppna/starta " + allowed + ".";
+    }
+
     private static string NormalizeLaunchTextV1(string text)
     {
         var normalized = (text ?? "").Trim().ToLowerInvariant()

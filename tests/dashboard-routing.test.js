@@ -52,6 +52,7 @@ const context = {
     }
   },
   document: {
+    addEventListener() {},
     getElementById() {
       return makeElement();
     },

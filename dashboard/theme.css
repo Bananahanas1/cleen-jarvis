@@ -1,0 +1,25 @@
+:root {
+  --jarvis-bg-0: #02060c;
+  --jarvis-bg-1: #05111d;
+  --jarvis-bg-2: #081827;
+  --jarvis-panel: rgba(7, 20, 34, 0.78);
+  --jarvis-panel-strong: rgba(10, 31, 50, 0.92);
+  --jarvis-line: rgba(105, 217, 255, 0.24);
+  --jarvis-line-strong: rgba(105, 217, 255, 0.46);
+  --jarvis-cyan: #6ad9ff;
+  --jarvis-cyan-soft: #aee6ff;
+  --jarvis-text: #dff7ff;
+  --jarvis-muted: rgba(223, 247, 255, 0.62);
+  --jarvis-warn: #ffd166;
+  --jarvis-danger: #ff6b8a;
+  --jarvis-ok: #7dffbd;
+  --jarvis-radius-sm: 6px;
+  --jarvis-radius-md: 8px;
+  --jarvis-radius-lg: 12px;
+  --jarvis-glow-sm: 0 0 18px rgba(106, 217, 255, 0.16);
+  --jarvis-glow-md: 0 0 34px rgba(106, 217, 255, 0.22);
+  --jarvis-glow-lg: 0 0 70px rgba(106, 217, 255, 0.28);
+  --jarvis-grid-line: rgba(106, 217, 255, 0.07);
+  --jarvis-motion-fast: 160ms ease;
+  --jarvis-motion-med: 420ms ease;
+}
