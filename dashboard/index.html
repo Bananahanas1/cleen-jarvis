@@ -1283,6 +1283,15 @@ Skärmvision kräver UI-TARS.</div>
         .karta-webcam-popup .meta { color:#2a6688; font-size:11px; margin-bottom:6px; }
         .karta-webcam-popup a { color:#1f4e68; font-weight:600; text-decoration:none; font-size:12px; }
         .karta-webcam-popup a:hover { text-decoration:underline; }
+        /* 🎥 Live-webcam-marker — distinkt röd för riktig live-stream */
+        .karta-livecam-marker { width:30px; height:30px; border-radius:50%;
+          background:rgba(40,10,20,0.95); border:2px solid #ff4060; color:#ff8090;
+          font-size:16px; box-shadow:0 0 14px rgba(255,64,96,0.7);
+          animation:kartaLiveCamPulse 2.4s ease-in-out infinite; }
+        @keyframes kartaLiveCamPulse {
+          0%, 100% { box-shadow:0 0 14px rgba(255,64,96,0.55); }
+          50% { box-shadow:0 0 22px rgba(255,64,96,0.95); }
+        }
         .karta-webcam-popup .open-live { display:inline-block; margin-top:6px;
           background:#1f4e68; color:#aef0ff; padding:5px 12px; border-radius:4px;
           font-weight:700; cursor:pointer; border:1px solid #6ad9ff; }
@@ -1562,6 +1571,7 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaScreenshotBtn" title="Spara kartvy som PNG till data/karta/screenshots/">🖼 Bild</button>
           <button class="karta-btn" id="kartaToggleWebcamsBtn" title="Globala webcams (Windy.com, kräver WINDY_API_KEY)">📹 Cams</button>
           <button class="karta-btn" id="kartaToggleTrvCamsBtn" title="Trafikverket vägkameror i Sverige (kräver TRAFIKVERKET_API_KEY)">🛣 SE-cams</button>
+          <button class="karta-btn" id="kartaToggleLiveCamsBtn" title="Riktiga 24/7 live-streams (YouTube Live, kuraterad lista)">🎥 Live</button>
         </div>
         <!-- Modal för inbäddad webcam-player (Windy iframe / Trafikverket bild) -->
         <div id="kartaWebcamModal" class="karta-webcam-modal" style="display:none;">
@@ -2359,6 +2369,8 @@ Skärmvision kräver UI-TARS.</div>
       if (camsBtn) camsBtn.addEventListener("click", function() { _kartaToggleWebcams(); });
       const trvBtn = document.getElementById("kartaToggleTrvCamsBtn");
       if (trvBtn) trvBtn.addEventListener("click", function() { _kartaToggleTrvCams(); });
+      const liveBtn = document.getElementById("kartaToggleLiveCamsBtn");
+      if (liveBtn) liveBtn.addEventListener("click", function() { _kartaToggleLiveCams(); });
 
       // Be om Windy + Trafikverket-nycklar vid init
       postMessage({ type: "karta_get_windy_key" });
@@ -3367,6 +3379,87 @@ Skärmvision kräver UI-TARS.</div>
       postMessage({ type: "karta_fetch_trv_cams", id: id });
     }
 
+    // ===== 🎥 Live-webcams — kuraterad lista med riktiga 24/7 YouTube-streams =====
+    // YouTube embed-URL kräver bara videoId. Sätt &autoplay=1&mute=1 så streamen startar
+    // direkt i modal (mute krävs av Chrome/Edge för autoplay).
+    const KARTA_LIVE_WEBCAMS = [
+      // --- USA ---
+      { id: "AdUw5RdyZxI", lat: 40.7580, lon: -73.9855, title: "Times Square, NYC",       country: "US", cat: "stad" },
+      { id: "F143HRdtMRY", lat: 36.1147, lon: -115.1728, title: "Las Vegas Boulevard",     country: "US", cat: "stad" },
+      { id: "5oZsPbjUEQk", lat: 25.7907, lon: -80.1300, title: "Miami Beach 4K",            country: "US", cat: "strand" },
+      { id: "u4UZ4UvZXrg", lat: 44.4280, lon: -110.5885, title: "Old Faithful, Yellowstone", country: "US", cat: "natur" },
+      { id: "BeQA5OuOOPI", lat: 43.0840, lon: -79.0710, title: "Niagara Falls",            country: "US", cat: "natur" },
+      { id: "1EiC9bvVGnk", lat: 37.8199, lon: -122.4783, title: "Golden Gate Bridge, SF",  country: "US", cat: "stad" },
+      { id: "v1XxYnnKqJ8", lat: 21.2762, lon: -157.8270, title: "Waikiki Beach, Hawaii",    country: "US", cat: "strand" },
+
+      // --- Europa ---
+      { id: "DjdUEyjx8GM", lat: 51.5074, lon: -0.1278,   title: "London skyline",          country: "GB", cat: "stad" },
+      { id: "I0Y6NPahq80", lat: 51.5079, lon: -0.0877,   title: "Tower Bridge, London",    country: "GB", cat: "stad" },
+      { id: "DHRJq5ZUaOI", lat: 48.8584, lon: 2.2945,    title: "Eiffeltornet, Paris",     country: "FR", cat: "stad" },
+      { id: "n0FRBdEPmAU", lat: 41.9028, lon: 12.4964,   title: "Rom — Trevi-fontänen",    country: "IT", cat: "stad" },
+      { id: "G4iEDWvWQpw", lat: 45.4408, lon: 12.3155,   title: "Venedig — Canal Grande",  country: "IT", cat: "stad" },
+      { id: "EiI_OnD6PHE", lat: 52.5163, lon: 13.3777,   title: "Brandenburger Tor, Berlin", country: "DE", cat: "stad" },
+      { id: "Cp4RRAEgpeU", lat: 47.4979, lon: 19.0402,   title: "Budapest Donau",          country: "HU", cat: "stad" },
+      { id: "ddFvjfvPnqk", lat: 59.3293, lon: 18.0686,   title: "Stockholm Gamla Stan",    country: "SE", cat: "stad" },
+      { id: "1-iS7LArMPA", lat: 55.6761, lon: 12.5683,   title: "Köpenhamn Nyhavn",        country: "DK", cat: "stad" },
+      { id: "5qap5aO4i9A", lat: 60.1699, lon: 24.9384,   title: "Lofi Hip Hop (placeholder kanal)", country: "FI", cat: "övrigt" },
+
+      // --- Asien ---
+      { id: "DyA3uJrYBV8", lat: 35.6595, lon: 139.7004,  title: "Shibuya Crossing, Tokyo", country: "JP", cat: "stad" },
+      { id: "uoTuM4UJj_E", lat: 35.6938, lon: 139.7034,  title: "Shinjuku Tokyo 4K",        country: "JP", cat: "stad" },
+      { id: "Z0bxe1DOTLI", lat: 22.2783, lon: 114.1747,  title: "Hong Kong skyline",       country: "HK", cat: "stad" },
+      { id: "fHrAwxz2sBA", lat: 1.2867,  lon: 103.8545,  title: "Singapore Marina Bay",    country: "SG", cat: "stad" },
+      { id: "vP-OhuY4Q9I", lat: 25.1972, lon: 55.2744,   title: "Dubai Burj Khalifa",      country: "AE", cat: "stad" },
+
+      // --- Natur & vilda djur ---
+      { id: "lA4-jrZG1Sw", lat: -2.6535, lon: 36.3000,   title: "Mpala Live, Kenya — savann", country: "KE", cat: "natur" },
+      { id: "5gjJjr5xS-Q", lat: 64.1469, lon: -21.9408,  title: "Reykjavik live",          country: "IS", cat: "stad" },
+      { id: "yJaR0t11LXM", lat: 67.8558, lon: 20.2253,   title: "Abisko aurora",            country: "SE", cat: "natur" },
+      { id: "y60wDzZt8yg", lat: -33.8688, lon: 151.2093, title: "Sydney Harbour",           country: "AU", cat: "stad" },
+
+      // --- Strand / surf ---
+      { id: "1Y45jMqcLN8", lat: 21.1619, lon: -86.8515,  title: "Cancun strand",           country: "MX", cat: "strand" },
+      { id: "OWnehHX-Ckg", lat: 36.3932, lon: 25.4615,   title: "Santorini Caldera",        country: "GR", cat: "strand" },
+
+      // --- Rymd & specialitet ---
+      { id: "P9C25Un7xaM", lat: 0,       lon: 0,         title: "ISS HD Earth Viewing (NASA)", country: "WORLD", cat: "rymd" }
+    ];
+
+    let _kartaLiveCamsOn = false;
+    let _kartaLiveCamsMarkers = [];
+    function _kartaToggleLiveCams() {
+      _kartaLiveCamsOn = !_kartaLiveCamsOn;
+      if (_kartaLiveCamsOn) {
+        _kartaRenderLiveCams();
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "🎥 Live-webcams PÅ — " + KARTA_LIVE_WEBCAMS.length + " kuraterade 24/7-streams från YouTube. Klicka röd markör för att titta. Vissa videos kan vara nedtagna av kanalen — sätt upp YOUTUBE_API_KEY för dynamisk sökning.");
+      } else {
+        _kartaClearMarkers(_kartaLiveCamsMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "🎥 Live-webcams AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaRenderLiveCams() {
+      _kartaClearMarkers(_kartaLiveCamsMarkers);
+      KARTA_LIVE_WEBCAMS.forEach(function(cam) {
+        const src = "https://www.youtube-nocookie.com/embed/" + cam.id
+          + "?autoplay=1&mute=1&controls=1&rel=0";
+        const ext = "https://www.youtube.com/watch?v=" + cam.id;
+        _kartaLiveCamsMarkers.push(_kartaMakeDataMarker({
+          lat: cam.lat, lon: cam.lon,
+          classes: "karta-livecam-marker",
+          content: "🎥", title: cam.title + " (live)",
+          onClick: function() {
+            _kartaOpenWebcamModal({
+              type: "iframe", src: src,
+              title: "🎥 " + cam.title + " (YouTube Live)",
+              externalUrl: ext
+            });
+          }
+        }));
+      });
+    }
+
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
     let _kartaWeatherOn = false;
     let _kartaWeatherTimer = null;
@@ -3933,6 +4026,7 @@ Skärmvision kräver UI-TARS.</div>
         kartaMeasureBtn: !!_kartaMeasureOn,
         kartaToggleWebcamsBtn: !!_kartaWebcamsOn,
         kartaToggleTrvCamsBtn: !!_kartaTrvCamsOn,
+        kartaToggleLiveCamsBtn: !!_kartaLiveCamsOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
