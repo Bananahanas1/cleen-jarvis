@@ -114,6 +114,17 @@ check("Data-marker-CSS finns", dashboard.includes(".karta-data-marker"));
 check("Generisk _kartaClearMarkers finns", dashboard.includes("function _kartaClearMarkers"));
 check("Generisk _kartaMakeDataMarker finns", dashboard.includes("function _kartaMakeDataMarker"));
 
+// --- Vågor-overlay (Open-Meteo Marine) ---
+check("Vågor-knapp finns", dashboard.includes('id="kartaToggleWavesBtn"'));
+check("_kartaToggleWaves finns", dashboard.includes("function _kartaToggleWaves"));
+check("Vågor-fetcher anropar marine-api.open-meteo.com",
+  dashboard.includes("marine-api.open-meteo.com"));
+check("Vågor-HUD ID finns i CSS", dashboard.includes("#kartaWavesHud"));
+check("Vågor syncas i layer-buttons",
+  dashboard.includes("kartaToggleWavesBtn: !!_kartaWavesOn"));
+check("Vågor-fetch triggas på moveend",
+  dashboard.includes("_kartaFetchWavesForCenter"));
+
 if (failures > 0) {
   console.log("\nKarta transit + label z-order checks failed: " + failures);
   process.exit(1);

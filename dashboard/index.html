@@ -1296,6 +1296,25 @@ Skärmvision kräver UI-TARS.</div>
         .karta-data-popup .meta { color:#2a6688; font-size:11px; margin-bottom:6px; }
         .karta-data-popup .row { display:flex; gap:6px; padding:1px 0; }
         .karta-data-popup .k { color:#2a6688; font-weight:600; min-width:78px; }
+        /* Vågor-HUD (Open-Meteo Marine) — placeras i botten höger för att inte krocka med väder-HUD */
+        #kartaWavesHud { position:absolute; bottom:120px; right:14px; z-index:5;
+          background:rgba(3,15,28,0.88); border:1px solid #1f4e68; border-radius:8px;
+          padding:10px 14px; color:#dff7ff; font-family:inherit; font-size:12.5px;
+          min-width:200px; max-width:260px; pointer-events:none;
+          box-shadow:0 0 20px rgba(106,217,255,0.25); }
+        #kartaWavesHud .hud-title { color:#6ad9ff; font-size:11px; letter-spacing:1px;
+          text-transform:uppercase; margin-bottom:6px; }
+        #kartaWavesHud .hud-main { display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+        #kartaWavesHud .hud-height { font-size:24px; font-weight:700; color:#aef0ff; }
+        #kartaWavesHud .hud-arrow { font-size:22px; transition:transform 0.3s ease; }
+        #kartaWavesHud .hud-row { display:flex; justify-content:space-between;
+          font-size:11.5px; padding:2px 0; opacity:0.92; }
+        #kartaWavesHud .hud-row .k { color:#aee6ff; opacity:0.7; }
+        #kartaWavesHud .hud-row .v { color:#dff7ff; }
+        #kartaWavesHud .hud-empty { color:#aee6ff; opacity:0.7; font-style:italic; }
+        @keyframes kartaWaveRipple { 0%, 100% { transform:translateY(0); }
+          50% { transform:translateY(-2px); } }
+        #kartaWavesHud.is-rough .hud-height { animation:kartaWaveRipple 1.2s ease-in-out infinite; }
         .karta-btn { background:rgba(106,217,255,0.12); border:1px solid #1f4e68; color:#aee6ff;
           padding:4px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:11px;
           position:relative; transition: background 0.15s, border-color 0.15s, color 0.15s; }
@@ -1487,6 +1506,7 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaToggleEvBtn" title="Open Charge Map — elbilsladdstationer">⚡ EV</button>
           <button class="karta-btn" id="kartaTogglePoliceBtn" title="Polisen.se — händelser senaste 24h">🚓 Polis</button>
           <button class="karta-btn" id="kartaToggleBikesBtn" title="GBFS Citybikes — lediga cyklar i Sthlm/Gbg/Malmö">🚲 Cyklar</button>
+          <button class="karta-btn" id="kartaToggleWavesBtn" title="Live havsvågor (Open-Meteo Marine) — våghöjd, period, riktning, svall, havstemp">🌊 Vågor</button>
         </div>
         <div class="karta-glass karta-mini-chat">
           <div class="karta-glass-title">Fråga Jarvis</div>
@@ -2256,6 +2276,8 @@ Skärmvision kräver UI-TARS.</div>
       if (policeBtn) policeBtn.addEventListener("click", function() { _kartaTogglePolice(); });
       const bikesBtn = document.getElementById("kartaToggleBikesBtn");
       if (bikesBtn) bikesBtn.addEventListener("click", function() { _kartaToggleBikes(); });
+      const wavesBtn = document.getElementById("kartaToggleWavesBtn");
+      if (wavesBtn) wavesBtn.addEventListener("click", function() { _kartaToggleWaves(); });
 
       // POI-panel close-knapp
       const poiCloseBtn = document.getElementById("kartaPoiCloseBtn");
@@ -2264,11 +2286,16 @@ Skärmvision kräver UI-TARS.</div>
         _kartaPoiCurrent = null;
       });
 
-      // Auto-uppdatera väder + båt-bbox + flyg när användaren panorerar/zoomar (debounced).
+      // Auto-uppdatera väder + båt-bbox + flyg + vågor när användaren panorerar/zoomar (debounced).
       let weatherMoveTimer = null;
       let shipMoveTimer = null;
       let flightMoveTimer = null;
+      let wavesMoveTimer = null;
       _kartaMap.on("moveend", function() {
+        if (_kartaWavesOn) {
+          if (wavesMoveTimer) clearTimeout(wavesMoveTimer);
+          wavesMoveTimer = setTimeout(_kartaFetchWavesForCenter, 800);
+        }
         if (_kartaWeatherOn) {
           if (weatherMoveTimer) clearTimeout(weatherMoveTimer);
           weatherMoveTimer = setTimeout(_kartaFetchWeatherForCenter, 800);
@@ -2775,6 +2802,98 @@ Skärmvision kräver UI-TARS.</div>
             }));
           });
         } catch (_) {}
+      }
+    }
+
+    // --- Vågor (Open-Meteo Marine, gratis, ingen nyckel) ---
+    let _kartaWavesOn = false;
+    let _kartaWavesTimer = null;
+    let _kartaWavesHudEl = null;
+    function _kartaToggleWaves() {
+      _kartaWavesOn = !_kartaWavesOn;
+      if (_kartaWavesOn) {
+        _kartaShowWavesHud(true);
+        _kartaFetchWavesForCenter();
+        _kartaWavesTimer = setInterval(_kartaFetchWavesForCenter, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Vågor PÅ (Open-Meteo Marine). HUD i nedre högra hörnet visar våghöjd, period, riktning, svall och havstemp vid kartans mitt. Funkar bara över hav.");
+      } else {
+        if (_kartaWavesTimer) clearInterval(_kartaWavesTimer);
+        _kartaWavesTimer = null;
+        _kartaShowWavesHud(false);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Vågor AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaShowWavesHud(show) {
+      if (!show) {
+        if (_kartaWavesHudEl) { try { _kartaWavesHudEl.remove(); } catch (_) {} _kartaWavesHudEl = null; }
+        return;
+      }
+      if (_kartaWavesHudEl) return;
+      const hud = document.createElement("div");
+      hud.id = "kartaWavesHud";
+      hud.innerHTML = '<div class="hud-title">🌊 Vågor</div><div class="hud-empty">Hämtar marin data…</div>';
+      const mapEl = document.getElementById("mapPanel") || document.getElementById("kartaMap");
+      if (mapEl) mapEl.appendChild(hud);
+      _kartaWavesHudEl = hud;
+    }
+    async function _kartaFetchWavesForCenter() {
+      if (!_kartaMap || !_kartaWavesOn || !_kartaWavesHudEl) return;
+      const c = _kartaMap.getCenter();
+      try {
+        const url = "https://marine-api.open-meteo.com/v1/marine"
+          + "?latitude=" + c.lat.toFixed(4) + "&longitude=" + c.lng.toFixed(4)
+          + "&current=wave_height,wave_period,wave_direction,swell_wave_height,swell_wave_period,wind_wave_height,sea_surface_temperature,ocean_current_velocity,ocean_current_direction";
+        const resp = await fetch(url);
+        if (!resp.ok) {
+          _kartaWavesHudEl.innerHTML = '<div class="hud-title">🌊 Vågor</div>'
+            + '<div class="hud-empty">Marin-API svarade ' + resp.status + '.</div>';
+          return;
+        }
+        const data = await resp.json();
+        const cur = data.current || {};
+        const h = cur.wave_height;
+        if (h == null) {
+          _kartaWavesHudEl.classList.remove("is-rough");
+          _kartaWavesHudEl.innerHTML = '<div class="hud-title">🌊 Vågor</div>'
+            + '<div class="hud-empty">Land eller saknad data vid ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2) + '.</div>';
+          return;
+        }
+        const dir = cur.wave_direction;
+        // Pilen pekar dit vågorna RÖR sig: rotera enligt riktning. 0 = från norr → pil pekar söderut.
+        const arrowRot = dir != null ? (dir + 180) : 0;
+        const temp = cur.sea_surface_temperature;
+        const tempUnit = (data.current_units && data.current_units.sea_surface_temperature) || "°C";
+        const heightUnit = (data.current_units && data.current_units.wave_height) || "m";
+        const swell = cur.swell_wave_height;
+        const swellP = cur.swell_wave_period;
+        const windWave = cur.wind_wave_height;
+        const period = cur.wave_period;
+        const curVel = cur.ocean_current_velocity;
+        const curDir = cur.ocean_current_direction;
+        const rough = Number(h) >= 2.5;
+        _kartaWavesHudEl.classList.toggle("is-rough", rough);
+        function row(k, v) { return '<div class="hud-row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>'; }
+        _kartaWavesHudEl.innerHTML = '<div class="hud-title">🌊 Vågor vid ' + c.lat.toFixed(2) + ', ' + c.lng.toFixed(2) + '</div>'
+          + '<div class="hud-main">'
+          + '<span class="hud-height">' + Number(h).toFixed(1) + ' ' + heightUnit + '</span>'
+          + (dir != null ? '<span class="hud-arrow" style="transform:rotate(' + arrowRot + 'deg)">↑</span>' : '')
+          + '</div>'
+          + (period != null ? row("Period", Number(period).toFixed(1) + " s") : "")
+          + (dir != null ? row("Riktning", Math.round(dir) + "° (från)") : "")
+          + (swell != null ? row("Svall", Number(swell).toFixed(1) + " m"
+              + (swellP != null ? " · " + Number(swellP).toFixed(1) + " s" : "")) : "")
+          + (windWave != null ? row("Vindvåg", Number(windWave).toFixed(1) + " m") : "")
+          + (curVel != null ? row("Ström", Number(curVel).toFixed(2) + " m/s"
+              + (curDir != null ? " @ " + Math.round(curDir) + "°" : "")) : "")
+          + (temp != null ? row("Havstemp", Number(temp).toFixed(1) + " " + tempUnit) : "")
+          + '<div class="hud-row" style="margin-top:4px;"><span class="k">Källa</span><span class="v">Open-Meteo Marine</span></div>';
+      } catch (err) {
+        if (_kartaWavesHudEl) {
+          _kartaWavesHudEl.innerHTML = '<div class="hud-title">🌊 Vågor</div>'
+            + '<div class="hud-empty">Fel vid hämtning: ' + _kartaEsc(err.message || err) + '</div>';
+        }
       }
     }
 
@@ -3340,6 +3459,7 @@ Skärmvision kräver UI-TARS.</div>
         kartaToggleEvBtn: !!_kartaEvOn,
         kartaTogglePoliceBtn: !!_kartaPoliceOn,
         kartaToggleBikesBtn: !!_kartaBikesOn,
+        kartaToggleWavesBtn: !!_kartaWavesOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
