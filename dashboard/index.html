@@ -3185,10 +3185,8 @@ Skärmvision kräver UI-TARS.</div>
       if (modal) modal.style.display = "none";
       if (bodyEl) bodyEl.innerHTML = ""; // stoppa iframe-stream genom att riva ut elementet
     }
-    // Globala click-handler för alla "Visa live"-knappar i webcam-popups + ESC + click utanför
-    window.jarvisOpenWebcamFromPopup = function(args) {
-      _kartaOpenWebcamModal(args);
-    };
+    // Event delegation för "Visa live"-knappar — knappen får data-webcam-args med JSON,
+    // vi parsar i en gemensam handler. Säkrare än inline onclick (HTML decodar &#39; tyst).
     document.addEventListener("keydown", function(e) {
       if (e.key === "Escape") {
         const modal = document.getElementById("kartaWebcamModal");
@@ -3196,8 +3194,26 @@ Skärmvision kräver UI-TARS.</div>
       }
     });
     document.addEventListener("click", function(e) {
-      if (e.target && e.target.id === "kartaWebcamModalClose") _kartaCloseWebcamModal();
-      else if (e.target && e.target.id === "kartaWebcamModal") _kartaCloseWebcamModal();
+      if (!e.target) return;
+      // Stäng modal
+      if (e.target.id === "kartaWebcamModalClose" || e.target.id === "kartaWebcamModal") {
+        _kartaCloseWebcamModal();
+        return;
+      }
+      // Öppna webcam — letar uppåt efter en .open-live-knapp med data-webcam-args
+      let el = e.target;
+      while (el && el !== document.body) {
+        if (el.classList && el.classList.contains("open-live") && el.dataset && el.dataset.webcamArgs) {
+          try {
+            const args = JSON.parse(el.dataset.webcamArgs);
+            _kartaOpenWebcamModal(args);
+          } catch (err) {
+            console.warn("[Jarvis] webcam args parse-fel:", err, el.dataset.webcamArgs);
+          }
+          return;
+        }
+        el = el.parentElement;
+      }
     });
 
     // Windy blockerar fetch från jarvis.local-origin (CORS). C#-proxy gör anropet server-side.
@@ -3240,16 +3256,16 @@ Skärmvision kräver UI-TARS.</div>
           // Windy player URL — iframe-vänlig embed-länk. day = senaste timelapse, live = realtid om det finns.
           const player = (w.player && (w.player.live || w.player.day || w.player.month)) || "";
           const title = w.title || "Webcam";
-          // Bygg openLive-payload som JSON i data-attribut, parsa vid klick.
-          const openArgs = JSON.stringify({
+          // JSON i data-attribut — escaperas som HTML attribute value (quotes blir &quot;).
+          const openArgs = _kartaEsc(JSON.stringify({
             type: "iframe", src: player, title: title, externalUrl: live || player
-          }).replace(/'/g, "&#39;");
+          }));
           const popup = '<div class="karta-data-popup karta-webcam-popup">'
             + (thumb ? '<img src="' + _kartaEsc(thumb) + '" alt="" loading="lazy" />' : "")
             + '<div class="name">📹 ' + _kartaEsc(title) + '</div>'
             + '<div class="meta">' + _kartaEsc([loc.city, loc.country].filter(Boolean).join(", ")) + '</div>'
             + (player
-                ? '<button class="open-live" onclick=\'window.jarvisOpenWebcamFromPopup(' + openArgs + ')\'>▶ Visa live i Jarvis</button> '
+                ? '<button class="open-live" data-webcam-args="' + openArgs + '">▶ Visa live i Jarvis</button> '
                 : "")
             + (live ? '<a href="' + _kartaEsc(live) + '" target="_blank" rel="noopener">Öppna externt ↗</a>' : "")
             + '</div>';
@@ -3323,15 +3339,15 @@ Skärmvision kräver UI-TARS.</div>
           const photoUrl = cam.PhotoUrl ? cam.PhotoUrl + "?type=fullsize" : "";
           const photoTime = cam.PhotoTime ? new Date(cam.PhotoTime).toLocaleString("sv-SE") : "";
           const title = cam.Name || "Trafikkamera";
-          const openArgs = photoUrl ? JSON.stringify({
+          const openArgs = photoUrl ? _kartaEsc(JSON.stringify({
             type: "image", src: photoUrl, title: title, externalUrl: photoUrl
-          }).replace(/'/g, "&#39;") : "";
+          })) : "";
           const popup = '<div class="karta-data-popup karta-webcam-popup">'
             + (photoUrl ? '<img src="' + _kartaEsc(photoUrl) + '" alt="" loading="lazy" />' : "")
             + '<div class="name">🛣 ' + _kartaEsc(title) + '</div>'
             + '<div class="meta">' + _kartaEsc(cam.Location || "") + (photoTime ? " · " + photoTime : "") + '</div>'
             + (photoUrl
-                ? '<button class="open-live" onclick=\'window.jarvisOpenWebcamFromPopup(' + openArgs + ')\'>🔍 Visa stor i Jarvis</button> '
+                ? '<button class="open-live" data-webcam-args="' + openArgs + '">🔍 Visa stor i Jarvis</button> '
                 : "")
             + (photoUrl ? '<a href="' + _kartaEsc(photoUrl) + '" target="_blank" rel="noopener">Externt ↗</a>' : "")
             + '</div>';
