@@ -125,6 +125,49 @@ check("Vågor syncas i layer-buttons",
 check("Vågor-fetch triggas på moveend",
   dashboard.includes("_kartaFetchWavesForCenter"));
 
+// --- POI plats-fakta: höjd, sol, tidszon ---
+check("POI fetchar elevation från open-elevation",
+  dashboard.includes("api.open-elevation.com"));
+check("POI fetchar sol-tider från sunrise-sunset.org",
+  dashboard.includes("api.sunrise-sunset.org"));
+check("POI fetchar tidszon från timeapi.io",
+  dashboard.includes("timeapi.io"));
+check("POI renderar geoSection",
+  dashboard.includes("geoSection") && dashboard.includes("Plats-fakta"));
+
+// --- Verktyg: GPS, mätverktyg, skärmdump ---
+check("Min plats-knapp finns", dashboard.includes('id="kartaGoToMyLocationBtn"'));
+check("Mätverktyg-knapp finns", dashboard.includes('id="kartaMeasureBtn"'));
+check("Skärmdump-knapp finns", dashboard.includes('id="kartaScreenshotBtn"'));
+check("MapLibre init har preserveDrawingBuffer (för skärmdump)",
+  dashboard.includes("preserveDrawingBuffer: true"));
+check("Mätverktyg har haversine-funktion", dashboard.includes("function _kartaHaversineKm"));
+check("Geolocation används för min position",
+  dashboard.includes("navigator.geolocation.getCurrentPosition"));
+check("Skärmdump använder canvas.toDataURL",
+  dashboard.includes("toDataURL(\"image/png\")"));
+
+// --- Kameror: Windy + Trafikverket ---
+check("EnvVaultV1 whitelistar WINDY_API_KEY", envVaultCs.includes("WINDY_API_KEY"));
+check("EnvVaultV1 whitelistar TRAFIKVERKET_API_KEY", envVaultCs.includes("TRAFIKVERKET_API_KEY"));
+check("Program.cs har SendKartaWindyKeyAsync", programCs.includes("SendKartaWindyKeyAsync"));
+check("Program.cs har SendKartaTrafikverketKeyAsync", programCs.includes("SendKartaTrafikverketKeyAsync"));
+check("Program.cs routar karta_get_windy_key", programCs.includes("\"karta_get_windy_key\""));
+check("Program.cs routar karta_get_trafikverket_key",
+  programCs.includes("\"karta_get_trafikverket_key\""));
+check("Windy-fetch använder Windy Webcams API v3",
+  dashboard.includes("api.windy.com/webcams/api/v3"));
+check("Windy-fetch sätter x-windy-api-key header",
+  dashboard.includes("x-windy-api-key"));
+check("Trafikverket-fetch använder trafikinfo.trafikverket.se",
+  dashboard.includes("api.trafikinfo.trafikverket.se"));
+check("Trafikverket-fetch skickar XML LOGIN-authentication",
+  dashboard.includes("<LOGIN authenticationkey="));
+check("Webcam-toggle ger tydligt fel om Windy-nyckel saknas",
+  dashboard.includes("Webcams kräver WINDY_API_KEY"));
+check("TRV-toggle ger tydligt fel om Trafikverket-nyckel saknas",
+  dashboard.includes("Svenska trafikkameror kräver TRAFIKVERKET_API_KEY"));
+
 if (failures > 0) {
   console.log("\nKarta transit + label z-order checks failed: " + failures);
   process.exit(1);

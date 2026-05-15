@@ -706,6 +706,16 @@ public sealed class JarvisForm : Form
                 await SendKartaTomTomKeyAsync();
                 return;
             }
+            if (type == "karta_get_windy_key")
+            {
+                await SendKartaWindyKeyAsync();
+                return;
+            }
+            if (type == "karta_get_trafikverket_key")
+            {
+                await SendKartaTrafikverketKeyAsync();
+                return;
+            }
 
             if (type == "brain_rebuild_graph")
             {
@@ -7967,6 +7977,24 @@ public sealed class JarvisForm : Form
         var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
         await _webView.CoreWebView2.ExecuteScriptAsync(
             $"window.jarvisKartaApplyTomTomKeyV1 && window.jarvisKartaApplyTomTomKeyV1({payload});");
+    }
+
+    private async Task SendKartaWindyKeyAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var hasKey = EnvVaultV1.TryGetValue(ProjectRoot, "WINDY_API_KEY", out var key);
+        var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaApplyWindyKeyV1 && window.jarvisKartaApplyWindyKeyV1({payload});");
+    }
+
+    private async Task SendKartaTrafikverketKeyAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var hasKey = EnvVaultV1.TryGetValue(ProjectRoot, "TRAFIKVERKET_API_KEY", out var key);
+        var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaApplyTrafikverketKeyV1 && window.jarvisKartaApplyTrafikverketKeyV1({payload});");
     }
 
     private async Task SendKartaGoogleKeyAsync()

@@ -24,7 +24,12 @@ internal static class EnvVaultV1
         "TRAFIKLAB_API_KEY",
         // TomTom Traffic Flow — live trafikfärger på gator (grön/orange/röd efter hastighet).
         // Gratis 2 500 anrop/dag. Registreras på https://developer.tomtom.com/.
-        "TOMTOM_API_KEY"
+        "TOMTOM_API_KEY",
+        // Windy Webcams API v3 — globala live-webcams. Registreras gratis på https://api.windy.com/.
+        "WINDY_API_KEY",
+        // Trafikverket Open API — svenska vägkameror, vägarbete, tågrörelser m.m.
+        // Registreras gratis på https://api.trafikinfo.trafikverket.se/.
+        "TRAFIKVERKET_API_KEY"
     };
 
     public static string EnvFilePath(string projectRoot)

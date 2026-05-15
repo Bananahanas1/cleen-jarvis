@@ -1265,6 +1265,24 @@ Skärmvision kräver UI-TARS.</div>
           color:#dff7ff; padding:6px 10px; border-radius:4px; font-family:inherit; outline:none; font-size:12px; }
         .karta-controls { bottom:14px; left:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:calc(100vw - 320px); }
         .karta-controls-row2 { bottom:62px; left:14px; }
+        .karta-controls-row3 { bottom:110px; left:14px; }
+        /* Mätverktyg: linje och avståndsetiketter */
+        .karta-measure-marker { width:14px; height:14px; border-radius:50%;
+          background:#ffd680; border:2px solid #fff; box-shadow:0 0 12px rgba(255,214,128,0.8); }
+        .karta-measure-label { background:rgba(3,15,28,0.9); border:1px solid #ffd680;
+          color:#ffd680; padding:2px 8px; border-radius:4px; font-size:11px;
+          font-weight:600; white-space:nowrap; pointer-events:none; font-family:inherit; }
+        body.karta-measure-mode #kartaMap { cursor:crosshair !important; }
+        /* Webcam-marker */
+        .karta-webcam-marker { width:28px; height:28px; border-radius:50%;
+          background:rgba(20,40,60,0.9); border:2px solid #ff6ad9; color:#ff6ad9;
+          font-size:16px; box-shadow:0 0 12px rgba(255,106,217,0.6); }
+        .karta-webcam-popup img { width:100%; max-width:280px; border-radius:4px;
+          margin-bottom:6px; display:block; }
+        .karta-webcam-popup .name { font-weight:700; font-size:14px; color:#0a1622; margin-bottom:4px; }
+        .karta-webcam-popup .meta { color:#2a6688; font-size:11px; margin-bottom:6px; }
+        .karta-webcam-popup a { color:#1f4e68; font-weight:600; text-decoration:none; font-size:12px; }
+        .karta-webcam-popup a:hover { text-decoration:underline; }
         /* Data-overlay-markers (jordbävningar, EONET, ISS, luft, EV, polis, cyklar) */
         .karta-data-marker { display:flex; align-items:center; justify-content:center;
           color:#fff; font-size:13px; font-weight:700; cursor:pointer;
@@ -1507,6 +1525,14 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaTogglePoliceBtn" title="Polisen.se — händelser senaste 24h">🚓 Polis</button>
           <button class="karta-btn" id="kartaToggleBikesBtn" title="GBFS Citybikes — lediga cyklar i Sthlm/Gbg/Malmö">🚲 Cyklar</button>
           <button class="karta-btn" id="kartaToggleWavesBtn" title="Live havsvågor (Open-Meteo Marine) — våghöjd, period, riktning, svall, havstemp">🌊 Vågor</button>
+        </div>
+        <!-- Tredje rad: verktyg och kameror -->
+        <div class="karta-glass karta-controls karta-controls-row3">
+          <button class="karta-btn" id="kartaGoToMyLocationBtn" title="Flyg till min position (geolocation)">📍 Min plats</button>
+          <button class="karta-btn" id="kartaMeasureBtn" title="Mätverktyg — klicka 2+ punkter för avstånd och totalsumma">📏 Mät</button>
+          <button class="karta-btn" id="kartaScreenshotBtn" title="Spara kartvy som PNG till data/karta/screenshots/">🖼 Bild</button>
+          <button class="karta-btn" id="kartaToggleWebcamsBtn" title="Globala webcams (Windy.com, kräver WINDY_API_KEY)">📹 Cams</button>
+          <button class="karta-btn" id="kartaToggleTrvCamsBtn" title="Trafikverket vägkameror i Sverige (kräver TRAFIKVERKET_API_KEY)">🛣 SE-cams</button>
         </div>
         <div class="karta-glass karta-mini-chat">
           <div class="karta-glass-title">Fråga Jarvis</div>
@@ -2067,7 +2093,10 @@ Skärmvision kräver UI-TARS.</div>
         maxZoom: 19,
         pitch: 0,
         antialias: true,
-        projection: { type: "globe" }
+        projection: { type: "globe" },
+        // Krävs för canvas.toDataURL — annars är canvas tom (kartan ritas men buffer rensas
+        // direkt efter varje frame). Liten perf-kostnad men nödvändigt för skärmdump.
+        preserveDrawingBuffer: true
       });
       _kartaMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
       _kartaMap.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
@@ -2278,6 +2307,22 @@ Skärmvision kräver UI-TARS.</div>
       if (bikesBtn) bikesBtn.addEventListener("click", function() { _kartaToggleBikes(); });
       const wavesBtn = document.getElementById("kartaToggleWavesBtn");
       if (wavesBtn) wavesBtn.addEventListener("click", function() { _kartaToggleWaves(); });
+
+      // Verktyg (rad 3)
+      const goLocBtn = document.getElementById("kartaGoToMyLocationBtn");
+      if (goLocBtn) goLocBtn.addEventListener("click", function() { _kartaGoToMyLocation(); });
+      const measureBtn = document.getElementById("kartaMeasureBtn");
+      if (measureBtn) measureBtn.addEventListener("click", function() { _kartaToggleMeasure(); });
+      const shotBtn = document.getElementById("kartaScreenshotBtn");
+      if (shotBtn) shotBtn.addEventListener("click", function() { _kartaTakeScreenshot(); });
+      const camsBtn = document.getElementById("kartaToggleWebcamsBtn");
+      if (camsBtn) camsBtn.addEventListener("click", function() { _kartaToggleWebcams(); });
+      const trvBtn = document.getElementById("kartaToggleTrvCamsBtn");
+      if (trvBtn) trvBtn.addEventListener("click", function() { _kartaToggleTrvCams(); });
+
+      // Be om Windy + Trafikverket-nycklar vid init
+      postMessage({ type: "karta_get_windy_key" });
+      postMessage({ type: "karta_get_trafikverket_key" });
 
       // POI-panel close-knapp
       const poiCloseBtn = document.getElementById("kartaPoiCloseBtn");
@@ -2897,6 +2942,283 @@ Skärmvision kräver UI-TARS.</div>
       }
     }
 
+    // ===== VERKTYG: Min position, Mätverktyg, Skärmdump =====
+
+    function _kartaGoToMyLocation() {
+      if (!navigator.geolocation) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Den här webbvyn har ingen geolocation.");
+        return;
+      }
+      window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Söker din position…");
+      navigator.geolocation.getCurrentPosition(function(pos) {
+        const lat = pos.coords.latitude, lon = pos.coords.longitude, acc = pos.coords.accuracy;
+        _kartaMap.flyTo({ center: [lon, lat], zoom: 14, duration: 1800 });
+        const el = document.createElement("div");
+        el.style.cssText = "width:18px; height:18px; border-radius:50%; background:#6ad9ff; "
+          + "border:3px solid #fff; box-shadow:0 0 16px rgba(106,217,255,0.9);";
+        new maplibregl.Marker({ element: el })
+          .setLngLat([lon, lat])
+          .setPopup(new maplibregl.Popup({ offset: 14 }).setHTML(
+            '<div class="karta-data-popup"><div class="name">📍 Din position</div>'
+            + '<div class="meta">' + lat.toFixed(5) + ', ' + lon.toFixed(5) + '</div>'
+            + '<div class="row"><span class="k">Noggrannhet</span><span>±' + Math.round(acc) + ' m</span></div>'
+            + '</div>'))
+          .addTo(_kartaMap);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Du är vid " + lat.toFixed(4) + ", " + lon.toFixed(4) + " (±" + Math.round(acc) + " m).");
+      }, function(err) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Position-fel: " + err.message + ". WebView2 saknar ofta inbäddad geolocation — kolla Windows platsinställningar.");
+      }, { enableHighAccuracy: true, timeout: 15000 });
+    }
+
+    // --- Mätverktyg: klicka 2+ punkter, summera avstånd med haversine ---
+    let _kartaMeasureOn = false;
+    let _kartaMeasurePoints = [];
+    let _kartaMeasureMarkers = [];
+    let _kartaMeasureLineId = "karta-measure-line";
+    let _kartaMeasureLabelMarkers = [];
+    function _kartaToggleMeasure() {
+      _kartaMeasureOn = !_kartaMeasureOn;
+      document.body.classList.toggle("karta-measure-mode", _kartaMeasureOn);
+      if (_kartaMeasureOn) {
+        _kartaMeasurePoints = [];
+        _kartaClearMarkers(_kartaMeasureMarkers);
+        _kartaClearMarkers(_kartaMeasureLabelMarkers);
+        if (_kartaMap.getLayer(_kartaMeasureLineId)) _kartaMap.removeLayer(_kartaMeasureLineId);
+        if (_kartaMap.getSource(_kartaMeasureLineId)) _kartaMap.removeSource(_kartaMeasureLineId);
+        _kartaMap.on("click", _kartaMeasureClickHandler);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Mätverktyg PÅ. Klicka 2+ punkter på kartan — avstånd visas mellan dem och totalt summan. Klicka på 📏 Mät igen för att avsluta.");
+      } else {
+        _kartaMap.off("click", _kartaMeasureClickHandler);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          _kartaMeasurePoints.length >= 2
+            ? "Mätverktyg AV. Total: " + _kartaMeasureTotalDistanceKm().toFixed(2) + " km."
+            : "Mätverktyg AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaMeasureClickHandler(e) {
+      _kartaMeasurePoints.push([e.lngLat.lng, e.lngLat.lat]);
+      const el = document.createElement("div");
+      el.className = "karta-measure-marker";
+      const marker = new maplibregl.Marker({ element: el }).setLngLat(e.lngLat).addTo(_kartaMap);
+      _kartaMeasureMarkers.push(marker);
+      _kartaMeasureRender();
+    }
+    function _kartaHaversineKm(a, b) {
+      const R = 6371, toRad = function(x) { return x * Math.PI / 180; };
+      const dLat = toRad(b[1] - a[1]), dLon = toRad(b[0] - a[0]);
+      const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a[1])) * Math.cos(toRad(b[1])) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(s));
+    }
+    function _kartaMeasureTotalDistanceKm() {
+      let tot = 0;
+      for (let i = 1; i < _kartaMeasurePoints.length; i++)
+        tot += _kartaHaversineKm(_kartaMeasurePoints[i - 1], _kartaMeasurePoints[i]);
+      return tot;
+    }
+    function _kartaMeasureRender() {
+      if (_kartaMap.getLayer(_kartaMeasureLineId)) _kartaMap.removeLayer(_kartaMeasureLineId);
+      if (_kartaMap.getSource(_kartaMeasureLineId)) _kartaMap.removeSource(_kartaMeasureLineId);
+      _kartaClearMarkers(_kartaMeasureLabelMarkers);
+      if (_kartaMeasurePoints.length < 2) return;
+      _kartaMap.addSource(_kartaMeasureLineId, {
+        type: "geojson",
+        data: { type: "Feature", geometry: { type: "LineString", coordinates: _kartaMeasurePoints } }
+      });
+      _kartaMap.addLayer({
+        id: _kartaMeasureLineId,
+        type: "line",
+        source: _kartaMeasureLineId,
+        paint: { "line-color": "#ffd680", "line-width": 3, "line-dasharray": [2, 1.5] }
+      });
+      // Etikett per delsträcka + summa vid sista punkten
+      let running = 0;
+      for (let i = 1; i < _kartaMeasurePoints.length; i++) {
+        const seg = _kartaHaversineKm(_kartaMeasurePoints[i - 1], _kartaMeasurePoints[i]);
+        running += seg;
+        const mid = [
+          (_kartaMeasurePoints[i - 1][0] + _kartaMeasurePoints[i][0]) / 2,
+          (_kartaMeasurePoints[i - 1][1] + _kartaMeasurePoints[i][1]) / 2
+        ];
+        const div = document.createElement("div");
+        div.className = "karta-measure-label";
+        div.textContent = seg < 1 ? Math.round(seg * 1000) + " m" : seg.toFixed(2) + " km";
+        _kartaMeasureLabelMarkers.push(new maplibregl.Marker({ element: div }).setLngLat(mid).addTo(_kartaMap));
+      }
+      const last = _kartaMeasurePoints[_kartaMeasurePoints.length - 1];
+      const totDiv = document.createElement("div");
+      totDiv.className = "karta-measure-label";
+      totDiv.style.cssText = "background:#ffd680; color:#0a1622; border-color:#fff; font-size:12px;";
+      totDiv.textContent = "Σ " + (running < 1 ? Math.round(running * 1000) + " m" : running.toFixed(2) + " km");
+      _kartaMeasureLabelMarkers.push(new maplibregl.Marker({ element: totDiv, offset: [0, -18] }).setLngLat(last).addTo(_kartaMap));
+    }
+
+    // --- Skärmdump: canvas.toDataURL → ladda ner som PNG ---
+    function _kartaTakeScreenshot() {
+      try {
+        const canvas = _kartaMap.getCanvas();
+        const dataUrl = canvas.toDataURL("image/png");
+        const a = document.createElement("a");
+        const ts = new Date().toISOString().replace(/[:.]/g, "-");
+        a.download = "jarvis-karta-" + ts + ".png";
+        a.href = dataUrl;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Skärmdump sparad: " + a.download + " (kolla din Downloads-mapp).");
+      } catch (err) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Skärmdump-fel: " + err.message);
+      }
+    }
+
+    // ===== WEBCAMS: Windy.com (globala) + Trafikverket (Sverige) =====
+    let _kartaWindyKey = "";
+    let _kartaTrafikverketKey = "";
+    window.jarvisKartaApplyWindyKeyV1 = function(payload) {
+      if (!payload) return;
+      _kartaWindyKey = payload.hasKey ? String(payload.key || "") : "";
+    };
+    window.jarvisKartaApplyTrafikverketKeyV1 = function(payload) {
+      if (!payload) return;
+      _kartaTrafikverketKey = payload.hasKey ? String(payload.key || "") : "";
+    };
+
+    let _kartaWebcamsOn = false;
+    let _kartaWebcamsMarkers = [];
+    let _kartaWebcamsTimer = null;
+    function _kartaToggleWebcams() {
+      if (!_kartaWindyKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Webcams kräver WINDY_API_KEY. Registrera gratis på https://api.windy.com/ och spara nyckeln i Inställningar.");
+        return;
+      }
+      _kartaWebcamsOn = !_kartaWebcamsOn;
+      if (_kartaWebcamsOn) {
+        _kartaFetchWebcams();
+        _kartaWebcamsTimer = setInterval(_kartaFetchWebcams, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Webcams PÅ (Windy.com). Markörer visar live-bilder. Klicka för thumbnail + länk till streamen.");
+      } else {
+        if (_kartaWebcamsTimer) clearInterval(_kartaWebcamsTimer);
+        _kartaWebcamsTimer = null;
+        _kartaClearMarkers(_kartaWebcamsMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Webcams AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchWebcams() {
+      if (!_kartaMap || !_kartaWindyKey) return;
+      try {
+        const b = _kartaMap.getBounds();
+        const sw = b.getSouthWest(), ne = b.getNorthEast();
+        // Windy Webcams API v3: /webcams med bbox-filter (north,west,south,east)
+        const url = "https://api.windy.com/webcams/api/v3/webcams"
+          + "?nearby=" + ((sw.lat + ne.lat) / 2).toFixed(4) + "," + ((sw.lng + ne.lng) / 2).toFixed(4) + ",100"
+          + "&limit=50&include=images,location,urls";
+        const resp = await fetch(url, { headers: { "x-windy-api-key": _kartaWindyKey } });
+        if (!resp.ok) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Windy-fel: HTTP " + resp.status + (resp.status === 401 ? " (ogiltig WINDY_API_KEY)" : ""));
+          return;
+        }
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaWebcamsMarkers);
+        (data.webcams || []).forEach(function(w) {
+          const loc = w.location; if (!loc) return;
+          const thumb = (w.images && w.images.current && (w.images.current.thumbnail || w.images.current.preview)) || "";
+          const live = (w.urls && (w.urls.detail || w.urls.provider)) || "";
+          const popup = '<div class="karta-data-popup karta-webcam-popup">'
+            + (thumb ? '<img src="' + _kartaEsc(thumb) + '" alt="" loading="lazy" />' : "")
+            + '<div class="name">📹 ' + _kartaEsc(w.title || "Webcam") + '</div>'
+            + '<div class="meta">' + _kartaEsc([loc.city, loc.country].filter(Boolean).join(", ")) + '</div>'
+            + (live ? '<a href="' + _kartaEsc(live) + '" target="_blank" rel="noopener">Öppna live-ström →</a>' : "")
+            + '</div>';
+          _kartaWebcamsMarkers.push(_kartaMakeDataMarker({
+            lat: loc.latitude, lon: loc.longitude,
+            classes: "karta-webcam-marker",
+            content: "📹", title: w.title || "Webcam", popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
+    let _kartaTrvCamsOn = false;
+    let _kartaTrvCamsMarkers = [];
+    let _kartaTrvCamsTimer = null;
+    function _kartaToggleTrvCams() {
+      if (!_kartaTrafikverketKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Svenska trafikkameror kräver TRAFIKVERKET_API_KEY. Registrera gratis på https://api.trafikinfo.trafikverket.se/ och spara nyckeln i Inställningar.");
+        return;
+      }
+      _kartaTrvCamsOn = !_kartaTrvCamsOn;
+      if (_kartaTrvCamsOn) {
+        _kartaFetchTrvCams();
+        _kartaTrvCamsTimer = setInterval(_kartaFetchTrvCams, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Trafikverket-kameror PÅ. Live-bilder från alla svenska vägkameror — klicka för senaste foto.");
+      } else {
+        if (_kartaTrvCamsTimer) clearInterval(_kartaTrvCamsTimer);
+        _kartaTrvCamsTimer = null;
+        _kartaClearMarkers(_kartaTrvCamsMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Trafikverket-kameror AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchTrvCams() {
+      if (!_kartaTrafikverketKey) return;
+      const body = '<REQUEST><LOGIN authenticationkey="' + _kartaTrafikverketKey + '" />'
+        + '<QUERY objecttype="Camera" schemaversion="1.1" limit="500">'
+        + '<INCLUDE>Id</INCLUDE><INCLUDE>Name</INCLUDE>'
+        + '<INCLUDE>Geometry.WGS84</INCLUDE><INCLUDE>PhotoUrl</INCLUDE>'
+        + '<INCLUDE>Location</INCLUDE><INCLUDE>HasFullSizePhoto</INCLUDE>'
+        + '<INCLUDE>PhotoTime</INCLUDE>'
+        + '</QUERY></REQUEST>';
+      try {
+        const resp = await fetch("https://api.trafikinfo.trafikverket.se/v2/data.json", {
+          method: "POST",
+          headers: { "Content-Type": "text/xml" },
+          body: body
+        });
+        if (!resp.ok) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Trafikverket-fel: HTTP " + resp.status);
+          return;
+        }
+        const data = await resp.json();
+        const cams = (((data.RESPONSE || {}).RESULT || [])[0] || {}).Camera || [];
+        _kartaClearMarkers(_kartaTrvCamsMarkers);
+        cams.forEach(function(cam) {
+          // Geometry.WGS84 format: "POINT (lon lat)"
+          const g = cam["Geometry.WGS84"] || cam.Geometry && cam.Geometry.WGS84;
+          const m = g && String(g).match(/POINT\s*\(\s*([-0-9.]+)\s+([-0-9.]+)\s*\)/);
+          if (!m) return;
+          const lon = parseFloat(m[1]), lat = parseFloat(m[2]);
+          const photoUrl = cam.PhotoUrl
+            ? cam.PhotoUrl + "?type=fullsize" : "";
+          const photoTime = cam.PhotoTime ? new Date(cam.PhotoTime).toLocaleString("sv-SE") : "";
+          const popup = '<div class="karta-data-popup karta-webcam-popup">'
+            + (photoUrl ? '<img src="' + _kartaEsc(photoUrl) + '" alt="" loading="lazy" />' : "")
+            + '<div class="name">🛣 ' + _kartaEsc(cam.Name || "Trafikkamera") + '</div>'
+            + '<div class="meta">' + _kartaEsc(cam.Location || "") + (photoTime ? " · " + photoTime : "") + '</div>'
+            + (photoUrl ? '<a href="' + _kartaEsc(photoUrl) + '" target="_blank" rel="noopener">Fullstorlek →</a>' : "")
+            + '</div>';
+          _kartaTrvCamsMarkers.push(_kartaMakeDataMarker({
+            lat: lat, lon: lon,
+            classes: "karta-webcam-marker",
+            style: "border-color:#6aff9e; color:#6aff9e;",
+            content: "🛣", title: cam.Name || "Trafikkamera", popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
     let _kartaWeatherOn = false;
     let _kartaWeatherTimer = null;
@@ -3460,6 +3782,9 @@ Skärmvision kräver UI-TARS.</div>
         kartaTogglePoliceBtn: !!_kartaPoliceOn,
         kartaToggleBikesBtn: !!_kartaBikesOn,
         kartaToggleWavesBtn: !!_kartaWavesOn,
+        kartaMeasureBtn: !!_kartaMeasureOn,
+        kartaToggleWebcamsBtn: !!_kartaWebcamsOn,
+        kartaToggleTrvCamsBtn: !!_kartaTrvCamsOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
@@ -3718,7 +4043,62 @@ Skärmvision kräver UI-TARS.</div>
             _kartaRenderPoiPanelV2();
           }
         });
+
+        // 7) Höjd över havet (Open-Elevation, gratis)
+        _kartaFetchPoiElevationV1(lat, lon).then(function(elev) {
+          if (_kartaPoiCurrent && elev != null) {
+            _kartaPoiCurrent.tags._elevation = elev;
+            _kartaRenderPoiPanelV2();
+          }
+        });
+
+        // 8) Sol-tider (sunrise-sunset.org, gratis)
+        _kartaFetchPoiSunV1(lat, lon).then(function(sun) {
+          if (_kartaPoiCurrent && sun) {
+            _kartaPoiCurrent.tags._sun = sun;
+            _kartaRenderPoiPanelV2();
+          }
+        });
+
+        // 9) Tidszon + lokal tid (TimeAPI.io, gratis, ingen nyckel)
+        _kartaFetchPoiTimezoneV1(lat, lon).then(function(tz) {
+          if (_kartaPoiCurrent && tz) {
+            _kartaPoiCurrent.tags._timezone = tz;
+            _kartaRenderPoiPanelV2();
+          }
+        });
       });
+    }
+
+    async function _kartaFetchPoiElevationV1(lat, lon) {
+      try {
+        const url = "https://api.open-elevation.com/api/v1/lookup?locations=" + lat + "," + lon;
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const r = data.results && data.results[0];
+        return r && typeof r.elevation === "number" ? r.elevation : null;
+      } catch (_) { return null; }
+    }
+
+    async function _kartaFetchPoiSunV1(lat, lon) {
+      try {
+        const url = "https://api.sunrise-sunset.org/json?lat=" + lat + "&lng=" + lon + "&formatted=0";
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        if (data.status !== "OK") return null;
+        return data.results;
+      } catch (_) { return null; }
+    }
+
+    async function _kartaFetchPoiTimezoneV1(lat, lon) {
+      try {
+        const url = "https://timeapi.io/api/Time/current/coordinate?latitude=" + lat + "&longitude=" + lon;
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        return await resp.json();
+      } catch (_) { return null; }
     }
 
     function _kartaShowPoiPanel(open) {
@@ -3869,6 +4249,46 @@ Skärmvision kräver UI-TARS.</div>
         wikiSection += '</div>';
       }
 
+      // Geo-fakta: höjd / sol / tidszon (alla beräknade per klickpunkt)
+      let geoSection = "";
+      const elev = tags._elevation;
+      const sun = tags._sun;
+      const tz = tags._timezone;
+      if (elev != null || sun || tz) {
+        const rows = [];
+        if (elev != null) rows.push(["🪨 Höjd", Math.round(elev) + " m ö.h."]);
+        if (tz && tz.dateTime) {
+          const localTime = new Date(tz.dateTime).toLocaleString("sv-SE",
+            { hour: "2-digit", minute: "2-digit", day: "2-digit", month: "short" });
+          rows.push(["🕐 Lokal tid", localTime + (tz.timeZone ? " (" + tz.timeZone + ")" : "")]);
+        }
+        if (sun) {
+          function fmt(iso) {
+            try {
+              const d = new Date(iso);
+              const tzName = (tz && tz.timeZone) ? tz.timeZone : undefined;
+              return d.toLocaleTimeString("sv-SE", { hour: "2-digit", minute: "2-digit", timeZone: tzName });
+            } catch (_) { return ""; }
+          }
+          if (sun.sunrise) rows.push(["🌅 Soluppgång", fmt(sun.sunrise)]);
+          if (sun.sunset)  rows.push(["🌇 Solnedgång", fmt(sun.sunset)]);
+          if (sun.day_length) {
+            const sec = Number(sun.day_length);
+            const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+            rows.push(["☀ Dagslängd", h + " tim " + m + " min"]);
+          }
+        }
+        if (rows.length > 0) {
+          geoSection = '<div class="poi-section"><h4>Plats-fakta</h4>';
+          rows.forEach(function(r) {
+            geoSection += '<div class="poi-info-row"><span class="poi-i-ico">' + r[0].split(" ")[0]
+              + '</span><span class="poi-i-v"><strong>' + esc(r[0].replace(/^\S+\s*/, "")) + ':</strong> '
+              + esc(r[1]) + '</span></div>';
+          });
+          geoSection += '</div>';
+        }
+      }
+
       // Väder
       let weatherSection = "";
       if (tags._weather) {
@@ -3897,7 +4317,7 @@ Skärmvision kräver UI-TARS.</div>
         loadingSection = '<div class="poi-section"><div class="poi-loading-shimmer">Hämtar bilder, beskrivning, närliggande och väder…</div></div>';
       }
 
-      body.innerHTML = gallery + titleBlock + actions + infoSection + transitSection + wikiSection + weatherSection + nearbySection + loadingSection;
+      body.innerHTML = gallery + titleBlock + actions + infoSection + transitSection + geoSection + wikiSection + weatherSection + nearbySection + loadingSection;
 
       // Wire galleri-navigation
       const gn = body.querySelectorAll(".poi-gallery-nav");
