@@ -716,6 +716,16 @@ public sealed class JarvisForm : Form
                 await SendKartaTrafikverketKeyAsync();
                 return;
             }
+            if (type == "karta_fetch_webcams")
+            {
+                await HandleKartaFetchWebcamsAsync(root);
+                return;
+            }
+            if (type == "karta_fetch_trv_cams")
+            {
+                await HandleKartaFetchTrvCamsAsync(root);
+                return;
+            }
 
             if (type == "brain_rebuild_graph")
             {
@@ -7995,6 +8005,101 @@ public sealed class JarvisForm : Form
         var payload = JsonSerializer.Serialize(new { hasKey, key = hasKey ? key : "" });
         await _webView.CoreWebView2.ExecuteScriptAsync(
             $"window.jarvisKartaApplyTrafikverketKeyV1 && window.jarvisKartaApplyTrafikverketKeyV1({payload});");
+    }
+
+    // Windy Webcams + Trafikverket-API:er har CORS-restriktioner som blockerar fetch från
+    // dashboard origin (jarvis.local). Vi proxar anropen server-side.
+    private async Task HandleKartaFetchWebcamsAsync(JsonElement root)
+    {
+        var requestId = root.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String
+            ? i.GetString() ?? "" : "";
+        var lat = root.TryGetProperty("lat", out var la) && la.ValueKind == JsonValueKind.Number ? la.GetDouble() : double.NaN;
+        var lon = root.TryGetProperty("lon", out var lo) && lo.ValueKind == JsonValueKind.Number ? lo.GetDouble() : double.NaN;
+        var radiusKm = root.TryGetProperty("radius", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt32() : 250;
+        if (double.IsNaN(lat) || double.IsNaN(lon))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaWebcamsResultV1", requestId, null, "Saknar lat/lon.");
+            return;
+        }
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "WINDY_API_KEY", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaWebcamsResultV1", requestId, null,
+                "WINDY_API_KEY saknas. Registrera gratis nyckel på api.windy.com och lägg in via Inställningar.");
+            return;
+        }
+        try
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var url = "https://api.windy.com/webcams/api/v3/webcams"
+                + "?nearby=" + lat.ToString("F4", inv) + "," + lon.ToString("F4", inv) + "," + radiusKm.ToString(inv)
+                + "&limit=50&include=images,location,urls,player";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("x-windy-api-key", apiKey);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var resp = await Http.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                var hint = (int)resp.StatusCode == 401 ? " (ogiltig WINDY_API_KEY)" :
+                    (int)resp.StatusCode == 403 ? " (forbidden — nyckeln måste vara för Webcams API v3)" : "";
+                await SendKartaProxyResultAsync("jarvisKartaWebcamsResultV1", requestId, null,
+                    "Windy HTTP " + (int)resp.StatusCode + hint);
+                return;
+            }
+            await SendKartaProxyResultAsync("jarvisKartaWebcamsResultV1", requestId, body, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaProxyResultAsync("jarvisKartaWebcamsResultV1", requestId, null,
+                "Windy fel: " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    private async Task HandleKartaFetchTrvCamsAsync(JsonElement root)
+    {
+        var requestId = root.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String
+            ? i.GetString() ?? "" : "";
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "TRAFIKVERKET_API_KEY", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaTrvCamsResultV1", requestId, null,
+                "TRAFIKVERKET_API_KEY saknas. Registrera gratis nyckel på api.trafikinfo.trafikverket.se.");
+            return;
+        }
+        try
+        {
+            var xml = "<REQUEST><LOGIN authenticationkey=\"" + System.Security.SecurityElement.Escape(apiKey) + "\" />"
+                + "<QUERY objecttype=\"Camera\" schemaversion=\"1.1\" limit=\"500\">"
+                + "<INCLUDE>Id</INCLUDE><INCLUDE>Name</INCLUDE>"
+                + "<INCLUDE>Geometry.WGS84</INCLUDE><INCLUDE>PhotoUrl</INCLUDE>"
+                + "<INCLUDE>Location</INCLUDE><INCLUDE>HasFullSizePhoto</INCLUDE>"
+                + "<INCLUDE>PhotoTime</INCLUDE>"
+                + "</QUERY></REQUEST>";
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.trafikinfo.trafikverket.se/v2/data.json");
+            req.Content = new StringContent(xml, System.Text.Encoding.UTF8, "text/xml");
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var resp = await Http.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendKartaProxyResultAsync("jarvisKartaTrvCamsResultV1", requestId, null,
+                    "Trafikverket HTTP " + (int)resp.StatusCode);
+                return;
+            }
+            await SendKartaProxyResultAsync("jarvisKartaTrvCamsResultV1", requestId, body, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaProxyResultAsync("jarvisKartaTrvCamsResultV1", requestId, null,
+                "Trafikverket fel: " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    private async Task SendKartaProxyResultAsync(string callbackName, string requestId, string? rawJson, string? error)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new { id = requestId, raw = rawJson ?? "", error = error ?? "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.{callbackName} && window.{callbackName}({payload});");
     }
 
     private async Task SendKartaGoogleKeyAsync()
