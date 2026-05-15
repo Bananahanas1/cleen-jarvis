@@ -2504,15 +2504,22 @@ Skärmvision kräver UI-TARS.</div>
       });
     }
     function _kartaMakeDataMarker(opts) {
-      // opts: { lat, lon, classes, content, title, popupHtml }
+      // opts: { lat, lon, classes, content, title, popupHtml, onClick }
+      // Om onClick passas: bind direkt på element och skippa popup (säkrare i WebView2).
       const el = document.createElement("div");
       el.className = "karta-data-marker " + (opts.classes || "");
       if (opts.style) el.setAttribute("style", opts.style);
       el.innerHTML = opts.content || "";
       if (opts.title) el.title = opts.title;
+      el.style.pointerEvents = "auto";
       // opacityWhenCovered:'1' — markörer syns alltid, även när de är på baksidan av globe-jordklotet
       const marker = new maplibregl.Marker({ element: el, opacityWhenCovered: "1" }).setLngLat([opts.lon, opts.lat]);
-      if (opts.popupHtml) {
+      if (typeof opts.onClick === "function") {
+        el.addEventListener("click", function(e) {
+          e.stopPropagation();
+          opts.onClick();
+        });
+      } else if (opts.popupHtml) {
         marker.setPopup(new maplibregl.Popup({ offset: 14, maxWidth: "300px" }).setHTML(opts.popupHtml));
       }
       marker.addTo(_kartaMap);
@@ -3251,28 +3258,29 @@ Skärmvision kräver UI-TARS.</div>
         let added = 0;
         cams.forEach(function(w) {
           const loc = w.location; if (!loc) return;
-          const thumb = (w.images && w.images.current && (w.images.current.thumbnail || w.images.current.preview)) || "";
           const live = (w.urls && (w.urls.detail || w.urls.provider)) || "";
-          // Windy player URL — iframe-vänlig embed-länk. day = senaste timelapse, live = realtid om det finns.
+          // Windy player URL — iframe-vänlig embed-länk. live/day/month — fall back i ordning.
           const player = (w.player && (w.player.live || w.player.day || w.player.month)) || "";
           const title = w.title || "Webcam";
-          // JSON i data-attribut — escaperas som HTML attribute value (quotes blir &quot;).
-          const openArgs = _kartaEsc(JSON.stringify({
-            type: "iframe", src: player, title: title, externalUrl: live || player
-          }));
-          const popup = '<div class="karta-data-popup karta-webcam-popup">'
-            + (thumb ? '<img src="' + _kartaEsc(thumb) + '" alt="" loading="lazy" />' : "")
-            + '<div class="name">📹 ' + _kartaEsc(title) + '</div>'
-            + '<div class="meta">' + _kartaEsc([loc.city, loc.country].filter(Boolean).join(", ")) + '</div>'
-            + (player
-                ? '<button class="open-live" data-webcam-args="' + openArgs + '">▶ Visa live i Jarvis</button> '
-                : "")
-            + (live ? '<a href="' + _kartaEsc(live) + '" target="_blank" rel="noopener">Öppna externt ↗</a>' : "")
-            + '</div>';
+          // Klick på markör → öppnar modal direkt. Om player saknas, prova live-URL som iframe;
+          // om det också saknas, öppna externt i ny flik.
+          const iframeSrc = player || live;
           _kartaWebcamsMarkers.push(_kartaMakeDataMarker({
             lat: loc.latitude, lon: loc.longitude,
             classes: "karta-webcam-marker",
-            content: "📹", title: title, popupHtml: popup
+            content: "📹", title: title,
+            onClick: function() {
+              if (iframeSrc) {
+                _kartaOpenWebcamModal({
+                  type: "iframe", src: iframeSrc, title: title, externalUrl: live || player
+                });
+              } else if (live) {
+                window.open(live, "_blank");
+              } else {
+                window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+                  "Webcam '" + title + "' har varken player eller URL.");
+              }
+            }
           }));
           added++;
         });
@@ -3337,25 +3345,19 @@ Skärmvision kräver UI-TARS.</div>
           if (!m) return;
           const lon = parseFloat(m[1]), lat = parseFloat(m[2]);
           const photoUrl = cam.PhotoUrl ? cam.PhotoUrl + "?type=fullsize" : "";
-          const photoTime = cam.PhotoTime ? new Date(cam.PhotoTime).toLocaleString("sv-SE") : "";
           const title = cam.Name || "Trafikkamera";
-          const openArgs = photoUrl ? _kartaEsc(JSON.stringify({
-            type: "image", src: photoUrl, title: title, externalUrl: photoUrl
-          })) : "";
-          const popup = '<div class="karta-data-popup karta-webcam-popup">'
-            + (photoUrl ? '<img src="' + _kartaEsc(photoUrl) + '" alt="" loading="lazy" />' : "")
-            + '<div class="name">🛣 ' + _kartaEsc(title) + '</div>'
-            + '<div class="meta">' + _kartaEsc(cam.Location || "") + (photoTime ? " · " + photoTime : "") + '</div>'
-            + (photoUrl
-                ? '<button class="open-live" data-webcam-args="' + openArgs + '">🔍 Visa stor i Jarvis</button> '
-                : "")
-            + (photoUrl ? '<a href="' + _kartaEsc(photoUrl) + '" target="_blank" rel="noopener">Externt ↗</a>' : "")
-            + '</div>';
           _kartaTrvCamsMarkers.push(_kartaMakeDataMarker({
             lat: lat, lon: lon,
             classes: "karta-webcam-marker",
             style: "border-color:#6aff9e; color:#6aff9e;",
-            content: "🛣", title: cam.Name || "Trafikkamera", popupHtml: popup
+            content: "🛣", title: title,
+            onClick: function() {
+              if (photoUrl) {
+                _kartaOpenWebcamModal({
+                  type: "image", src: photoUrl, title: title, externalUrl: photoUrl
+                });
+              }
+            }
           }));
           added++;
         });
