@@ -93,6 +93,27 @@ check("Trafik-button syncas i _kartaSyncLayerButtonsV1",
 check("Trafik-tiles refreshas 60s via setTiles",
   dashboard.includes("setTiles([_kartaTrafficTileUrl()])"));
 
+// --- Data-overlay-paket: 7 toggles + fetchers ---
+const overlays = [
+  ["Quakes",  "_kartaToggleQuakes",       "kartaToggleQuakesBtn",  "earthquake.usgs.gov"],
+  ["Events",  "_kartaToggleEonetEvents",  "kartaToggleEventsBtn",  "eonet.gsfc.nasa.gov"],
+  ["ISS",     "_kartaToggleIss",          "kartaToggleIssBtn",     "api.wheretheiss.at"],
+  ["Air",     "_kartaToggleAir",          "kartaToggleAirBtn",     "api.openaq.org"],
+  ["EV",      "_kartaToggleEv",           "kartaToggleEvBtn",      "api.openchargemap.io"],
+  ["Police",  "_kartaTogglePolice",       "kartaTogglePoliceBtn",  "polisen.se/api/events"],
+  ["Bikes",   "_kartaToggleBikes",        "kartaToggleBikesBtn",   "gbfs"]
+];
+overlays.forEach(function(o) {
+  check(o[0] + " toggle-knapp finns", dashboard.includes('id="' + o[2] + '"'));
+  check(o[0] + " toggle-funktion finns", dashboard.includes("function " + o[1]));
+  check(o[0] + " syncas i layer-buttons", dashboard.includes(o[2] + ":"));
+  check(o[0] + " använder rätt API-host", dashboard.toLowerCase().includes(o[3].toLowerCase()));
+});
+check("Andra knapprad CSS finns", dashboard.includes(".karta-controls-row2"));
+check("Data-marker-CSS finns", dashboard.includes(".karta-data-marker"));
+check("Generisk _kartaClearMarkers finns", dashboard.includes("function _kartaClearMarkers"));
+check("Generisk _kartaMakeDataMarker finns", dashboard.includes("function _kartaMakeDataMarker"));
+
 if (failures > 0) {
   console.log("\nKarta transit + label z-order checks failed: " + failures);
   process.exit(1);

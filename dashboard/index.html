@@ -1264,6 +1264,38 @@ Skärmvision kräver UI-TARS.</div>
         .karta-mini-chat input { width:100%; background:#03070d; border:1px solid #1f4e68;
           color:#dff7ff; padding:6px 10px; border-radius:4px; font-family:inherit; outline:none; font-size:12px; }
         .karta-controls { bottom:14px; left:14px; display:flex; gap:6px; flex-wrap:wrap; max-width:calc(100vw - 320px); }
+        .karta-controls-row2 { bottom:62px; left:14px; }
+        /* Data-overlay-markers (jordbävningar, EONET, ISS, luft, EV, polis, cyklar) */
+        .karta-data-marker { display:flex; align-items:center; justify-content:center;
+          color:#fff; font-size:13px; font-weight:700; cursor:pointer;
+          text-shadow:0 0 4px rgba(0,0,0,0.9); transition:transform 0.15s ease;
+          line-height:1; user-select:none; }
+        .karta-data-marker:hover { transform:scale(1.2); z-index:10; }
+        .karta-quake-marker { border-radius:50%; border:2px solid rgba(255,255,255,0.9);
+          box-shadow:0 0 16px rgba(255,80,40,0.7); }
+        @keyframes kartaQuakePulse { 0% { box-shadow:0 0 0 0 rgba(255,80,40,0.7); }
+          100% { box-shadow:0 0 0 24px rgba(255,80,40,0); } }
+        .karta-quake-marker::after { content:""; position:absolute; inset:0; border-radius:50%;
+          animation:kartaQuakePulse 2s ease-out infinite; pointer-events:none; }
+        .karta-eonet-marker { width:28px; height:28px; border-radius:8px; font-size:18px;
+          background:rgba(20,40,60,0.85); border:1px solid rgba(255,180,80,0.7); }
+        .karta-iss-marker { width:36px; height:36px; font-size:24px; background:rgba(106,217,255,0.15);
+          border-radius:50%; border:2px solid #6ad9ff; box-shadow:0 0 24px rgba(106,217,255,0.8);
+          animation:kartaIssRot 6s linear infinite; }
+        @keyframes kartaIssRot { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+        .karta-air-marker { width:22px; height:22px; border-radius:50%; opacity:0.85;
+          border:2px solid rgba(255,255,255,0.6); }
+        .karta-ev-marker { width:24px; height:24px; font-size:14px; background:rgba(30,60,80,0.9);
+          border-radius:6px; border:1px solid #6aff9e; color:#6aff9e; }
+        .karta-police-marker { width:26px; height:26px; font-size:14px; background:rgba(60,30,80,0.9);
+          border-radius:50%; border:1px solid #c89aff; color:#c89aff; }
+        .karta-bike-marker { width:24px; height:24px; font-size:13px; background:rgba(40,60,30,0.9);
+          border-radius:50%; border:1px solid #aef068; color:#aef068; }
+        .karta-data-popup { font-family:inherit; color:#0a1622; font-size:12.5px; max-width:280px; }
+        .karta-data-popup .name { font-weight:700; font-size:14px; margin-bottom:4px; color:#0a1622; }
+        .karta-data-popup .meta { color:#2a6688; font-size:11px; margin-bottom:6px; }
+        .karta-data-popup .row { display:flex; gap:6px; padding:1px 0; }
+        .karta-data-popup .k { color:#2a6688; font-weight:600; min-width:78px; }
         .karta-btn { background:rgba(106,217,255,0.12); border:1px solid #1f4e68; color:#aee6ff;
           padding:4px 10px; border-radius:4px; cursor:pointer; font-family:inherit; font-size:11px;
           position:relative; transition: background 0.15s, border-color 0.15s, color 0.15s; }
@@ -1445,6 +1477,16 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaToggleWeatherBtn" title="Live-väder för kartans mitt (open-meteo)">☁ Väder</button>
           <button class="karta-btn" id="kartaToggleTrafficBtn" title="Live trafikfärg på gator (TomTom, kräver TOMTOM_API_KEY)">🚗 Trafik</button>
           <button class="karta-btn" id="kartaToggleGoogleBtn" title="Växla Google Photorealistic 3D (kräver API-key)" style="display:none;">⊕ Google 3D</button>
+        </div>
+        <!-- Andra knapprad: data-overlays från offentliga APIer (alla gratis, ingen nyckel) -->
+        <div class="karta-glass karta-controls karta-controls-row2">
+          <button class="karta-btn" id="kartaToggleQuakesBtn" title="USGS Earthquakes — globala jordbävningar (M ≥ 2.5, senaste vecka)">🌋 Quakes</button>
+          <button class="karta-btn" id="kartaToggleEventsBtn" title="NASA EONET — natursenastlatningar (bränder, cykloner, vulkaner, isberg)">🔥 Events</button>
+          <button class="karta-btn" id="kartaToggleIssBtn" title="ISS live position — rymdstationen där den är just nu">🚀 ISS</button>
+          <button class="karta-btn" id="kartaToggleAirBtn" title="OpenAQ — luftkvalitet (PM2.5, ozon, NO₂)">💨 Luft</button>
+          <button class="karta-btn" id="kartaToggleEvBtn" title="Open Charge Map — elbilsladdstationer">⚡ EV</button>
+          <button class="karta-btn" id="kartaTogglePoliceBtn" title="Polisen.se — händelser senaste 24h">🚓 Polis</button>
+          <button class="karta-btn" id="kartaToggleBikesBtn" title="GBFS Citybikes — lediga cyklar i Sthlm/Gbg/Malmö">🚲 Cyklar</button>
         </div>
         <div class="karta-glass karta-mini-chat">
           <div class="karta-glass-title">Fråga Jarvis</div>
@@ -2199,6 +2241,22 @@ Skärmvision kräver UI-TARS.</div>
       // Be om TomTom-nyckel vid init så toggle-knappen vet om nyckel finns
       postMessage({ type: "karta_get_tomtom_key" });
 
+      // ===== Data-overlays (andra knapprad) =====
+      const quakesBtn = document.getElementById("kartaToggleQuakesBtn");
+      if (quakesBtn) quakesBtn.addEventListener("click", function() { _kartaToggleQuakes(); });
+      const eventsBtn = document.getElementById("kartaToggleEventsBtn");
+      if (eventsBtn) eventsBtn.addEventListener("click", function() { _kartaToggleEonetEvents(); });
+      const issBtn = document.getElementById("kartaToggleIssBtn");
+      if (issBtn) issBtn.addEventListener("click", function() { _kartaToggleIss(); });
+      const airBtn = document.getElementById("kartaToggleAirBtn");
+      if (airBtn) airBtn.addEventListener("click", function() { _kartaToggleAir(); });
+      const evBtn = document.getElementById("kartaToggleEvBtn");
+      if (evBtn) evBtn.addEventListener("click", function() { _kartaToggleEv(); });
+      const policeBtn = document.getElementById("kartaTogglePoliceBtn");
+      if (policeBtn) policeBtn.addEventListener("click", function() { _kartaTogglePolice(); });
+      const bikesBtn = document.getElementById("kartaToggleBikesBtn");
+      if (bikesBtn) bikesBtn.addEventListener("click", function() { _kartaToggleBikes(); });
+
       // POI-panel close-knapp
       const poiCloseBtn = document.getElementById("kartaPoiCloseBtn");
       if (poiCloseBtn) poiCloseBtn.addEventListener("click", function() {
@@ -2318,6 +2376,406 @@ Skärmvision kräver UI-TARS.</div>
       const src = _kartaMap.getSource(_KARTA_TRAFFIC_SOURCE_ID);
       if (!src || typeof src.setTiles !== "function") return;
       try { src.setTiles([_kartaTrafficTileUrl()]); } catch (_) {}
+    }
+
+    // ===== DATA-OVERLAYS (gratis offentliga APIer, ingen nyckel krävs) =====
+    // Gemensam pattern: state-flagga, markers-array, refresh-timer per källa.
+
+    function _kartaClearMarkers(arr) {
+      if (!Array.isArray(arr)) return;
+      arr.forEach(function(m) { try { m.remove(); } catch (_) {} });
+      arr.length = 0;
+    }
+    function _kartaEsc(s) {
+      return String(s == null ? "" : s).replace(/[&<>"']/g, function(c) {
+        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" })[c];
+      });
+    }
+    function _kartaMakeDataMarker(opts) {
+      // opts: { lat, lon, classes, content, title, popupHtml }
+      const el = document.createElement("div");
+      el.className = "karta-data-marker " + (opts.classes || "");
+      if (opts.style) el.setAttribute("style", opts.style);
+      el.innerHTML = opts.content || "";
+      if (opts.title) el.title = opts.title;
+      const marker = new maplibregl.Marker({ element: el }).setLngLat([opts.lon, opts.lat]);
+      if (opts.popupHtml) {
+        marker.setPopup(new maplibregl.Popup({ offset: 14, maxWidth: "300px" }).setHTML(opts.popupHtml));
+      }
+      marker.addTo(_kartaMap);
+      return marker;
+    }
+
+    // --- USGS Earthquakes (global, magnitud ≥ 2.5, senaste vecka) ---
+    let _kartaQuakesOn = false;
+    let _kartaQuakesMarkers = [];
+    let _kartaQuakesTimer = null;
+    function _kartaToggleQuakes() {
+      _kartaQuakesOn = !_kartaQuakesOn;
+      if (_kartaQuakesOn) {
+        _kartaFetchQuakes();
+        _kartaQuakesTimer = setInterval(_kartaFetchQuakes, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Jordbävningar PÅ (USGS, M ≥ 2.5 senaste vecka). Pulserande röd = M ≥ 5.0.");
+      } else {
+        if (_kartaQuakesTimer) clearInterval(_kartaQuakesTimer);
+        _kartaQuakesTimer = null;
+        _kartaClearMarkers(_kartaQuakesMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Jordbävningar AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchQuakes() {
+      try {
+        const resp = await fetch("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaQuakesMarkers);
+        (data.features || []).forEach(function(f) {
+          const coords = f.geometry && f.geometry.coordinates; if (!coords) return;
+          const lon = coords[0], lat = coords[1], depth = coords[2];
+          const p = f.properties || {};
+          const mag = Number(p.mag) || 0;
+          const size = Math.max(14, Math.min(46, 10 + mag * 6));
+          const hue = mag >= 6 ? 0 : (mag >= 4 ? 18 : 38);
+          const sat = mag >= 5 ? 95 : 75;
+          const bg = "hsl(" + hue + "," + sat + "%,55%)";
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">M ' + mag.toFixed(1) + ' — ' + _kartaEsc(p.place || "Okänd plats") + '</div>'
+            + '<div class="meta">' + new Date(p.time || Date.now()).toLocaleString("sv-SE") + '</div>'
+            + '<div class="row"><span class="k">Djup</span><span>' + (depth != null ? depth.toFixed(1) + ' km' : '?') + '</span></div>'
+            + (p.tsunami ? '<div class="row"><span class="k">Tsunami</span><span>Varning aktiv</span></div>' : '')
+            + (p.url ? '<div class="row"><a href="' + _kartaEsc(p.url) + '" target="_blank" rel="noopener">USGS-rapport →</a></div>' : '')
+            + '</div>';
+          const m = _kartaMakeDataMarker({
+            lat: lat, lon: lon,
+            classes: "karta-quake-marker",
+            style: "width:" + size + "px; height:" + size + "px; background:" + bg + "; font-size:" + Math.max(9, size * 0.36) + "px;",
+            content: mag.toFixed(1),
+            title: "M " + mag.toFixed(1) + " " + (p.place || ""),
+            popupHtml: popup
+          });
+          _kartaQuakesMarkers.push(m);
+        });
+      } catch (_) {}
+    }
+
+    // --- NASA EONET (cykloner, bränder, vulkaner, isberg, översvämningar) ---
+    let _kartaEonetOn = false;
+    let _kartaEonetMarkers = [];
+    let _kartaEonetTimer = null;
+    const EONET_ICONS = { wildfires: "🔥", severeStorms: "🌀", volcanoes: "🌋", seaLakeIce: "🧊",
+      floods: "🌊", drought: "🏜️", earthquakes: "⚡", landslides: "⛰️", manmade: "⚠️",
+      snow: "❄️", tempExtremes: "🌡️", waterColor: "💧" };
+    function _kartaToggleEonetEvents() {
+      _kartaEonetOn = !_kartaEonetOn;
+      if (_kartaEonetOn) {
+        _kartaFetchEonet();
+        _kartaEonetTimer = setInterval(_kartaFetchEonet, 10 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "NASA EONET PÅ — visar pågående naturhändelser globalt (bränder, cykloner, vulkaner, isberg).");
+      } else {
+        if (_kartaEonetTimer) clearInterval(_kartaEonetTimer);
+        _kartaEonetTimer = null;
+        _kartaClearMarkers(_kartaEonetMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "NASA EONET AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchEonet() {
+      try {
+        const resp = await fetch("https://eonet.gsfc.nasa.gov/api/v3/events?status=open&limit=200");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaEonetMarkers);
+        (data.events || []).forEach(function(ev) {
+          const geom = (ev.geometry && ev.geometry[ev.geometry.length - 1]) || null;
+          if (!geom || !geom.coordinates) return;
+          let lon, lat;
+          if (geom.type === "Point") { lon = geom.coordinates[0]; lat = geom.coordinates[1]; }
+          else if (geom.type === "Polygon") {
+            const ring = geom.coordinates[0] || [];
+            if (ring.length === 0) return;
+            const c = ring.reduce(function(a, p) { return [a[0] + p[0], a[1] + p[1]]; }, [0, 0]);
+            lon = c[0] / ring.length; lat = c[1] / ring.length;
+          } else return;
+          const catId = (ev.categories && ev.categories[0] && ev.categories[0].id) || "";
+          const icon = EONET_ICONS[catId] || "📍";
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">' + icon + ' ' + _kartaEsc(ev.title || "EONET-event") + '</div>'
+            + '<div class="meta">' + _kartaEsc((ev.categories && ev.categories[0] && ev.categories[0].title) || "")
+            + ' · ' + new Date(geom.date || ev.geometry[0].date).toLocaleString("sv-SE") + '</div>'
+            + (ev.description ? '<div>' + _kartaEsc(ev.description) + '</div>' : '')
+            + (ev.link ? '<div class="row"><a href="' + _kartaEsc(ev.link) + '" target="_blank" rel="noopener">EONET-länk →</a></div>' : '')
+            + '</div>';
+          _kartaEonetMarkers.push(_kartaMakeDataMarker({
+            lat: lat, lon: lon, classes: "karta-eonet-marker",
+            content: icon, title: ev.title || "EONET", popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
+    // --- ISS Live Position ---
+    let _kartaIssOn = false;
+    let _kartaIssMarker = null;
+    let _kartaIssTimer = null;
+    function _kartaToggleIss() {
+      _kartaIssOn = !_kartaIssOn;
+      if (_kartaIssOn) {
+        _kartaFetchIss();
+        _kartaIssTimer = setInterval(_kartaFetchIss, 5000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "ISS PÅ — uppdateras var 5:e sek.");
+      } else {
+        if (_kartaIssTimer) clearInterval(_kartaIssTimer);
+        _kartaIssTimer = null;
+        if (_kartaIssMarker) { try { _kartaIssMarker.remove(); } catch (_) {} _kartaIssMarker = null; }
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "ISS AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchIss() {
+      try {
+        const resp = await fetch("https://api.wheretheiss.at/v1/satellites/25544");
+        if (!resp.ok) return;
+        const d = await resp.json();
+        const popup = '<div class="karta-data-popup">'
+          + '<div class="name">🚀 ISS (Zarya)</div>'
+          + '<div class="meta">' + new Date().toLocaleString("sv-SE") + '</div>'
+          + '<div class="row"><span class="k">Höjd</span><span>' + Number(d.altitude).toFixed(0) + ' km</span></div>'
+          + '<div class="row"><span class="k">Hastighet</span><span>' + Number(d.velocity).toFixed(0) + ' km/h</span></div>'
+          + '<div class="row"><span class="k">Position</span><span>' + d.latitude.toFixed(3) + ', ' + d.longitude.toFixed(3) + '</span></div>'
+          + '</div>';
+        if (_kartaIssMarker) {
+          _kartaIssMarker.setLngLat([d.longitude, d.latitude]);
+          _kartaIssMarker.getPopup() && _kartaIssMarker.getPopup().setHTML(popup);
+        } else {
+          _kartaIssMarker = _kartaMakeDataMarker({
+            lat: d.latitude, lon: d.longitude, classes: "karta-iss-marker",
+            content: "🛰", title: "ISS Live", popupHtml: popup
+          });
+        }
+      } catch (_) {}
+    }
+
+    // --- OpenAQ luftkvalitet (PM2.5-fokuserad färg) ---
+    let _kartaAirOn = false;
+    let _kartaAirMarkers = [];
+    let _kartaAirTimer = null;
+    function _kartaToggleAir() {
+      _kartaAirOn = !_kartaAirOn;
+      if (_kartaAirOn) {
+        _kartaFetchAir();
+        _kartaAirTimer = setInterval(_kartaFetchAir, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Luftkvalitet PÅ (OpenAQ). Färg = PM2.5: grön god, gul okej, orange osund, röd dålig.");
+      } else {
+        if (_kartaAirTimer) clearInterval(_kartaAirTimer);
+        _kartaAirTimer = null;
+        _kartaClearMarkers(_kartaAirMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Luftkvalitet AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaPm25Color(v) {
+      if (v == null || isNaN(v)) return "#7a7a7a";
+      if (v <= 12) return "#4caf50";
+      if (v <= 35) return "#ffd54f";
+      if (v <= 55) return "#ff9800";
+      if (v <= 150) return "#f44336";
+      return "#7b1fa2";
+    }
+    async function _kartaFetchAir() {
+      if (!_kartaMap) return;
+      try {
+        const b = _kartaMap.getBounds();
+        const sw = b.getSouthWest(), ne = b.getNorthEast();
+        // OpenAQ v3 coordinates-endpoint kräver radius — vi använder bbox via fallback v2
+        const url = "https://api.openaq.org/v2/latest?limit=200&parameter=pm25"
+          + "&coordinates=" + ((sw.lat + ne.lat) / 2).toFixed(4) + "," + ((sw.lng + ne.lng) / 2).toFixed(4)
+          + "&radius=50000";
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaAirMarkers);
+        (data.results || []).forEach(function(s) {
+          if (!s.coordinates) return;
+          const m = (s.measurements || []).find(function(x) { return x.parameter === "pm25"; });
+          if (!m) return;
+          const value = Number(m.value);
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">💨 ' + _kartaEsc(s.location || "Mätstation") + '</div>'
+            + '<div class="meta">' + _kartaEsc(s.city || s.country || "") + '</div>'
+            + '<div class="row"><span class="k">PM2.5</span><span>' + value.toFixed(1) + ' µg/m³</span></div>'
+            + '<div class="row"><span class="k">Mätt</span><span>' + new Date(m.lastUpdated).toLocaleString("sv-SE") + '</span></div>'
+            + '</div>';
+          _kartaAirMarkers.push(_kartaMakeDataMarker({
+            lat: s.coordinates.latitude, lon: s.coordinates.longitude,
+            classes: "karta-air-marker",
+            style: "background:" + _kartaPm25Color(value) + ";",
+            content: "", title: (s.location || "PM2.5") + ": " + value.toFixed(1),
+            popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
+    // --- Open Charge Map EV-laddstationer ---
+    let _kartaEvOn = false;
+    let _kartaEvMarkers = [];
+    let _kartaEvTimer = null;
+    function _kartaToggleEv() {
+      _kartaEvOn = !_kartaEvOn;
+      if (_kartaEvOn) {
+        _kartaFetchEv();
+        _kartaEvTimer = setInterval(_kartaFetchEv, 10 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "EV-laddstationer PÅ (Open Charge Map). Klicka på markör för uttag/effekt.");
+      } else {
+        if (_kartaEvTimer) clearInterval(_kartaEvTimer);
+        _kartaEvTimer = null;
+        _kartaClearMarkers(_kartaEvMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "EV-laddstationer AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchEv() {
+      if (!_kartaMap) return;
+      try {
+        const c = _kartaMap.getCenter();
+        const url = "https://api.openchargemap.io/v3/poi?output=json&maxresults=150"
+          + "&latitude=" + c.lat.toFixed(4) + "&longitude=" + c.lng.toFixed(4)
+          + "&distance=40&distanceunit=KM&compact=true&verbose=false";
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaEvMarkers);
+        (data || []).forEach(function(p) {
+          const ai = p.AddressInfo; if (!ai) return;
+          const conns = p.Connections || [];
+          const maxKw = conns.reduce(function(a, k) { return Math.max(a, k.PowerKW || 0); }, 0);
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">⚡ ' + _kartaEsc(ai.Title || "Laddstation") + '</div>'
+            + '<div class="meta">' + _kartaEsc([ai.AddressLine1, ai.Town].filter(Boolean).join(", ")) + '</div>'
+            + '<div class="row"><span class="k">Uttag</span><span>' + conns.length + '</span></div>'
+            + (maxKw ? '<div class="row"><span class="k">Max effekt</span><span>' + maxKw + ' kW</span></div>' : '')
+            + (p.OperatorInfo && p.OperatorInfo.Title ? '<div class="row"><span class="k">Operatör</span><span>' + _kartaEsc(p.OperatorInfo.Title) + '</span></div>' : '')
+            + '</div>';
+          _kartaEvMarkers.push(_kartaMakeDataMarker({
+            lat: ai.Latitude, lon: ai.Longitude, classes: "karta-ev-marker",
+            content: "⚡", title: ai.Title || "Laddstation", popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
+    // --- Polisen.se händelser (senaste 24h, geokodas via location.gps om finns) ---
+    let _kartaPoliceOn = false;
+    let _kartaPoliceMarkers = [];
+    let _kartaPoliceTimer = null;
+    function _kartaTogglePolice() {
+      _kartaPoliceOn = !_kartaPoliceOn;
+      if (_kartaPoliceOn) {
+        _kartaFetchPolice();
+        _kartaPoliceTimer = setInterval(_kartaFetchPolice, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Polishändelser PÅ (polisen.se senaste 24h). Klicka på markör för detaljer.");
+      } else {
+        if (_kartaPoliceTimer) clearInterval(_kartaPoliceTimer);
+        _kartaPoliceTimer = null;
+        _kartaClearMarkers(_kartaPoliceMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Polishändelser AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchPolice() {
+      try {
+        const resp = await fetch("https://polisen.se/api/events");
+        if (!resp.ok) return;
+        const data = await resp.json();
+        _kartaClearMarkers(_kartaPoliceMarkers);
+        const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+        (data || []).forEach(function(ev) {
+          if (!ev.location || !ev.location.gps) return;
+          const m = String(ev.location.gps).match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+          if (!m) return;
+          const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+          const when = new Date(ev.datetime).getTime();
+          if (isFinite(when) && when < cutoff) return;
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">🚓 ' + _kartaEsc(ev.type || "Händelse") + '</div>'
+            + '<div class="meta">' + _kartaEsc(ev.location.name || "") + ' · ' + new Date(ev.datetime).toLocaleString("sv-SE") + '</div>'
+            + (ev.summary ? '<div>' + _kartaEsc(ev.summary) + '</div>' : '')
+            + (ev.url ? '<div class="row"><a href="https://polisen.se' + _kartaEsc(ev.url) + '" target="_blank" rel="noopener">Polisen.se →</a></div>' : '')
+            + '</div>';
+          _kartaPoliceMarkers.push(_kartaMakeDataMarker({
+            lat: lat, lon: lon, classes: "karta-police-marker",
+            content: "🚓", title: ev.type || "Polishändelse", popupHtml: popup
+          }));
+        });
+      } catch (_) {}
+    }
+
+    // --- GBFS Citybikes (Stockholm/Göteborg/Malmö) ---
+    let _kartaBikesOn = false;
+    let _kartaBikesMarkers = [];
+    let _kartaBikesTimer = null;
+    // Lista över GBFS-källor — alla har CORS aktiverat. Lägg till fler kommuner när vi vill.
+    const GBFS_SOURCES = [
+      { name: "Stockholm City Bikes", info: "https://stockholm.publicbikesystem.net/customer/gbfs/v2/en/station_information",
+        status: "https://stockholm.publicbikesystem.net/customer/gbfs/v2/en/station_status" },
+      { name: "Styr & Ställ Göteborg", info: "https://api.goteborg.se/citybike/v1/stations/info",
+        status: "https://api.goteborg.se/citybike/v1/stations/status" },
+      { name: "Malmö by bike", info: "https://malmo.publicbikesystem.net/customer/gbfs/v2/en/station_information",
+        status: "https://malmo.publicbikesystem.net/customer/gbfs/v2/en/station_status" }
+    ];
+    function _kartaToggleBikes() {
+      _kartaBikesOn = !_kartaBikesOn;
+      if (_kartaBikesOn) {
+        _kartaFetchBikes();
+        _kartaBikesTimer = setInterval(_kartaFetchBikes, 60000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Citybikes PÅ — lediga cyklar i Sthlm/Gbg/Malmö. Refresh var 60:e sek.");
+      } else {
+        if (_kartaBikesTimer) clearInterval(_kartaBikesTimer);
+        _kartaBikesTimer = null;
+        _kartaClearMarkers(_kartaBikesMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Citybikes AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    async function _kartaFetchBikes() {
+      _kartaClearMarkers(_kartaBikesMarkers);
+      for (let i = 0; i < GBFS_SOURCES.length; i++) {
+        const src = GBFS_SOURCES[i];
+        try {
+          const [info, status] = await Promise.all([
+            fetch(src.info).then(function(r) { return r.ok ? r.json() : null; }),
+            fetch(src.status).then(function(r) { return r.ok ? r.json() : null; })
+          ]);
+          const stations = (info && info.data && info.data.stations) || [];
+          const statuses = (status && status.data && status.data.stations) || [];
+          const statusById = {};
+          statuses.forEach(function(s) { statusById[s.station_id] = s; });
+          stations.forEach(function(st) {
+            const s = statusById[st.station_id] || {};
+            const free = s.num_bikes_available || 0;
+            const docks = s.num_docks_available || 0;
+            const popup = '<div class="karta-data-popup">'
+              + '<div class="name">🚲 ' + _kartaEsc(st.name || "Station") + '</div>'
+              + '<div class="meta">' + _kartaEsc(src.name) + '</div>'
+              + '<div class="row"><span class="k">Lediga cyklar</span><span>' + free + '</span></div>'
+              + '<div class="row"><span class="k">Lediga lås</span><span>' + docks + '</span></div>'
+              + '</div>';
+            _kartaBikesMarkers.push(_kartaMakeDataMarker({
+              lat: st.lat, lon: st.lon, classes: "karta-bike-marker",
+              content: String(free), title: (st.name || "Station") + ": " + free + " cyklar",
+              popupHtml: popup
+            }));
+          });
+        } catch (_) {}
+      }
     }
 
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
@@ -2875,6 +3333,13 @@ Skärmvision kräver UI-TARS.</div>
         kartaToggleShipsBtn: !!_kartaShipsOn,
         kartaToggleWeatherBtn: !!_kartaWeatherOn,
         kartaToggleTrafficBtn: !!_kartaTrafficOn,
+        kartaToggleQuakesBtn: !!_kartaQuakesOn,
+        kartaToggleEventsBtn: !!_kartaEonetOn,
+        kartaToggleIssBtn: !!_kartaIssOn,
+        kartaToggleAirBtn: !!_kartaAirOn,
+        kartaToggleEvBtn: !!_kartaEvOn,
+        kartaTogglePoliceBtn: !!_kartaPoliceOn,
+        kartaToggleBikesBtn: !!_kartaBikesOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
