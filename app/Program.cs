@@ -731,6 +731,21 @@ public sealed class JarvisForm : Form
                 await HandleKartaFetchTrvRoadStatusAsync(root);
                 return;
             }
+            if (type == "karta_oxyfi_start")
+            {
+                await HandleKartaOxyfiStartAsync(root);
+                return;
+            }
+            if (type == "karta_oxyfi_stop")
+            {
+                HandleKartaOxyfiStop();
+                return;
+            }
+            if (type == "karta_fetch_trip")
+            {
+                await HandleKartaFetchTripAsync(root);
+                return;
+            }
 
             if (type == "brain_rebuild_graph")
             {
@@ -8148,6 +8163,159 @@ public sealed class JarvisForm : Form
         {
             await SendKartaProxyResultAsync("jarvisKartaRoadStatusResultV1", requestId, null,
                 "Trafikverket fel: " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    // ===== Oxyfi tåg-realtid (WebSocket-proxy) =====
+    // Trafiklab Oxyfi Vehicle Positions levererar JSON-meddelanden över WSS. Vi öppnar
+    // anslutningen från C# och buffrar senaste positioner per vehicleId; var 2:a sek
+    // skickar vi en snapshot till dashboard. Stop river ner allt.
+    private System.Net.WebSockets.ClientWebSocket? _oxyfiSocket;
+    private CancellationTokenSource? _oxyfiCts;
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, JsonElement> _oxyfiVehicles = new();
+    private System.Threading.Timer? _oxyfiFlushTimer;
+
+    private async Task HandleKartaOxyfiStartAsync(JsonElement root)
+    {
+        if (_oxyfiSocket is not null && _oxyfiSocket.State == System.Net.WebSockets.WebSocketState.Open)
+        {
+            await SendKartaOxyfiStatusAsync("running");
+            return;
+        }
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "OXYFI_API_KEY", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendKartaOxyfiStatusAsync("error",
+                "OXYFI_API_KEY saknas. Registrera gratis nyckel på trafiklab.se (Oxyfi Vehicle Positions).");
+            return;
+        }
+        _oxyfiCts = new CancellationTokenSource();
+        var token = _oxyfiCts.Token;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                _oxyfiSocket = new System.Net.WebSockets.ClientWebSocket();
+                // Trafiklab Oxyfi WSS endpoint — format kan variera, här är dokumenterad URL.
+                var wsUri = new Uri("wss://opendata.fouts.se/v1/connect/api-key/" + apiKey);
+                await _oxyfiSocket.ConnectAsync(wsUri, token);
+                await SendKartaOxyfiStatusAsync("connected");
+
+                // Flush-timer: skickar senaste vehicles var 2:a sek
+                _oxyfiFlushTimer = new System.Threading.Timer(async _ => await FlushOxyfiVehiclesAsync(),
+                    null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+
+                var buffer = new ArraySegment<byte>(new byte[16 * 1024]);
+                var sb = new System.Text.StringBuilder();
+                while (!token.IsCancellationRequested && _oxyfiSocket.State == System.Net.WebSockets.WebSocketState.Open)
+                {
+                    var result = await _oxyfiSocket.ReceiveAsync(buffer, token);
+                    if (result.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) break;
+                    sb.Append(System.Text.Encoding.UTF8.GetString(buffer.Array!, 0, result.Count));
+                    if (!result.EndOfMessage) continue;
+                    var msg = sb.ToString(); sb.Clear();
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(msg);
+                        var root2 = doc.RootElement;
+                        // Försök att hitta ett array eller en single position. Behåll senaste per id.
+                        if (root2.ValueKind == JsonValueKind.Array)
+                        {
+                            foreach (var p in root2.EnumerateArray())
+                            {
+                                var id = TryStr(p, "id");
+                                if (!string.IsNullOrEmpty(id)) _oxyfiVehicles[id] = p.Clone();
+                            }
+                        }
+                        else if (root2.ValueKind == JsonValueKind.Object)
+                        {
+                            var id = TryStr(root2, "id");
+                            if (!string.IsNullOrEmpty(id)) _oxyfiVehicles[id] = root2.Clone();
+                        }
+                    }
+                    catch { /* skip malformed */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                await SendKartaOxyfiStatusAsync("error", "Oxyfi WS: " + ex.GetType().Name + ": " + ex.Message);
+            }
+            finally
+            {
+                _oxyfiFlushTimer?.Dispose(); _oxyfiFlushTimer = null;
+                await SendKartaOxyfiStatusAsync("closed");
+            }
+        }, token);
+        await SendKartaOxyfiStatusAsync("starting");
+    }
+
+    private void HandleKartaOxyfiStop()
+    {
+        try { _oxyfiCts?.Cancel(); } catch { }
+        try { _oxyfiSocket?.Dispose(); } catch { }
+        _oxyfiSocket = null;
+        _oxyfiFlushTimer?.Dispose(); _oxyfiFlushTimer = null;
+        _oxyfiVehicles.Clear();
+    }
+
+    private async Task FlushOxyfiVehiclesAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var snapshot = _oxyfiVehicles.Values.Take(2000).Select(v => v).ToArray();
+        var json = JsonSerializer.Serialize(snapshot);
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaOxyfiUpdateV1 && window.jarvisKartaOxyfiUpdateV1({json});");
+    }
+
+    private async Task SendKartaOxyfiStatusAsync(string status, string? message = null)
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var payload = JsonSerializer.Serialize(new { status, message = message ?? "" });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisKartaOxyfiStatusV1 && window.jarvisKartaOxyfiStatusV1({payload});");
+    }
+
+    // ===== ResRobot Reseplanerare (trip A→B) =====
+    private async Task HandleKartaFetchTripAsync(JsonElement root)
+    {
+        var requestId = root.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String
+            ? i.GetString() ?? "" : "";
+        var oLat = root.TryGetProperty("originLat", out var ola) && ola.ValueKind == JsonValueKind.Number ? ola.GetDouble() : double.NaN;
+        var oLon = root.TryGetProperty("originLon", out var olo) && olo.ValueKind == JsonValueKind.Number ? olo.GetDouble() : double.NaN;
+        var dLat = root.TryGetProperty("destLat", out var dla) && dla.ValueKind == JsonValueKind.Number ? dla.GetDouble() : double.NaN;
+        var dLon = root.TryGetProperty("destLon", out var dlo) && dlo.ValueKind == JsonValueKind.Number ? dlo.GetDouble() : double.NaN;
+        if (double.IsNaN(oLat) || double.IsNaN(oLon) || double.IsNaN(dLat) || double.IsNaN(dLon))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaTripResultV1", requestId, null, "Saknar origin/dest koordinater.");
+            return;
+        }
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "TRAFIKLAB_API_KEY", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaTripResultV1", requestId, null, "TRAFIKLAB_API_KEY saknas.");
+            return;
+        }
+        try
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            var url = "https://api.resrobot.se/v2.1/trip"
+                + "?originCoordLat=" + oLat.ToString("F6", inv) + "&originCoordLong=" + oLon.ToString("F6", inv)
+                + "&destCoordLat=" + dLat.ToString("F6", inv) + "&destCoordLong=" + dLon.ToString("F6", inv)
+                + "&accessId=" + Uri.EscapeDataString(apiKey) + "&format=json&passlist=1&showPassingPoints=1";
+            using var req = new HttpRequestMessage(HttpMethod.Get, url);
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var resp = await Http.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendKartaProxyResultAsync("jarvisKartaTripResultV1", requestId, null,
+                    "ResRobot trip HTTP " + (int)resp.StatusCode);
+                return;
+            }
+            await SendKartaProxyResultAsync("jarvisKartaTripResultV1", requestId, body, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaProxyResultAsync("jarvisKartaTripResultV1", requestId, null,
+                "Trip fel: " + ex.GetType().Name + ": " + ex.Message);
         }
     }
 

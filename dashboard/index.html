@@ -8,6 +8,8 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js" defer></script>
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.css">
   <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js" defer></script>
+  <!-- hls.js för att kunna spela m3u8-streams direkt i <video> -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
   <style>
     * {
       box-sizing: border-box;
@@ -1292,6 +1294,31 @@ Skärmvision kräver UI-TARS.</div>
           0%, 100% { box-shadow:0 0 14px rgba(255,64,96,0.55); }
           50% { box-shadow:0 0 22px rgba(255,64,96,0.95); }
         }
+        /* 🚂 Tåg-markör (Oxyfi) — rörliga punkter */
+        .karta-train-marker { width:14px; height:14px; border-radius:3px;
+          background:#aef068; border:1.5px solid #fff;
+          box-shadow:0 0 6px rgba(174,240,104,0.7); cursor:pointer; }
+        /* Reseplanerare — origin/destination + route */
+        body.karta-trip-mode #kartaMap { cursor:crosshair !important; }
+        .karta-trip-marker-o { width:18px; height:18px; border-radius:50%;
+          background:#6ad9ff; border:3px solid #fff;
+          box-shadow:0 0 12px rgba(106,217,255,0.9); }
+        .karta-trip-marker-d { width:18px; height:18px; border-radius:50%;
+          background:#ff6a8a; border:3px solid #fff;
+          box-shadow:0 0 12px rgba(255,106,138,0.9); }
+        .karta-trip-summary { position:absolute; top:14px; left:14px; z-index:6;
+          background:rgba(3,15,28,0.92); border:1px solid #1f4e68; border-radius:8px;
+          padding:10px 14px; color:#dff7ff; font-family:inherit; font-size:12.5px;
+          max-width:340px; box-shadow:0 0 16px rgba(106,217,255,0.25); }
+        .karta-trip-summary h4 { margin:0 0 6px 0; font-size:12px; color:#6ad9ff;
+          letter-spacing:1px; text-transform:uppercase; }
+        .karta-trip-summary .leg { padding:4px 0; border-top:1px solid rgba(31,78,104,0.4);
+          display:flex; justify-content:space-between; gap:8px; }
+        .karta-trip-summary .leg:first-of-type { border-top:none; }
+        .karta-trip-summary .leg .line { font-weight:700; color:#aef0ff; }
+        .karta-trip-summary .close { float:right; background:rgba(255,80,80,0.15);
+          border:1px solid #ff6a6a; color:#ff8a8a; padding:2px 8px; border-radius:3px;
+          cursor:pointer; font-size:11px; }
         .karta-webcam-popup .open-live { display:inline-block; margin-top:6px;
           background:#1f4e68; color:#aef0ff; padding:5px 12px; border-radius:4px;
           font-weight:700; cursor:pointer; border:1px solid #6ad9ff; }
@@ -1573,6 +1600,8 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaToggleTrvCamsBtn" title="Trafikverket vägkameror i Sverige (kräver TRAFIKVERKET_API_KEY)">🛣 SE-cams</button>
           <button class="karta-btn" id="kartaToggleLiveCamsBtn" title="Riktiga 24/7 live-streams (YouTube + EarthCam + NASA, kuraterad lista)">🎥 Live</button>
           <button class="karta-btn" id="kartaToggleRoadStatusBtn" title="Trafikverket vägläge — olyckor, vägarbete, hastighetskameror (kräver TRAFIKVERKET_API_KEY)">🚧 Vägläge</button>
+          <button class="karta-btn" id="kartaToggleTrainsBtn" title="Oxyfi tåg realtid (WebSocket, kräver OXYFI_API_KEY)">🚂 Tåg</button>
+          <button class="karta-btn" id="kartaTripPlannerBtn" title="Reseplanerare A→B (ResRobot, klick 2 punkter på kartan)">🗺 Resa</button>
         </div>
         <!-- Modal för inbäddad webcam-player (Windy iframe / Trafikverket bild) -->
         <div id="kartaWebcamModal" class="karta-webcam-modal" style="display:none;">
@@ -2374,6 +2403,10 @@ Skärmvision kräver UI-TARS.</div>
       if (liveBtn) liveBtn.addEventListener("click", function() { _kartaToggleLiveCams(); });
       const roadBtn = document.getElementById("kartaToggleRoadStatusBtn");
       if (roadBtn) roadBtn.addEventListener("click", function() { _kartaToggleRoadStatus(); });
+      const trainsBtn = document.getElementById("kartaToggleTrainsBtn");
+      if (trainsBtn) trainsBtn.addEventListener("click", function() { _kartaToggleTrains(); });
+      const tripBtn = document.getElementById("kartaTripPlannerBtn");
+      if (tripBtn) tripBtn.addEventListener("click", function() { _kartaToggleTripPlanner(); });
 
       // Be om Windy + Trafikverket-nycklar vid init
       postMessage({ type: "karta_get_windy_key" });
@@ -3193,9 +3226,31 @@ Skärmvision kräver UI-TARS.</div>
         if (opts.type === "iframe") {
           bodyEl.innerHTML = '<iframe src="' + _kartaEsc(opts.src) + '" allow="autoplay; fullscreen; encrypted-media; accelerometer; gyroscope" allowfullscreen></iframe>';
         } else if (opts.type === "image") {
-          // Cache-buster så Trafikverket-bilden uppdateras vid varje öppning.
           const sep = opts.src.indexOf("?") >= 0 ? "&" : "?";
           bodyEl.innerHTML = '<img src="' + _kartaEsc(opts.src + sep + "ts=" + Date.now()) + '" alt="" />';
+        } else if (opts.type === "hls") {
+          // HLS m3u8-stream → <video> + hls.js (Chrome/Edge stödjer inte m3u8 nativt).
+          const video = document.createElement("video");
+          video.controls = true; video.autoplay = true; video.muted = true;
+          video.style.cssText = "width:100%; height:100%; background:#000; object-fit:contain;";
+          bodyEl.innerHTML = "";
+          bodyEl.appendChild(video);
+          if (window.Hls && Hls.isSupported()) {
+            const hls = new Hls({ enableWorker: true, lowLatencyMode: true });
+            hls.loadSource(opts.src);
+            hls.attachMedia(video);
+            // Spara så vi kan tear-down när modalen stängs
+            bodyEl._kartaHlsInstance = hls;
+            hls.on(Hls.Events.ERROR, function(_, data) {
+              if (data.fatal) {
+                bodyEl.innerHTML = '<div class="loading">HLS-fel: ' + _kartaEsc(data.type + " / " + data.details) + '</div>';
+              }
+            });
+          } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+            video.src = opts.src; // Safari/iOS nativt stöd
+          } else {
+            bodyEl.innerHTML = '<div class="loading">Hls.js inte laddad — ladda om sidan.</div>';
+          }
         } else {
           bodyEl.innerHTML = '<div class="loading">Okänd media-typ.</div>';
         }
@@ -3204,8 +3259,13 @@ Skärmvision kräver UI-TARS.</div>
     function _kartaCloseWebcamModal() {
       const modal = document.getElementById("kartaWebcamModal");
       const bodyEl = document.getElementById("kartaWebcamModalBody");
+      // Stoppa HLS-stream rent — destroy hls.js instans innan vi rensar DOM.
+      if (bodyEl && bodyEl._kartaHlsInstance) {
+        try { bodyEl._kartaHlsInstance.destroy(); } catch (_) {}
+        bodyEl._kartaHlsInstance = null;
+      }
       if (modal) modal.style.display = "none";
-      if (bodyEl) bodyEl.innerHTML = ""; // stoppa iframe-stream genom att riva ut elementet
+      if (bodyEl) bodyEl.innerHTML = "";
     }
     // Event delegation för "Visa live"-knappar — knappen får data-webcam-args med JSON,
     // vi parsar i en gemensam handler. Säkrare än inline onclick (HTML decodar &#39; tyst).
@@ -3448,7 +3508,18 @@ Skärmvision kräver UI-TARS.</div>
       { source: "nasa", embedUrl: "https://www.youtube-nocookie.com/embed/21X5lGlDOfg?autoplay=1&mute=1",
         lat: 0, lon: 0, title: "NASA ISS Earth-view (HDEV)", cat: "rymd" },
       { source: "nasa", embedUrl: "https://www.youtube-nocookie.com/embed/EEIk7gwjgIM?autoplay=1&mute=1",
-        lat: -77.85, lon: 166.667, title: "NASA McMurdo Antarktis (väder)", cat: "natur" }
+        lat: -77.85, lon: 166.667, title: "NASA McMurdo Antarktis (väder)", cat: "natur" },
+
+      // --- HLS-streams (.m3u8) från offentliga kameror & myndigheter ---
+      // Format: source:"hls" + hlsUrl. Spelas i <video> via hls.js. Kan blockas av geofence/CORS.
+      { source: "hls", hlsUrl: "https://webcams.nyctmc.org/cameras-old/CCTV1.m3u8",
+        lat: 40.7589, lon: -73.9851, title: "NYC DOT Times Square (HLS)", cat: "stad" },
+      { source: "hls", hlsUrl: "https://cctv.austinmobility.io/image/108.m3u8",
+        lat: 30.2672, lon: -97.7431, title: "Austin TX traffic cam", cat: "stad" },
+      // Anatel/diverse svenska kommunkameror är ofta MJPEG men en del erbjuder HLS via
+      // tredjepartstjänster. Lämnar några platshållare som visar hur format fungerar:
+      { source: "hls", hlsUrl: "https://cctvfilemgmt.nyctmc.org/CCTV/1_a.m3u8",
+        lat: 40.7484, lon: -73.9857, title: "NYC DOT Empire State (HLS)", cat: "stad" }
     ];
 
     let _kartaLiveCamsOn = false;
@@ -3483,19 +3554,24 @@ Skärmvision kräver UI-TARS.</div>
           src = cam.embedUrl;
           ext = cam.embedUrl;
           prefix = "🌍";
+        } else if (source === "hls") {
+          src = cam.hlsUrl;
+          ext = cam.hlsUrl;
+          prefix = "📺";
         } else {
           src = cam.embedUrl || "";
           ext = cam.embedUrl || "";
           prefix = "📺";
         }
         if (!src) return;
+        const modalType = source === "hls" ? "hls" : "iframe";
         _kartaLiveCamsMarkers.push(_kartaMakeDataMarker({
           lat: cam.lat, lon: cam.lon,
           classes: "karta-livecam-marker",
           content: prefix, title: cam.title + " (live)",
           onClick: function() {
             _kartaOpenWebcamModal({
-              type: "iframe", src: src,
+              type: modalType, src: src,
               title: prefix + " " + cam.title + " (" + source.toUpperCase() + ")",
               externalUrl: ext
             });
@@ -3605,6 +3681,193 @@ Skärmvision kräver UI-TARS.</div>
           "Vägläge: " + nOlycka + " olyckor, " + nArbete + " vägarbeten, " + nKamera + " fartkameror.");
       };
       postMessage({ type: "karta_fetch_trv_road_status", id: id });
+    }
+
+    // ===== 🚂 Tåg-realtid (Oxyfi via WebSocket-proxy i C#) =====
+    let _kartaTrainsOn = false;
+    let _kartaTrainMarkers = {}; // vehicleId -> { marker, lastPos }
+    window.jarvisKartaOxyfiStatusV1 = function(payload) {
+      if (!payload) return;
+      const msg = payload.message
+        ? " " + payload.message
+        : "";
+      window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Oxyfi: " + payload.status + msg);
+    };
+    window.jarvisKartaOxyfiUpdateV1 = function(vehicles) {
+      if (!_kartaTrainsOn || !Array.isArray(vehicles) || !_kartaMap) return;
+      const seen = {};
+      vehicles.forEach(function(v) {
+        // Försök hitta lat/lon i flera möjliga fält (Oxyfi-format varierar)
+        const id = String(v.id || v.vehicleId || v.uuid || "");
+        if (!id) return;
+        const lat = Number(v.lat || v.latitude || (v.position && v.position.lat) || (v.location && v.location.lat));
+        const lon = Number(v.lon || v.lng || v.longitude || (v.position && v.position.lon) || (v.location && v.location.lon));
+        if (!isFinite(lat) || !isFinite(lon)) return;
+        seen[id] = true;
+        const entry = _kartaTrainMarkers[id];
+        if (entry) {
+          entry.marker.setLngLat([lon, lat]);
+        } else {
+          const el = document.createElement("div");
+          el.className = "karta-train-marker";
+          el.title = "Tåg " + id;
+          const marker = new maplibregl.Marker({ element: el, opacityWhenCovered: "1" })
+            .setLngLat([lon, lat]).addTo(_kartaMap);
+          marker.setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(
+            '<div class="karta-data-popup"><div class="name">🚂 Tåg ' + _kartaEsc(id) + '</div>'
+            + '<div class="meta">' + lat.toFixed(4) + ", " + lon.toFixed(4) + '</div></div>'));
+          _kartaTrainMarkers[id] = { marker: marker };
+        }
+      });
+      // Plocka bort tåg som inte rapporterat senaste 30 sek (== inte i denna snapshot ETT tag)
+      // För enkelhet: vi tar bort alla som inte syns i denna update.
+      Object.keys(_kartaTrainMarkers).forEach(function(id) {
+        if (!seen[id]) {
+          try { _kartaTrainMarkers[id].marker.remove(); } catch (_) {}
+          delete _kartaTrainMarkers[id];
+        }
+      });
+    };
+    function _kartaToggleTrains() {
+      _kartaTrainsOn = !_kartaTrainsOn;
+      if (_kartaTrainsOn) {
+        postMessage({ type: "karta_oxyfi_start" });
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "🚂 Tåg PÅ — väntar på Oxyfi-positioner via WebSocket.");
+      } else {
+        postMessage({ type: "karta_oxyfi_stop" });
+        Object.keys(_kartaTrainMarkers).forEach(function(id) {
+          try { _kartaTrainMarkers[id].marker.remove(); } catch (_) {}
+        });
+        _kartaTrainMarkers = {};
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "🚂 Tåg AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+
+    // ===== 🗺 Reseplanerare (ResRobot trip A→B) =====
+    let _kartaTripPlannerOn = false;
+    let _kartaTripPoints = []; // [origin, destination] (each = [lon, lat])
+    let _kartaTripMarkers = [];
+    let _kartaTripLineId = "karta-trip-line";
+    let _kartaTripSummaryEl = null;
+    const _kartaTripCallbacks = {};
+    window.jarvisKartaTripResultV1 = function(payload) {
+      if (!payload || !payload.id) return;
+      const cb = _kartaTripCallbacks[payload.id];
+      if (!cb) return;
+      delete _kartaTripCallbacks[payload.id];
+      cb(payload.raw, payload.error);
+    };
+    function _kartaToggleTripPlanner() {
+      _kartaTripPlannerOn = !_kartaTripPlannerOn;
+      document.body.classList.toggle("karta-trip-mode", _kartaTripPlannerOn);
+      if (_kartaTripPlannerOn) {
+        _kartaResetTrip();
+        _kartaMap.on("click", _kartaTripClickHandler);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "🗺 Reseplanerare PÅ — klicka START-punkt (blå), sedan SLUT-punkt (rosa) på kartan. ResRobot hämtar resan med kollektivtrafik.");
+      } else {
+        _kartaMap.off("click", _kartaTripClickHandler);
+        _kartaResetTrip();
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "🗺 Reseplanerare AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaResetTrip() {
+      _kartaTripPoints = [];
+      _kartaClearMarkers(_kartaTripMarkers);
+      if (_kartaMap.getLayer(_kartaTripLineId)) _kartaMap.removeLayer(_kartaTripLineId);
+      if (_kartaMap.getSource(_kartaTripLineId)) _kartaMap.removeSource(_kartaTripLineId);
+      if (_kartaTripSummaryEl) { try { _kartaTripSummaryEl.remove(); } catch (_) {} _kartaTripSummaryEl = null; }
+    }
+    function _kartaTripClickHandler(e) {
+      _kartaTripPoints.push([e.lngLat.lng, e.lngLat.lat]);
+      const isOrigin = _kartaTripPoints.length === 1;
+      const el = document.createElement("div");
+      el.className = isOrigin ? "karta-trip-marker-o" : "karta-trip-marker-d";
+      const marker = new maplibregl.Marker({ element: el, opacityWhenCovered: "1" })
+        .setLngLat(e.lngLat).addTo(_kartaMap);
+      _kartaTripMarkers.push(marker);
+      if (_kartaTripPoints.length === 2) _kartaFetchTrip();
+    }
+    function _kartaFetchTrip() {
+      const o = _kartaTripPoints[0], d = _kartaTripPoints[1];
+      const id = "trip_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      _kartaTripCallbacks[id] = function(raw, error) {
+        if (error) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Reseplan: " + error);
+          return;
+        }
+        let data;
+        try { data = JSON.parse(raw); } catch (_) { return; }
+        const trips = data.Trip || [];
+        if (trips.length === 0) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+            "Ingen resa hittades. ResRobot täcker bara svenska hållplatser — välj punkter nära kollektivtrafik.");
+          return;
+        }
+        const trip = trips[0];
+        const legs = (trip.LegList && trip.LegList.Leg) || [];
+        const coords = [];
+        const legColors = ["#6ad9ff", "#aef068", "#ffd680", "#ff6a8a", "#c89aff", "#ff8a40"];
+        const legSummaries = [];
+        legs.forEach(function(leg, li) {
+          const origin = leg.Origin, dest = leg.Destination;
+          if (origin && origin.lon != null) coords.push([Number(origin.lon), Number(origin.lat)]);
+          // Stops mellanslag
+          if (leg.Stops && Array.isArray(leg.Stops.Stop)) {
+            leg.Stops.Stop.forEach(function(s) {
+              if (s.lon != null) coords.push([Number(s.lon), Number(s.lat)]);
+            });
+          }
+          if (dest && dest.lon != null) coords.push([Number(dest.lon), Number(dest.lat)]);
+          legSummaries.push({
+            type: leg.type || leg.category || "",
+            name: leg.name || leg.Product && leg.Product[0] && leg.Product[0].name || "",
+            from: origin && origin.name || "",
+            to: dest && dest.name || "",
+            depart: origin && origin.time || "",
+            arrive: dest && dest.time || ""
+          });
+        });
+        // Rita route som linje
+        if (_kartaMap.getLayer(_kartaTripLineId)) _kartaMap.removeLayer(_kartaTripLineId);
+        if (_kartaMap.getSource(_kartaTripLineId)) _kartaMap.removeSource(_kartaTripLineId);
+        if (coords.length >= 2) {
+          _kartaMap.addSource(_kartaTripLineId, {
+            type: "geojson",
+            data: { type: "Feature", geometry: { type: "LineString", coordinates: coords } }
+          });
+          _kartaMap.addLayer({
+            id: _kartaTripLineId, type: "line", source: _kartaTripLineId,
+            paint: { "line-color": "#6ad9ff", "line-width": 4, "line-opacity": 0.85 }
+          });
+        }
+        // HUD med sammanfattning
+        if (_kartaTripSummaryEl) { try { _kartaTripSummaryEl.remove(); } catch (_) {} }
+        const hud = document.createElement("div");
+        hud.className = "karta-trip-summary";
+        let html = '<button class="close" id="kartaTripClose">✕</button>'
+          + '<h4>🗺 Reseplan</h4>';
+        legSummaries.forEach(function(s) {
+          html += '<div class="leg"><span class="line">' + _kartaEsc(s.type + " " + s.name) + '</span>'
+            + '<span>' + _kartaEsc(s.depart || "") + ' → ' + _kartaEsc(s.arrive || "") + '</span></div>'
+            + '<div class="leg"><span>' + _kartaEsc(s.from) + '</span><span>→ ' + _kartaEsc(s.to) + '</span></div>';
+        });
+        hud.innerHTML = html;
+        const mapEl = document.getElementById("mapPanel") || document.getElementById("kartaMap");
+        if (mapEl) mapEl.appendChild(hud);
+        _kartaTripSummaryEl = hud;
+        const closeBtn = document.getElementById("kartaTripClose");
+        if (closeBtn) closeBtn.addEventListener("click", _kartaResetTrip);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Reseplan klar: " + legs.length + " etapper.");
+      };
+      postMessage({
+        type: "karta_fetch_trip", id: id,
+        originLat: o[1], originLon: o[0], destLat: d[1], destLon: d[0]
+      });
     }
 
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
@@ -4175,6 +4438,8 @@ Skärmvision kräver UI-TARS.</div>
         kartaToggleTrvCamsBtn: !!_kartaTrvCamsOn,
         kartaToggleLiveCamsBtn: !!_kartaLiveCamsOn,
         kartaToggleRoadStatusBtn: !!_kartaRoadStatusOn,
+        kartaToggleTrainsBtn: !!_kartaTrainsOn,
+        kartaTripPlannerBtn: !!_kartaTripPlannerOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {

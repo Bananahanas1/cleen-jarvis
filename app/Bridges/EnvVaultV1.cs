@@ -29,7 +29,12 @@ internal static class EnvVaultV1
         "WINDY_API_KEY",
         // Trafikverket Open API — svenska vägkameror, vägarbete, tågrörelser m.m.
         // Registreras gratis på https://api.trafikinfo.trafikverket.se/.
-        "TRAFIKVERKET_API_KEY"
+        "TRAFIKVERKET_API_KEY",
+        // Oxyfi Vehicle Positions (via Trafiklab) — WebSocket-feed med realtids-positioner
+        // för svenska tåg. Registreras gratis på trafiklab.se → "Oxyfi Vehicle Positions".
+        "OXYFI_API_KEY",
+        // YouTube Data API v3 — dynamisk discovery av live webcam-streams. Gratis 10k/dag.
+        "YOUTUBE_API_KEY"
     };
 
     public static string EnvFilePath(string projectRoot)
