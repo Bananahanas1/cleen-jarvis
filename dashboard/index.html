@@ -1283,6 +1283,35 @@ Skärmvision kräver UI-TARS.</div>
         .karta-webcam-popup .meta { color:#2a6688; font-size:11px; margin-bottom:6px; }
         .karta-webcam-popup a { color:#1f4e68; font-weight:600; text-decoration:none; font-size:12px; }
         .karta-webcam-popup a:hover { text-decoration:underline; }
+        .karta-webcam-popup .open-live { display:inline-block; margin-top:6px;
+          background:#1f4e68; color:#aef0ff; padding:5px 12px; border-radius:4px;
+          font-weight:700; cursor:pointer; border:1px solid #6ad9ff; }
+        .karta-webcam-popup .open-live:hover { background:#2a6688; color:#fff; }
+        /* Webcam modal — fullscreen overlay med iframe/bild */
+        .karta-webcam-modal { position:fixed; inset:0; z-index:9999;
+          background:rgba(3,15,28,0.96); display:flex; align-items:center; justify-content:center;
+          padding:40px; backdrop-filter:none; }
+        .karta-webcam-modal-inner { background:#0a1622; border:1px solid #1f4e68;
+          border-radius:10px; box-shadow:0 0 40px rgba(106,217,255,0.4);
+          width:min(1200px, 95vw); height:min(800px, 90vh); display:flex; flex-direction:column;
+          overflow:hidden; }
+        .karta-webcam-modal-header { display:flex; align-items:center; gap:12px;
+          padding:10px 16px; background:rgba(31,78,104,0.4); border-bottom:1px solid #1f4e68; }
+        .karta-webcam-modal-title { flex:1; color:#dff7ff; font-weight:700; font-size:14px;
+          font-family:inherit; }
+        .karta-webcam-modal-link { color:#6ad9ff; font-size:12px; text-decoration:none;
+          padding:4px 10px; border:1px solid #1f4e68; border-radius:4px; }
+        .karta-webcam-modal-link:hover { background:rgba(106,217,255,0.1); }
+        .karta-webcam-modal-close { background:rgba(255,80,80,0.15); border:1px solid #ff6a6a;
+          color:#ff8a8a; padding:4px 12px; border-radius:4px; cursor:pointer; font-size:14px;
+          font-weight:700; font-family:inherit; }
+        .karta-webcam-modal-close:hover { background:rgba(255,80,80,0.3); color:#fff; }
+        .karta-webcam-modal-body { flex:1; min-height:0; background:#000; position:relative; }
+        .karta-webcam-modal-body iframe,
+        .karta-webcam-modal-body img { width:100%; height:100%; border:0; display:block;
+          object-fit:contain; }
+        .karta-webcam-modal-body .loading { position:absolute; inset:0; display:flex;
+          align-items:center; justify-content:center; color:#6ad9ff; font-style:italic; }
         /* Data-overlay-markers (jordbävningar, EONET, ISS, luft, EV, polis, cyklar) */
         .karta-data-marker { display:flex; align-items:center; justify-content:center;
           color:#fff; font-size:13px; font-weight:700; cursor:pointer;
@@ -1533,6 +1562,17 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaScreenshotBtn" title="Spara kartvy som PNG till data/karta/screenshots/">🖼 Bild</button>
           <button class="karta-btn" id="kartaToggleWebcamsBtn" title="Globala webcams (Windy.com, kräver WINDY_API_KEY)">📹 Cams</button>
           <button class="karta-btn" id="kartaToggleTrvCamsBtn" title="Trafikverket vägkameror i Sverige (kräver TRAFIKVERKET_API_KEY)">🛣 SE-cams</button>
+        </div>
+        <!-- Modal för inbäddad webcam-player (Windy iframe / Trafikverket bild) -->
+        <div id="kartaWebcamModal" class="karta-webcam-modal" style="display:none;">
+          <div class="karta-webcam-modal-inner">
+            <div class="karta-webcam-modal-header">
+              <span class="karta-webcam-modal-title" id="kartaWebcamModalTitle">Webcam</span>
+              <a class="karta-webcam-modal-link" id="kartaWebcamModalExtLink" target="_blank" rel="noopener">Öppna externt ↗</a>
+              <button class="karta-webcam-modal-close" id="kartaWebcamModalClose" title="Stäng (Esc)">✕</button>
+            </div>
+            <div class="karta-webcam-modal-body" id="kartaWebcamModalBody"></div>
+          </div>
         </div>
         <div class="karta-glass karta-mini-chat">
           <div class="karta-glass-title">Fråga Jarvis</div>
@@ -3113,6 +3153,53 @@ Skärmvision kräver UI-TARS.</div>
       }
       _kartaSyncLayerButtonsV1();
     }
+    // Modal för att titta på webcam-stream direkt i Jarvis. Tar emot iframe-URL (Windy player)
+    // eller en bild-URL (Trafikverket fullsize-foto).
+    function _kartaOpenWebcamModal(opts) {
+      const modal = document.getElementById("kartaWebcamModal");
+      const titleEl = document.getElementById("kartaWebcamModalTitle");
+      const bodyEl = document.getElementById("kartaWebcamModalBody");
+      const extLink = document.getElementById("kartaWebcamModalExtLink");
+      if (!modal || !bodyEl) return;
+      titleEl.textContent = opts.title || "Webcam";
+      extLink.href = opts.externalUrl || opts.src || "#";
+      extLink.style.display = (opts.externalUrl || opts.src) ? "inline-block" : "none";
+      bodyEl.innerHTML = '<div class="loading">Laddar live-bild…</div>';
+      modal.style.display = "flex";
+      // Bygg media-element. iframe för Windy player, img för Trafikverket-bild.
+      setTimeout(function() {
+        if (opts.type === "iframe") {
+          bodyEl.innerHTML = '<iframe src="' + _kartaEsc(opts.src) + '" allow="autoplay; fullscreen; encrypted-media; accelerometer; gyroscope" allowfullscreen></iframe>';
+        } else if (opts.type === "image") {
+          // Cache-buster så Trafikverket-bilden uppdateras vid varje öppning.
+          const sep = opts.src.indexOf("?") >= 0 ? "&" : "?";
+          bodyEl.innerHTML = '<img src="' + _kartaEsc(opts.src + sep + "ts=" + Date.now()) + '" alt="" />';
+        } else {
+          bodyEl.innerHTML = '<div class="loading">Okänd media-typ.</div>';
+        }
+      }, 50);
+    }
+    function _kartaCloseWebcamModal() {
+      const modal = document.getElementById("kartaWebcamModal");
+      const bodyEl = document.getElementById("kartaWebcamModalBody");
+      if (modal) modal.style.display = "none";
+      if (bodyEl) bodyEl.innerHTML = ""; // stoppa iframe-stream genom att riva ut elementet
+    }
+    // Globala click-handler för alla "Visa live"-knappar i webcam-popups + ESC + click utanför
+    window.jarvisOpenWebcamFromPopup = function(args) {
+      _kartaOpenWebcamModal(args);
+    };
+    document.addEventListener("keydown", function(e) {
+      if (e.key === "Escape") {
+        const modal = document.getElementById("kartaWebcamModal");
+        if (modal && modal.style.display !== "none") _kartaCloseWebcamModal();
+      }
+    });
+    document.addEventListener("click", function(e) {
+      if (e.target && e.target.id === "kartaWebcamModalClose") _kartaCloseWebcamModal();
+      else if (e.target && e.target.id === "kartaWebcamModal") _kartaCloseWebcamModal();
+    });
+
     // Windy blockerar fetch från jarvis.local-origin (CORS). C#-proxy gör anropet server-side.
     const _kartaWebcamsCallbacks = {};
     window.jarvisKartaWebcamsResultV1 = function(payload) {
@@ -3150,18 +3237,26 @@ Skärmvision kräver UI-TARS.</div>
           const loc = w.location; if (!loc) return;
           const thumb = (w.images && w.images.current && (w.images.current.thumbnail || w.images.current.preview)) || "";
           const live = (w.urls && (w.urls.detail || w.urls.provider)) || "";
-          const player = w.player && (w.player.day || w.player.live);
+          // Windy player URL — iframe-vänlig embed-länk. day = senaste timelapse, live = realtid om det finns.
+          const player = (w.player && (w.player.live || w.player.day || w.player.month)) || "";
+          const title = w.title || "Webcam";
+          // Bygg openLive-payload som JSON i data-attribut, parsa vid klick.
+          const openArgs = JSON.stringify({
+            type: "iframe", src: player, title: title, externalUrl: live || player
+          }).replace(/'/g, "&#39;");
           const popup = '<div class="karta-data-popup karta-webcam-popup">'
             + (thumb ? '<img src="' + _kartaEsc(thumb) + '" alt="" loading="lazy" />' : "")
-            + '<div class="name">📹 ' + _kartaEsc(w.title || "Webcam") + '</div>'
+            + '<div class="name">📹 ' + _kartaEsc(title) + '</div>'
             + '<div class="meta">' + _kartaEsc([loc.city, loc.country].filter(Boolean).join(", ")) + '</div>'
-            + (live ? '<a href="' + _kartaEsc(live) + '" target="_blank" rel="noopener">Öppna live-ström →</a>' : "")
-            + (player ? ' · <a href="' + _kartaEsc(player) + '" target="_blank" rel="noopener">Player →</a>' : "")
+            + (player
+                ? '<button class="open-live" onclick=\'window.jarvisOpenWebcamFromPopup(' + openArgs + ')\'>▶ Visa live i Jarvis</button> '
+                : "")
+            + (live ? '<a href="' + _kartaEsc(live) + '" target="_blank" rel="noopener">Öppna externt ↗</a>' : "")
             + '</div>';
           _kartaWebcamsMarkers.push(_kartaMakeDataMarker({
             lat: loc.latitude, lon: loc.longitude,
             classes: "karta-webcam-marker",
-            content: "📹", title: w.title || "Webcam", popupHtml: popup
+            content: "📹", title: title, popupHtml: popup
           }));
           added++;
         });
@@ -3227,11 +3322,18 @@ Skärmvision kräver UI-TARS.</div>
           const lon = parseFloat(m[1]), lat = parseFloat(m[2]);
           const photoUrl = cam.PhotoUrl ? cam.PhotoUrl + "?type=fullsize" : "";
           const photoTime = cam.PhotoTime ? new Date(cam.PhotoTime).toLocaleString("sv-SE") : "";
+          const title = cam.Name || "Trafikkamera";
+          const openArgs = photoUrl ? JSON.stringify({
+            type: "image", src: photoUrl, title: title, externalUrl: photoUrl
+          }).replace(/'/g, "&#39;") : "";
           const popup = '<div class="karta-data-popup karta-webcam-popup">'
             + (photoUrl ? '<img src="' + _kartaEsc(photoUrl) + '" alt="" loading="lazy" />' : "")
-            + '<div class="name">🛣 ' + _kartaEsc(cam.Name || "Trafikkamera") + '</div>'
+            + '<div class="name">🛣 ' + _kartaEsc(title) + '</div>'
             + '<div class="meta">' + _kartaEsc(cam.Location || "") + (photoTime ? " · " + photoTime : "") + '</div>'
-            + (photoUrl ? '<a href="' + _kartaEsc(photoUrl) + '" target="_blank" rel="noopener">Fullstorlek →</a>' : "")
+            + (photoUrl
+                ? '<button class="open-live" onclick=\'window.jarvisOpenWebcamFromPopup(' + openArgs + ')\'>🔍 Visa stor i Jarvis</button> '
+                : "")
+            + (photoUrl ? '<a href="' + _kartaEsc(photoUrl) + '" target="_blank" rel="noopener">Externt ↗</a>' : "")
             + '</div>';
           _kartaTrvCamsMarkers.push(_kartaMakeDataMarker({
             lat: lat, lon: lon,
