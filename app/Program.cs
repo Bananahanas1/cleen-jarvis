@@ -726,6 +726,11 @@ public sealed class JarvisForm : Form
                 await HandleKartaFetchTrvCamsAsync(root);
                 return;
             }
+            if (type == "karta_fetch_trv_road_status")
+            {
+                await HandleKartaFetchTrvRoadStatusAsync(root);
+                return;
+            }
 
             if (type == "brain_rebuild_graph")
             {
@@ -8090,6 +8095,58 @@ public sealed class JarvisForm : Form
         catch (Exception ex)
         {
             await SendKartaProxyResultAsync("jarvisKartaTrvCamsResultV1", requestId, null,
+                "Trafikverket fel: " + ex.GetType().Name + ": " + ex.Message);
+        }
+    }
+
+    // Trafikverket Situation + Deviation + RoadCondition: olyckor, vägarbete, hastighetskameror
+    // i ett anrop. Returnerar samlat JSON med olika listor per typ.
+    private async Task HandleKartaFetchTrvRoadStatusAsync(JsonElement root)
+    {
+        var requestId = root.TryGetProperty("id", out var i) && i.ValueKind == JsonValueKind.String
+            ? i.GetString() ?? "" : "";
+        if (!EnvVaultV1.TryGetValue(ProjectRoot, "TRAFIKVERKET_API_KEY", out var apiKey) || string.IsNullOrWhiteSpace(apiKey))
+        {
+            await SendKartaProxyResultAsync("jarvisKartaRoadStatusResultV1", requestId, null,
+                "TRAFIKVERKET_API_KEY saknas.");
+            return;
+        }
+        try
+        {
+            var keyEsc = System.Security.SecurityElement.Escape(apiKey);
+            // Situation = olyckor + vägarbete (med Deviation inuti). TrafficSafetyCamera = hastighetskameror.
+            var xml = "<REQUEST>"
+                + "<LOGIN authenticationkey=\"" + keyEsc + "\" />"
+                + "<QUERY objecttype=\"Situation\" schemaversion=\"1.5\" limit=\"500\">"
+                + "<INCLUDE>Id</INCLUDE><INCLUDE>Deviation.Id</INCLUDE>"
+                + "<INCLUDE>Deviation.Message</INCLUDE><INCLUDE>Deviation.MessageType</INCLUDE>"
+                + "<INCLUDE>Deviation.SeverityCode</INCLUDE><INCLUDE>Deviation.SeverityText</INCLUDE>"
+                + "<INCLUDE>Deviation.IconId</INCLUDE><INCLUDE>Deviation.LocationDescriptor</INCLUDE>"
+                + "<INCLUDE>Deviation.StartTime</INCLUDE><INCLUDE>Deviation.EndTime</INCLUDE>"
+                + "<INCLUDE>Deviation.Geometry.WGS84</INCLUDE>"
+                + "</QUERY>"
+                + "<QUERY objecttype=\"TrafficSafetyCamera\" schemaversion=\"1\" limit=\"2000\">"
+                + "<INCLUDE>Id</INCLUDE><INCLUDE>Name</INCLUDE>"
+                + "<INCLUDE>Geometry.WGS84</INCLUDE><INCLUDE>RoadNumber</INCLUDE>"
+                + "<INCLUDE>SpeedLimit</INCLUDE><INCLUDE>Bearing</INCLUDE>"
+                + "</QUERY>"
+                + "</REQUEST>";
+            using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.trafikinfo.trafikverket.se/v2/data.json");
+            req.Content = new StringContent(xml, System.Text.Encoding.UTF8, "text/xml");
+            req.Headers.TryAddWithoutValidation("User-Agent", "Jarvis-Clean-Map/1.0");
+            using var resp = await Http.SendAsync(req);
+            var body = await resp.Content.ReadAsStringAsync();
+            if (!resp.IsSuccessStatusCode)
+            {
+                await SendKartaProxyResultAsync("jarvisKartaRoadStatusResultV1", requestId, null,
+                    "Trafikverket HTTP " + (int)resp.StatusCode);
+                return;
+            }
+            await SendKartaProxyResultAsync("jarvisKartaRoadStatusResultV1", requestId, body, null);
+        }
+        catch (Exception ex)
+        {
+            await SendKartaProxyResultAsync("jarvisKartaRoadStatusResultV1", requestId, null,
                 "Trafikverket fel: " + ex.GetType().Name + ": " + ex.Message);
         }
     }

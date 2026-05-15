@@ -1571,7 +1571,8 @@ Skärmvision kräver UI-TARS.</div>
           <button class="karta-btn" id="kartaScreenshotBtn" title="Spara kartvy som PNG till data/karta/screenshots/">🖼 Bild</button>
           <button class="karta-btn" id="kartaToggleWebcamsBtn" title="Globala webcams (Windy.com, kräver WINDY_API_KEY)">📹 Cams</button>
           <button class="karta-btn" id="kartaToggleTrvCamsBtn" title="Trafikverket vägkameror i Sverige (kräver TRAFIKVERKET_API_KEY)">🛣 SE-cams</button>
-          <button class="karta-btn" id="kartaToggleLiveCamsBtn" title="Riktiga 24/7 live-streams (YouTube Live, kuraterad lista)">🎥 Live</button>
+          <button class="karta-btn" id="kartaToggleLiveCamsBtn" title="Riktiga 24/7 live-streams (YouTube + EarthCam + NASA, kuraterad lista)">🎥 Live</button>
+          <button class="karta-btn" id="kartaToggleRoadStatusBtn" title="Trafikverket vägläge — olyckor, vägarbete, hastighetskameror (kräver TRAFIKVERKET_API_KEY)">🚧 Vägläge</button>
         </div>
         <!-- Modal för inbäddad webcam-player (Windy iframe / Trafikverket bild) -->
         <div id="kartaWebcamModal" class="karta-webcam-modal" style="display:none;">
@@ -2371,6 +2372,8 @@ Skärmvision kräver UI-TARS.</div>
       if (trvBtn) trvBtn.addEventListener("click", function() { _kartaToggleTrvCams(); });
       const liveBtn = document.getElementById("kartaToggleLiveCamsBtn");
       if (liveBtn) liveBtn.addEventListener("click", function() { _kartaToggleLiveCams(); });
+      const roadBtn = document.getElementById("kartaToggleRoadStatusBtn");
+      if (roadBtn) roadBtn.addEventListener("click", function() { _kartaToggleRoadStatus(); });
 
       // Be om Windy + Trafikverket-nycklar vid init
       postMessage({ type: "karta_get_windy_key" });
@@ -3379,9 +3382,10 @@ Skärmvision kräver UI-TARS.</div>
       postMessage({ type: "karta_fetch_trv_cams", id: id });
     }
 
-    // ===== 🎥 Live-webcams — kuraterad lista med riktiga 24/7 YouTube-streams =====
-    // YouTube embed-URL kräver bara videoId. Sätt &autoplay=1&mute=1 så streamen startar
-    // direkt i modal (mute krävs av Chrome/Edge för autoplay).
+    // ===== 🎥 Live-webcams — kuraterad lista med riktiga 24/7-streams =====
+    // Format per entry:
+    //   { source: "youtube" | "earthcam" | "nasa" | "url", id eller embedUrl, lat, lon, title, cat }
+    // YouTube: behöver bara videoId. EarthCam: full embed-URL (deras player). NASA: full URL.
     const KARTA_LIVE_WEBCAMS = [
       // --- USA ---
       { id: "AdUw5RdyZxI", lat: 40.7580, lon: -73.9855, title: "Times Square, NYC",       country: "US", cat: "stad" },
@@ -3422,7 +3426,29 @@ Skärmvision kräver UI-TARS.</div>
       { id: "OWnehHX-Ckg", lat: 36.3932, lon: 25.4615,   title: "Santorini Caldera",        country: "GR", cat: "strand" },
 
       // --- Rymd & specialitet ---
-      { id: "P9C25Un7xaM", lat: 0,       lon: 0,         title: "ISS HD Earth Viewing (NASA)", country: "WORLD", cat: "rymd" }
+      { id: "P9C25Un7xaM", lat: 0,       lon: 0,         title: "ISS HD Earth Viewing (NASA)", country: "WORLD", cat: "rymd" },
+
+      // --- EarthCam embed (inbäddade direkt från earthcam.com) ---
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=times-square",
+        lat: 40.7585, lon: -73.9856, title: "EarthCam Times Square (cam HQ)", cat: "stad" },
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=newportbeach",
+        lat: 33.6189, lon: -117.9298, title: "EarthCam Newport Beach Pier", cat: "strand" },
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=key-west",
+        lat: 24.5551, lon: -81.7800, title: "EarthCam Key West Harbor",      cat: "strand" },
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=abbey-road",
+        lat: 51.5320, lon: -0.1779, title: "EarthCam Abbey Road, London",    cat: "stad" },
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=dublin",
+        lat: 53.3438, lon: -6.2546, title: "EarthCam Dublin Temple Bar",     cat: "stad" },
+      { source: "earthcam", embedUrl: "https://www.earthcam.net/swf/embedplayer.swf?vh=jerusalem",
+        lat: 31.7767, lon: 35.2345, title: "EarthCam Jerusalem Western Wall", cat: "stad" },
+
+      // --- NASA live ---
+      { source: "nasa", embedUrl: "https://www.youtube-nocookie.com/embed/jPTD2gnZFUw?autoplay=1&mute=1",
+        lat: 0, lon: 0, title: "NASA TV Live (huvudkanal)", cat: "rymd" },
+      { source: "nasa", embedUrl: "https://www.youtube-nocookie.com/embed/21X5lGlDOfg?autoplay=1&mute=1",
+        lat: 0, lon: 0, title: "NASA ISS Earth-view (HDEV)", cat: "rymd" },
+      { source: "nasa", embedUrl: "https://www.youtube-nocookie.com/embed/EEIk7gwjgIM?autoplay=1&mute=1",
+        lat: -77.85, lon: 166.667, title: "NASA McMurdo Antarktis (väder)", cat: "natur" }
     ];
 
     let _kartaLiveCamsOn = false;
@@ -3442,22 +3468,143 @@ Skärmvision kräver UI-TARS.</div>
     function _kartaRenderLiveCams() {
       _kartaClearMarkers(_kartaLiveCamsMarkers);
       KARTA_LIVE_WEBCAMS.forEach(function(cam) {
-        const src = "https://www.youtube-nocookie.com/embed/" + cam.id
-          + "?autoplay=1&mute=1&controls=1&rel=0";
-        const ext = "https://www.youtube.com/watch?v=" + cam.id;
+        // Default: YouTube (gammalt format med .id). Källa kan override:as via .source/.embedUrl.
+        const source = cam.source || "youtube";
+        let src, ext, prefix;
+        if (source === "youtube") {
+          src = "https://www.youtube-nocookie.com/embed/" + cam.id + "?autoplay=1&mute=1&controls=1&rel=0";
+          ext = "https://www.youtube.com/watch?v=" + cam.id;
+          prefix = "🎥";
+        } else if (source === "nasa") {
+          src = cam.embedUrl;
+          ext = cam.embedUrl;
+          prefix = "🚀";
+        } else if (source === "earthcam") {
+          src = cam.embedUrl;
+          ext = cam.embedUrl;
+          prefix = "🌍";
+        } else {
+          src = cam.embedUrl || "";
+          ext = cam.embedUrl || "";
+          prefix = "📺";
+        }
+        if (!src) return;
         _kartaLiveCamsMarkers.push(_kartaMakeDataMarker({
           lat: cam.lat, lon: cam.lon,
           classes: "karta-livecam-marker",
-          content: "🎥", title: cam.title + " (live)",
+          content: prefix, title: cam.title + " (live)",
           onClick: function() {
             _kartaOpenWebcamModal({
               type: "iframe", src: src,
-              title: "🎥 " + cam.title + " (YouTube Live)",
+              title: prefix + " " + cam.title + " (" + source.toUpperCase() + ")",
               externalUrl: ext
             });
           }
         }));
       });
+    }
+
+    // ===== 🚧 Vägläge — Trafikverket olyckor + vägarbete + hastighetskameror =====
+    let _kartaRoadStatusOn = false;
+    let _kartaRoadStatusMarkers = [];
+    let _kartaRoadStatusTimer = null;
+    const _kartaRoadStatusCallbacks = {};
+    window.jarvisKartaRoadStatusResultV1 = function(payload) {
+      if (!payload || !payload.id) return;
+      const cb = _kartaRoadStatusCallbacks[payload.id];
+      if (!cb) return;
+      delete _kartaRoadStatusCallbacks[payload.id];
+      cb(payload.raw, payload.error);
+    };
+    function _kartaToggleRoadStatus() {
+      if (!_kartaTrafikverketKey) {
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "🚧 Vägläge kräver TRAFIKVERKET_API_KEY.");
+        return;
+      }
+      _kartaRoadStatusOn = !_kartaRoadStatusOn;
+      if (_kartaRoadStatusOn) {
+        _kartaFetchRoadStatus();
+        _kartaRoadStatusTimer = setInterval(_kartaFetchRoadStatus, 5 * 60 * 1000);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "🚧 Vägläge PÅ — visar olyckor (röd), vägarbete (orange) och hastighetskameror (gul).");
+      } else {
+        if (_kartaRoadStatusTimer) clearInterval(_kartaRoadStatusTimer);
+        _kartaRoadStatusTimer = null;
+        _kartaClearMarkers(_kartaRoadStatusMarkers);
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant", "🚧 Vägläge AV.");
+      }
+      _kartaSyncLayerButtonsV1();
+    }
+    function _kartaFetchRoadStatus() {
+      const id = "roadstat_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+      _kartaRoadStatusCallbacks[id] = function(raw, error) {
+        if (error) {
+          window.jarvisAddMessage && window.jarvisAddMessage("assistant", "Vägläge: " + error);
+          return;
+        }
+        let data;
+        try { data = JSON.parse(raw); } catch (_) { return; }
+        _kartaClearMarkers(_kartaRoadStatusMarkers);
+        const results = (data.RESPONSE && data.RESPONSE.RESULT) || [];
+        let nOlycka = 0, nArbete = 0, nKamera = 0;
+
+        // RESULT[0] = Situation (med Deviation inuti)
+        const situations = (results[0] && results[0].Situation) || [];
+        situations.forEach(function(s) {
+          (s.Deviation || []).forEach(function(d) {
+            const g = d["Geometry.WGS84"] || (d.Geometry && d.Geometry.WGS84);
+            const m = g && String(g).match(/POINT\s*\(\s*([-0-9.]+)\s+([-0-9.]+)\s*\)/);
+            if (!m) return;
+            const lon = parseFloat(m[1]), lat = parseFloat(m[2]);
+            const mt = String(d.MessageType || "").toLowerCase();
+            const isOlycka = mt.indexOf("olycka") >= 0 || mt.indexOf("accident") >= 0;
+            const isArbete = mt.indexOf("arbete") >= 0 || mt.indexOf("works") >= 0;
+            const color = isOlycka ? "#ff4060" : isArbete ? "#ff9040" : "#ffd680";
+            const ikon = isOlycka ? "⚠" : isArbete ? "🚧" : "ℹ";
+            if (isOlycka) nOlycka++; else if (isArbete) nArbete++;
+            const start = d.StartTime ? new Date(d.StartTime).toLocaleString("sv-SE") : "";
+            const end = d.EndTime ? new Date(d.EndTime).toLocaleString("sv-SE") : "pågående";
+            const popup = '<div class="karta-data-popup">'
+              + '<div class="name">' + ikon + ' ' + _kartaEsc(d.MessageType || "Händelse") + '</div>'
+              + '<div class="meta">' + _kartaEsc(d.LocationDescriptor || "") + '</div>'
+              + '<div>' + _kartaEsc(d.Message || "") + '</div>'
+              + (d.SeverityText ? '<div class="row"><span class="k">Allvarlighet</span><span>' + _kartaEsc(d.SeverityText) + '</span></div>' : '')
+              + (start ? '<div class="row"><span class="k">Start</span><span>' + start + '</span></div>' : '')
+              + '<div class="row"><span class="k">Slut</span><span>' + end + '</span></div>'
+              + '</div>';
+            _kartaRoadStatusMarkers.push(_kartaMakeDataMarker({
+              lat: lat, lon: lon, classes: "karta-data-marker",
+              style: "width:24px; height:24px; font-size:14px; border-radius:50%; "
+                + "background:rgba(20,20,30,0.95); border:2px solid " + color + "; color:" + color + ";",
+              content: ikon, title: d.MessageType || "Händelse", popupHtml: popup
+            }));
+          });
+        });
+
+        // RESULT[1] = TrafficSafetyCamera (hastighetskameror)
+        const cams = (results[1] && results[1].TrafficSafetyCamera) || [];
+        cams.forEach(function(cam) {
+          const g = cam["Geometry.WGS84"] || (cam.Geometry && cam.Geometry.WGS84);
+          const m = g && String(g).match(/POINT\s*\(\s*([-0-9.]+)\s+([-0-9.]+)\s*\)/);
+          if (!m) return;
+          const lon = parseFloat(m[1]), lat = parseFloat(m[2]);
+          nKamera++;
+          const popup = '<div class="karta-data-popup">'
+            + '<div class="name">📷 ' + _kartaEsc(cam.Name || "Hastighetskamera") + '</div>'
+            + '<div class="meta">Väg ' + _kartaEsc(cam.RoadNumber || "?") + ' · ' + (cam.SpeedLimit || "?") + ' km/h</div>'
+            + '</div>';
+          _kartaRoadStatusMarkers.push(_kartaMakeDataMarker({
+            lat: lat, lon: lon, classes: "karta-data-marker",
+            style: "width:22px; height:22px; font-size:12px; border-radius:4px; "
+              + "background:rgba(40,40,20,0.95); border:1px solid #ffd680; color:#ffd680;",
+            content: "📷", title: "Fartkamera väg " + (cam.RoadNumber || ""), popupHtml: popup
+          }));
+        });
+        window.jarvisAddMessage && window.jarvisAddMessage("assistant",
+          "Vägläge: " + nOlycka + " olyckor, " + nArbete + " vägarbeten, " + nKamera + " fartkameror.");
+      };
+      postMessage({ type: "karta_fetch_trv_road_status", id: id });
     }
 
     // ===== LIVE-VÄDER (open-meteo + visual rain/storm overlay) =====
@@ -4027,6 +4174,7 @@ Skärmvision kräver UI-TARS.</div>
         kartaToggleWebcamsBtn: !!_kartaWebcamsOn,
         kartaToggleTrvCamsBtn: !!_kartaTrvCamsOn,
         kartaToggleLiveCamsBtn: !!_kartaLiveCamsOn,
+        kartaToggleRoadStatusBtn: !!_kartaRoadStatusOn,
         kartaToggleGoogleBtn: !!_kartaGoogleActive
       };
       Object.keys(map).forEach(function(id) {
