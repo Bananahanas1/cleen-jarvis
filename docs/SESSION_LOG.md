@@ -1,5 +1,74 @@
 ﻿# SESSION_LOG.md
 
+## 2026-05-16 - Docs-konsolidering + Cinematic Workspace Pro Fas 3 (foundation)
+
+Andringar:
+
+- Konsoliderade 14 duplicate plan/master/index-filer till arkiv. `MASTER_PLAN.md`
+  ar nu enda kallan (runtime-refererad fran Program.cs:3419 + OllamaAgentHarness.cs:250).
+  Arkiv: `archive/2026-05-12-planning-sprawl/` (7 filer) + `archive/split-parts/` (7 filer).
+  Root .md-filer minskat fran 24 till 12. `README.md` skrevs om som kort pekare.
+- Fas 3 foundation: `app/Scene/SceneComposerV1.cs` (V2-schema med 7 layouttyper:
+  explainer, news_brief, map_brief, vision_analysis, github_changelog, comparison,
+  project_plan). `FromV1`-adapter bevarar bakatkompabilitet med `ScenePayloadV1`.
+- `dashboard/scene-renderer-v1.js` (NY) — read-only renderer som dispatchar per
+  layout via `window.jarvisApplySceneV2`. Inga link opens, fetch, terminal eller
+  file writes. V1-rendereren i `index.html` orord.
+- `dashboard/index.html` — laddar `scene-renderer-v1.js` med `defer`.
+
+Verifiering:
+
+- `node tests/scene-composer-phase3.test.js` — 55/55 PASS.
+- `node tests/scene-pro-phase1.test.js` — passerar (Fas 1 ingen regression).
+- `node tests/scene-cinematic-v2.test.js` — passerar (V2 ingen regression).
+- `node --check dashboard/scene-renderer-v1.js` — JS-syntax OK.
+- `dotnet build app/JarvisClean.csproj -c Release` — 0 errors, 1 known
+  MSB3277-varning (WindowsBase 4.0 vs 5.0, dokumenterad i RELEASE_STATUS.md).
+- `dotnet publish` till `dist/` — publicerad.
+- Jarvis omstartad via `Starta-Jarvis.vbs`.
+
+Inte gjort an (foljande Fas 3-slices):
+
+- `HandleSceneShowAsync` skickar fortfarande V1 ScenePayload — JS-rendereren
+  sitter laddad men dormant tills C# borjar emittera V2 via `jarvisApplySceneV2`.
+- Per-layout integration-tester (news timeline-fields, map pins, etc).
+- Flytta kort-rendering ur `index.html` (plan steg 6).
+
+## 2026-05-15 - Git LFS process storm hotfix
+
+Andringar:
+
+- Undersokte manga `git-lfs filter-process` i bakgrunden.
+- Root cause: Codex startade `git add -- ...` pa mycket stor fillista eftersom
+  repo saknade `.gitignore`; listan inneholl `.checkpoints`, `bin/obj`, `dist`,
+  `.env`, `data/voice` och stora modell/binary-filer.
+- Skapade `.gitignore` for secrets, checkpoints, build-output, runtime-data,
+  venv/node_modules och stora modell/audio/video-assets.
+- Ny regression: `tests/gitignore-safety.test.js`.
+- Noterade `https://github.com/garrytan/gstack` som extern inspiration, men
+  installerade inget for att inte lagga till mer bakgrundsagentik.
+
+Verifiering:
+
+- Stoppade `git`, `git-lfs` och `sh`-kedjan utan att stoppa Jarvis.
+- `node tests/gitignore-safety.test.js` passerade.
+- Ny kontroll efter 6 sekunder visade inga `git/git-lfs/sh/build`-helpers kvar.
+- Jarvis fortsatte kora och svarade (`Jarvis.exe` PID 20848).
+
+## 2026-05-15 - Desktop shortcut to latest Jarvis
+
+Andringar:
+
+- Skapade skrivbordsgenvag `Jarvis Clean - senaste.lnk`.
+- Genvagen pekar pa `F:\Jarvis-clean\Starta-Jarvis.vbs` via `wscript.exe`
+  med arbetsmapp `F:\Jarvis-clean`.
+- Syfte: samma skrivbordsfil startar senaste publicerade Jarvis fran projektets
+  launcher efter framtida uppdateringar/publish.
+
+Verifiering:
+
+- Kontrollerade genvagens target, arguments, working directory och ikon.
+
 ## 2026-05-15 - Skånetrafiken tidtabell + labels över byggnader
 
 Andringar:
@@ -216,100 +285,10 @@ Verifiering:
 - Logg: `data/test-runs/20260513-171921/summary.txt`.
 - Docs/test-only: ingen publish/restart behovdes.
 
-## 2026-05-13 - Agent Autopilot Modes V1
+## 2026-05-13 - Autopilot och hybrid model historik
 
-Utgangspunkt: femniva-modellen skulle goras konkret. Desktop-kravet andrades
-till nastan allt normalt app-arbete, inte liten whitelist.
-
-Andringar:
-
-- Skapade `app/Agents/AgentAutopilotModeV1.cs`.
-- Lade till Safe, Approval, Browser Autopilot, Desktop Autopilot och Build Agent.
-- Desktop Autopilot ar BroadDesktopControl for nastan alla normala appar, men
-  med denylist, scope och Ctrl+Shift+Alt+J kill-switch.
-- Browser Autopilot haller OperaGX/Opera synligt och isolerad Chromium internt.
-- Lade till `/autopilot status`, `/autopilot approval`,
-  `/autopilot browser <uppdrag>`, `/autopilot desktop <uppdrag>`,
-  `/autopilot build <uppdrag>` och `/autopilot stop`.
-- Oversiktspanelen visar Autopilot-status.
-
-Verifiering:
-
-- TDD red: `tests/autopilot-modes.test.js` failade forst pa 18 saknade delar.
-- Green: `tests/autopilot-modes.test.js` passerade.
-- Full node-regression passerade: 37 tester.
-- `CommandRouterV1.Tests` passerade med autopilot-routerfall.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
-  och kand `MSB3277`.
-- Publicerade/startade om. Observerad process: `Jarvis.exe` PID 15628,
-  path `F:\Jarvis-clean\dist\Jarvis.exe`.
-
-## 2026-05-13 - Browser Autopilot Runner V1
-
-Andringar:
-
-- Skapade `app/Agents/BrowserAutopilotRunnerV1.cs`.
-- `/autopilot browser <uppdrag>` kan nu soka/oppna/lasa URL via Opera-policy.
-- Blockar login, password/secrets, betalning, bankid, skicka och publicering.
-- V1 klickar/skriver inte i sidor an.
-
-Verifiering:
-
-- TDD red: `tests/browser-autopilot-runner.test.js` failade forst pa 10 delar.
-- Green: browser-runner-testet passerade.
-- Full node-regression passerade: 38 tester.
-- `CommandRouterV1.Tests` passerade.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
-  och kand `MSB3277`.
-
-## 2026-05-13 - Desktop Autopilot Runner V1
-
-Andringar:
-
-- Skapade `app/Agents/DesktopAutopilotRunnerV1.cs`.
-- `/autopilot desktop <uppdrag>` foreslar nu ett UI-TARS-steg direkt.
-- Varje klick/typ/hotkey blir fortfarande `PendingApprovalV1`.
-- Runnern blockerar login, betalning, secrets, admin/system/terminal och delete.
-- Max 12 steg per uppdrag och kill-switch finns kvar.
-
-Verifiering:
-
-- TDD red: `tests/desktop-autopilot-runner.test.js` failade forst pa saknad runner.
-- Green: riktat desktop-runner-test passerade.
-- Full node-regression passerade: 39 tester.
-- `CommandRouterV1.Tests` passerade.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors och kand `MSB3277`.
-- Publish/start klart. Observerad process: `Jarvis.exe` PID 40716.
-
-## 2026-05-13 - HybridModelRouterV1 + ContextPackV1
-
-Utgangspunkt: LLM ska hjalpa Jarvis forsta och planera, men inte fa direkt
-skriv-, terminal- eller desktopmakt.
-
-Andringar:
-
-- Skapade `app/Brain/ContextPackV1.cs`.
-- Skapade `app/Brain/HybridModelRouterV1.cs`.
-- `Program.cs` har nu hybrid chat fallback efter lokal router och safe tools.
-- Online providers via env vars: `GROQ_API_KEY`, `GEMINI_API_KEY`, `GITHUB_TOKEN`.
-- `/modell provider` visar backendstatus.
-- `/modell lage lokal` och `/modell lage auto` styr lokal/auto-free.
-- Oversiktspanelen visar Modellmotor.
-
-Sakerhet: LLM ar radgivare/tolk; Jarvis ager routing, approval och tools.
-
-Verifiering:
-
-- TDD red/green: `tests/hybrid-model-router-context.test.js`.
-- Full node-regression passerade: 36 tester.
-- `CommandRouterV1.Tests` passerade.
-- Markdown-langdkontroll passerade: alla `.md` under 14 000 tecken.
-- `dotnet build F:\Jarvis-clean\app\JarvisClean.csproj` passerade med 0 errors
-  och kand `MSB3277`.
-- Publicerade till `F:\Jarvis-clean\dist` och startade Jarvis igen.
-- Observerad process: `Jarvis.exe` PID 28220, path `F:\Jarvis-clean\dist\Jarvis.exe`.
-- Notering: kombinerat publish/start-kommando returnerade exit code 1 efter
-  startdelen, men publish-output var lyckad och processen verifierades separat.
+Flyttad till [PART 11](SESSION_LOG_PART_11.md) for att halla huvudloggen under
+14 000 tecken.
 
 ## 2026-05-13 - Panel/status/browser/autopilot historik
 
@@ -339,5 +318,6 @@ Den tidigare lÃ¥nga `docs/SESSION_LOG.md` Ã¤r bevarad i delar:
 - [PART 08](SESSION_LOG_PART_08.md)
 - [PART 09](SESSION_LOG_PART_09.md)
 - [PART 10](SESSION_LOG_PART_10.md)
+- [PART 11](SESSION_LOG_PART_11.md)
 
 

@@ -1,0 +1,624 @@
+/* ============================================================
+   JARVIS FX PACK — Tier 1-3 visual upgrades
+   All scoped till explicita klasser/ID:n. Inga rivningar av
+   befintliga regler. Toggla per-feature via body-klass om
+   man vill stänga av: .fx-off-boot, .fx-off-ticker, etc.
+   ============================================================ */
+
+/* ---------- 1. BOOT SEQUENCE OVERLAY ---------- */
+#jarvisBootOverlay {
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at center, #061a2a 0%, #02060c 90%);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-family: Consolas, "JetBrains Mono", monospace;
+  color: var(--jarvis-cyan, #6ad9ff);
+  /* CSS-driven auto-fade — kompositor-tråden, opåverkad av JS-event-loop-blockering.
+     Total scene: 3.0s synlig, 0.6s fade ut. Efter det är overlayen osynlig + non-clickable. */
+  animation: bootOverlayAutoFade 3.6s ease-in-out forwards;
+}
+@keyframes bootOverlayAutoFade {
+  0%,
+  83%  { opacity: 1; pointer-events: auto; visibility: visible; }
+  100% { opacity: 0; pointer-events: none; visibility: hidden; }
+}
+/* JS-trigger ifall den hinner — annars CSS sköter sig själv */
+#jarvisBootOverlay.fade-out {
+  animation: bootOverlayJsFade 600ms ease forwards !important;
+}
+@keyframes bootOverlayJsFade {
+  from { opacity: 1; pointer-events: auto; }
+  to   { opacity: 0; pointer-events: none; visibility: hidden; }
+}
+#jarvisBootOverlay .boot-logo {
+  font-size: 42px;
+  letter-spacing: 12px;
+  margin-bottom: 18px;
+  text-shadow: 0 0 22px rgba(106, 217, 255, 0.6);
+  animation: bootLogoPulse 2s ease-in-out infinite;
+}
+#jarvisBootOverlay .boot-lines {
+  width: min(680px, 80vw);
+  font-size: 13px;
+  line-height: 1.9;
+  letter-spacing: 1.2px;
+}
+#jarvisBootOverlay .boot-lines .boot-line {
+  opacity: 0;
+  white-space: pre;
+}
+#jarvisBootOverlay .boot-lines .boot-line.visible {
+  opacity: 1;
+  animation: bootLineIn 220ms ease both;
+}
+#jarvisBootOverlay .boot-lines .boot-ok { color: var(--jarvis-ok, #7dffbd); }
+#jarvisBootOverlay .boot-lines .boot-warn { color: var(--jarvis-warn, #ffd166); }
+#jarvisBootOverlay .boot-progress {
+  margin-top: 28px;
+  width: min(440px, 60vw);
+  height: 2px;
+  background: rgba(106, 217, 255, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
+}
+#jarvisBootOverlay .boot-progress::after {
+  content: "";
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, transparent, var(--jarvis-cyan, #6ad9ff), transparent);
+  animation: bootProgressFill 2.6s ease-out forwards;
+  box-shadow: 0 0 10px var(--jarvis-cyan, #6ad9ff);
+}
+@keyframes bootLogoPulse {
+  0%, 100% { text-shadow: 0 0 22px rgba(106, 217, 255, 0.6); }
+  50%      { text-shadow: 0 0 38px rgba(106, 217, 255, 0.95); }
+}
+@keyframes bootLineIn {
+  from { opacity: 0; transform: translateX(-4px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes bootProgressFill {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+
+/* ---------- 2. STATUS TICKER TAPE ---------- */
+#jarvisTicker {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 22px;
+  background: linear-gradient(180deg, rgba(3, 12, 22, 0.92), rgba(2, 8, 15, 0.96));
+  border-top: 1px solid rgba(106, 217, 255, 0.25);
+  color: var(--jarvis-cyan-soft, #aee6ff);
+  font-family: Consolas, "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 1.1px;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  z-index: 50;
+  user-select: none;
+  pointer-events: none;
+}
+#jarvisTicker .ticker-track {
+  display: inline-block;
+  white-space: nowrap;
+  padding-left: 100%;
+  animation: tickerScroll 90s linear infinite;
+  text-shadow: 0 0 6px rgba(106, 217, 255, 0.45);
+}
+#jarvisTicker .ticker-track .sep {
+  color: var(--jarvis-cyan, #6ad9ff);
+  opacity: 0.55;
+  margin: 0 14px;
+}
+#jarvisTicker .ticker-track .tag {
+  color: var(--jarvis-cyan, #6ad9ff);
+  font-weight: bold;
+}
+#jarvisTicker .ticker-track .val-ok { color: var(--jarvis-ok, #7dffbd); }
+#jarvisTicker .ticker-track .val-warn { color: var(--jarvis-warn, #ffd166); }
+@keyframes tickerScroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-100%); }
+}
+/* Hjälper layouten att inte täckas av tickern */
+body.fx-ticker-on { padding-bottom: 22px; }
+body.fx-ticker-on .layout { height: calc(100vh - 22px); }
+
+/* ---------- 3. COORDINATE READOUTS PÅ KARTA ---------- */
+#mapCoordHud {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 8;
+  background: rgba(3, 12, 22, 0.78);
+  border: 1px solid rgba(106, 217, 255, 0.32);
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-family: Consolas, "JetBrains Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 1.3px;
+  color: var(--jarvis-cyan-soft, #aee6ff);
+  text-shadow: 0 0 6px rgba(106, 217, 255, 0.4);
+  pointer-events: none;
+  line-height: 1.8;
+  min-width: 200px;
+}
+#mapCoordHud .coord-label {
+  color: var(--jarvis-cyan, #6ad9ff);
+  opacity: 0.72;
+  margin-right: 6px;
+}
+#mapCoordHud .coord-val {
+  color: var(--jarvis-text, #dff7ff);
+}
+
+/* ---------- 4. RADAR SWEEP PÅ KARTA ---------- */
+#mapRadarSweep {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 6;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+  overflow: hidden;
+}
+#mapRadarSweep .radar-cone {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  transform: translate(-50%, -50%);
+  background: conic-gradient(
+    from 0deg at 50% 50%,
+    rgba(106, 217, 255, 0.55) 0deg,
+    rgba(106, 217, 255, 0.18) 8deg,
+    transparent 28deg,
+    transparent 360deg
+  );
+  animation: radarSpin 6s linear infinite;
+  filter: blur(1px);
+}
+#mapRadarSweep .radar-rings {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 50% 50%, transparent 22%, rgba(106, 217, 255, 0.08) 22.4%, transparent 22.8%),
+    radial-gradient(circle at 50% 50%, transparent 38%, rgba(106, 217, 255, 0.06) 38.4%, transparent 38.8%),
+    radial-gradient(circle at 50% 50%, transparent 54%, rgba(106, 217, 255, 0.05) 54.4%, transparent 54.8%);
+}
+@keyframes radarSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+/* ---------- 5. AUDIO-REACTIVE ORB ---------- */
+.scene-jarvis-orb[data-state="speaking"] {
+  animation: orbSpeaking 0.42s ease-in-out infinite alternate !important;
+}
+.scene-jarvis-orb[data-state="thinking"] {
+  animation: orbThinking 1.2s ease-in-out infinite !important;
+}
+@keyframes orbSpeaking {
+  0%   { transform: scale(1);    filter: brightness(1.05); box-shadow: inset 0 0 34px rgba(255,255,255,0.18), 0 0 44px rgba(106,217,255,0.55), 0 0 110px rgba(106,217,255,0.32); }
+  100% { transform: scale(1.07); filter: brightness(1.28); box-shadow: inset 0 0 44px rgba(255,255,255,0.32), 0 0 70px rgba(106,217,255,0.85), 0 0 160px rgba(106,217,255,0.45); }
+}
+@keyframes orbThinking {
+  0%, 100% { transform: scale(1); filter: brightness(1) hue-rotate(0deg); }
+  50%      { transform: scale(1.02); filter: brightness(1.15) hue-rotate(-12deg); }
+}
+
+/* ---------- 6. HEXAGONAL GRID BACKGROUND ---------- */
+body.fx-hex-grid #scenePanel,
+body.fx-hex-grid .editor {
+  background-image:
+    radial-gradient(circle at 50% 24%, rgba(106, 217, 255, 0.18), transparent 28%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='60' height='52' viewBox='0 0 60 52'><path d='M15 0 L45 0 L60 26 L45 52 L15 52 L0 26 Z' fill='none' stroke='rgba(106,217,255,0.07)' stroke-width='1'/></svg>"),
+    radial-gradient(ellipse at top, #061a2a 0%, #02060c 70%) !important;
+  background-size: auto, 60px 52px, auto !important;
+}
+
+/* ---------- 7. TELEMETRY MINI-GRAFER I HÖRNEN ---------- */
+.fx-telemetry-corner {
+  position: fixed;
+  background: rgba(3, 12, 22, 0.72);
+  border: 1px solid rgba(106, 217, 255, 0.28);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: Consolas, "JetBrains Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 1.1px;
+  color: var(--jarvis-cyan, #6ad9ff);
+  text-shadow: 0 0 4px rgba(106, 217, 255, 0.5);
+  pointer-events: none;
+  z-index: 40;
+  user-select: none;
+  width: 84px;
+}
+/* Placerade inne i editor-arean (mellan panelerna) så de inte täcker
+   panel-titlar eller Skicka-knappen. Vänster aside = 280px, höger aside = 440px. */
+.fx-telemetry-corner.tl { top: 54px; left: 290px; }
+.fx-telemetry-corner.tr { top: 54px; right: 450px; }
+.fx-telemetry-corner.bl { bottom: 34px; left: 290px; }
+.fx-telemetry-corner.br { bottom: 34px; right: 450px; }
+/* När någon panel är dold, krymp insetten så widgets följer med */
+body.hide-left .fx-telemetry-corner.tl,
+body.hide-left .fx-telemetry-corner.bl { left: 10px; }
+body.hide-right .fx-telemetry-corner.tr,
+body.hide-right .fx-telemetry-corner.br { right: 10px; }
+.fx-telemetry-corner .tm-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2px;
+  opacity: 0.78;
+}
+.fx-telemetry-corner .tm-label .tm-val { color: var(--jarvis-text, #dff7ff); }
+.fx-telemetry-corner canvas {
+  display: block;
+  width: 100%;
+  height: 22px;
+}
+/* Göm telemetri-hörn när left panel täcker bottom-left etc — diskret */
+body.fx-telemetry-off .fx-telemetry-corner { display: none !important; }
+/* Göm i tunga vyer där editor-arean har egna overlays (karta, brain-graph, scene) */
+body.map-mode .fx-telemetry-corner,
+body.brain-mode .fx-telemetry-corner,
+body.scene-mode .fx-telemetry-corner { display: none !important; }
+
+/* ---------- 9. GLITCH TRANSITION VID MODE-BYTE ---------- */
+.fx-glitch-out {
+  animation: fxGlitchOut 220ms ease both !important;
+}
+.fx-glitch-in {
+  animation: fxGlitchIn 320ms ease both !important;
+}
+@keyframes fxGlitchOut {
+  0%   { transform: translateX(0);    filter: hue-rotate(0deg); clip-path: inset(0 0 0 0); }
+  30%  { transform: translateX(-3px); filter: hue-rotate(-20deg); clip-path: inset(0 0 60% 0); }
+  60%  { transform: translateX(2px);  filter: hue-rotate(15deg); clip-path: inset(40% 0 0 0); }
+  100% { transform: translateX(0);    filter: hue-rotate(0deg); opacity: 0.4; clip-path: inset(0 0 0 0); }
+}
+@keyframes fxGlitchIn {
+  0%   { transform: translateY(6px);  filter: brightness(1.6) blur(2px); opacity: 0; }
+  60%  { transform: translateY(-1px); filter: brightness(1.15) blur(0); opacity: 1; }
+  100% { transform: translateY(0);    filter: brightness(1) blur(0); opacity: 1; }
+}
+
+/* ---------- 10. PARTICLE FIELD RUNT ORBEN ---------- */
+#orbParticleCanvas {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  mix-blend-mode: screen;
+}
+
+/* ---------- 11. CURVE-BRACKET BORDERS ---------- */
+.jarvis-hud-frame.curved::before,
+.jarvis-hud-frame.curved::after {
+  width: 32px;
+  height: 32px;
+  border-radius: 0;
+}
+.jarvis-hud-frame.curved::before {
+  border-top-left-radius: 14px;
+  border-top: 2px solid var(--jarvis-cyan, #6ad9ff);
+  border-left: 2px solid var(--jarvis-cyan, #6ad9ff);
+}
+.jarvis-hud-frame.curved::after {
+  border-bottom-right-radius: 14px;
+  border-bottom: 2px solid var(--jarvis-cyan, #6ad9ff);
+  border-right: 2px solid var(--jarvis-cyan, #6ad9ff);
+}
+
+/* ---------- 12. ANIMATED TOOL-DOCK ICONS ---------- */
+.scene-tool-icon .scene-tool-glyph {
+  animation: toolGlyphPulse 4s ease-in-out infinite;
+}
+.scene-tool-icon:nth-child(2) .scene-tool-glyph { animation-delay: 0.4s; }
+.scene-tool-icon:nth-child(3) .scene-tool-glyph { animation-delay: 0.8s; }
+.scene-tool-icon:nth-child(4) .scene-tool-glyph { animation-delay: 1.2s; }
+.scene-tool-icon:nth-child(5) .scene-tool-glyph { animation-delay: 1.6s; }
+.scene-tool-icon:nth-child(6) .scene-tool-glyph { animation-delay: 2.0s; }
+@keyframes toolGlyphPulse {
+  0%, 100% { filter: drop-shadow(0 0 6px rgba(106, 217, 255, 0.35)); opacity: 0.9; }
+  50%      { filter: drop-shadow(0 0 12px rgba(106, 217, 255, 0.75)); opacity: 1; }
+}
+.scene-tool-icon {
+  transition: transform 220ms ease, border-color 220ms ease, box-shadow 220ms ease;
+}
+.scene-tool-icon:hover {
+  transform: translateY(-2px);
+  border-color: var(--jarvis-cyan, #6ad9ff) !important;
+  box-shadow: 0 0 18px rgba(106, 217, 255, 0.35);
+}
+
+/* ---------- 13. TYPE-ON REVEAL (chat) ---------- */
+.fx-typeon span.fx-char {
+  opacity: 0;
+  animation: fxCharIn 180ms ease forwards;
+}
+@keyframes fxCharIn {
+  from { opacity: 0; filter: blur(2px); transform: translateY(2px); }
+  to   { opacity: 1; filter: blur(0);   transform: translateY(0); }
+}
+
+/* ---------- 14. WAVEFORM DIVIDER LINES ---------- */
+.fx-wave-divider {
+  position: relative;
+  height: 8px;
+  margin: 6px 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0,
+      transparent 4px,
+      rgba(106, 217, 255, 0.35) 4px,
+      rgba(106, 217, 255, 0.35) 5px,
+      transparent 5px,
+      transparent 9px,
+      rgba(106, 217, 255, 0.15) 9px,
+      rgba(106, 217, 255, 0.15) 10px
+    );
+  mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
+  opacity: 0.6;
+}
+
+/* ---------- 15. PARALLAX ORB (JS sätter --px/--py) ---------- */
+.scene-orb-panel {
+  perspective: 800px;
+}
+.scene-jarvis-orb {
+  transform: translate(calc(var(--px, 0) * 1px), calc(var(--py, 0) * 1px));
+  transition: transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.scene-orb-panel.fx-parallax-active .scene-jarvis-orb {
+  transition: transform 60ms linear;
+}
+
+/* ---------- SETTINGS TOGGLE för FX-paket ---------- */
+.fx-settings-card label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  color: var(--jarvis-cyan-soft, #aee6ff);
+  cursor: pointer;
+}
+.fx-settings-card label input[type="checkbox"] {
+  accent-color: var(--jarvis-cyan, #6ad9ff);
+}
+
+/* ---------- Bottom-padding säkerhet när tickern är PÅ ---------- */
+body.fx-ticker-on #terminalPanel { bottom: 22px; }
+
+/* ============================================================
+   UI FIXES 2026-05-16 (efter screenshot-feedback)
+   ============================================================ */
+
+/* ---------- Hide Google Maps "For development purposes only" watermark
+   Google Maps injicerar en gul/cream-banner som täcker delar av kartan när
+   API-key saknas eller har billing inaktiverat. Det är en desktop-app — vi
+   visar inte den varningen för slutanvändaren. ---------- */
+#kartaGoogleOverlay .gm-style div[role="alert"],
+#kartaGoogleOverlay .gm-err-container,
+#kartaGoogleOverlay .gm-err-message,
+#kartaGoogleOverlay .gm-style-cc,
+#mapPanel .gm-style div[role="alert"],
+#mapPanel .gm-err-container,
+#mapPanel .gm-err-message,
+#mapPanel .gm-style > div > div[style*="background-color: rgb(255, 255, 255)"][style*="z-index"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* ---------- Karta: kompaktare bottom-toolbar (3 rader)
+   Tidigare: 14/62/110px med stora knappar — krockade och såg trångt ut.
+   Nu: tätare radspacing, mindre knappar, gemensam max-bredd som lämnar
+   plats för mini-chatten (280px + marginal) till höger. ---------- */
+#mapPanel .karta-controls {
+  bottom: 12px !important;
+  padding: 6px 8px !important;
+  gap: 5px !important;
+  max-width: calc(100% - 308px) !important;
+  opacity: 0.78;
+  transition: opacity 0.2s ease;
+}
+#mapPanel .karta-controls:hover { opacity: 1; }
+#mapPanel .karta-controls-row2 { bottom: 52px !important; }
+#mapPanel .karta-controls-row3 { bottom: 92px !important; }
+#mapPanel .karta-btn {
+  padding: 3px 8px !important;
+  font-size: 10.5px !important;
+  line-height: 1.4 !important;
+}
+
+/* ---------- Mini-chat: ge den lite mer luft från botten ---------- */
+#mapPanel .karta-mini-chat { bottom: 12px !important; }
+
+/* ---------- Top tabs: håll en rad, scrolla horisontellt om det inte ryms
+   (wrap fungerade inte: mapPanel.top är låst på 50px så rad 2 hamnade
+   bakom kartan). Single-row med overflow-x:auto = layout-stabil. ---------- */
+.editor > .top-row {
+  flex-wrap: nowrap !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  column-gap: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(106,217,255,0.4) transparent;
+  padding-bottom: 2px;
+}
+.editor > .top-row::-webkit-scrollbar { height: 6px; }
+.editor > .top-row::-webkit-scrollbar-thumb {
+  background: rgba(106,217,255,0.4); border-radius: 3px;
+}
+.editor > .top-row .panel-button,
+.editor > .top-row #showTerminalBtn,
+.editor > .top-row #copyEditorBtn,
+.editor > .top-row .panel-toggle-btn {
+  font-size: 11.5px;
+  padding: 4px 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.editor > .top-row h2,
+.editor > .top-row .jarvis-hud-info {
+  flex-shrink: 0;
+}
+
+/* ---------- Trip-summary: stack under Sök plats istället för att
+   ligga ovanpå den (båda hade top:14px left:14px). ---------- */
+#mapPanel .karta-trip-summary {
+  top: 130px !important;
+  left: 14px !important;
+  max-width: 300px !important;
+  z-index: 6;
+}
+
+/* ---------- Vågor-HUD: flytta upp så den inte krockar med
+   mini-chatten i botten höger (mini-chat nu vid bottom:12px). ---------- */
+#mapPanel #kartaWavesHud {
+  bottom: auto !important;
+  top: 200px !important;
+  right: 14px !important;
+}
+
+/* ---------- Weather-HUD: justera så den inte krockar med Position-rutan
+   när båda är synliga uppe till höger. ---------- */
+#mapPanel .karta-weather-hud {
+  top: 180px !important;
+  right: 14px !important;
+}
+
+/* ---------- Brain/File Graph: ge force-sliders panel max-höjd så den
+   inte växer ner i terminal-området, och se till att den inte sticker
+   ut förbi brainPanel-kanten. ---------- */
+#brainPanel > .brain-glass[style*="top:10px"][style*="right:10px"] {
+  max-height: calc(100% - 30px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+#brainPanel > .brain-glass[style*="bottom:10px"][style*="left:10px"] {
+  max-width: 280px;
+}
+
+/* ============================================================
+   16. HUD CORNER BRACKETS — L-formade hörn-accenter
+   ============================================================ */
+#jarvisCornerBrackets {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 9998;
+}
+.jc-bracket {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  border-color: rgba(106, 217, 255, 0.65);
+  border-style: solid;
+  border-width: 0;
+  filter: drop-shadow(0 0 6px rgba(106, 217, 255, 0.45));
+  animation: jcPulse 3.2s ease-in-out infinite;
+}
+@keyframes jcPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+.jc-tl { top: 6px;    left: 6px;    border-top-width: 2px; border-left-width: 2px; }
+.jc-tr { top: 6px;    right: 6px;   border-top-width: 2px; border-right-width: 2px; }
+.jc-bl { bottom: 6px; left: 6px;    border-bottom-width: 2px; border-left-width: 2px; }
+.jc-br { bottom: 6px; right: 6px;   border-bottom-width: 2px; border-right-width: 2px; }
+
+/* ============================================================
+   17. CLICK RIPPLE RING — radial expanderande cyan ring
+   ============================================================ */
+.jarvis-click-ring {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  margin-top: -3px;
+  border: 2px solid rgba(106, 217, 255, 0.85);
+  border-radius: 50%;
+  pointer-events: none;
+  animation: jarvisRingExpand 600ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+  z-index: 100;
+  box-shadow: 0 0 12px rgba(106, 217, 255, 0.7);
+}
+@keyframes jarvisRingExpand {
+  0%   { transform: scale(1);  opacity: 1; }
+  60%  { opacity: 0.6; }
+  100% { transform: scale(18); opacity: 0; border-width: 1px; }
+}
+
+/* ============================================================
+   18. MISSION TIME CLOCK — top-right live klocka
+   ============================================================ */
+#jarvisMissionClock {
+  position: fixed;
+  top: 6px;
+  right: 50px;
+  z-index: 9997;
+  display: flex;
+  gap: 14px;
+  background: linear-gradient(135deg, rgba(8, 17, 31, 0.78) 0%, rgba(8, 30, 50, 0.7) 100%);
+  border: 1px solid rgba(74, 211, 245, 0.35);
+  border-radius: 4px;
+  padding: 3px 12px;
+  pointer-events: none;
+  font-family: 'Cascadia Code', Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #aee6ff;
+  box-shadow: 0 0 14px rgba(74, 211, 245, 0.18);
+  backdrop-filter: blur(6px);
+}
+#jarvisMissionClock .jmc-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  line-height: 1.6;
+}
+#jarvisMissionClock .jmc-label {
+  color: #4ad3f5;
+  font-size: 8.5px;
+  opacity: 0.75;
+  letter-spacing: 1.2px;
+}
+#jarvisMissionClock .jmc-val {
+  color: #dff7ff;
+  font-weight: 600;
+  font-size: 11px;
+  text-shadow: 0 0 6px rgba(106, 217, 255, 0.4);
+}
+#jarvisMissionClock .jmc-mday .jmc-val {
+  color: #ffd680;
+  text-shadow: 0 0 6px rgba(255, 214, 128, 0.35);
+}
+/* Göm i Brain/Map-mode där det krockar med deras egna HUDs */
+body.brain-mode #jarvisMissionClock,
+body.map-mode   #jarvisMissionClock { opacity: 0.35; }
+
+/* ---------- Karta info-box (POSITION): se till att den inte krockar
+   med Sök-rutan på smala fönster. Behåll position men minska bredd. ---------- */
+#mapPanel .karta-info {
+  min-width: 170px !important;
+  max-width: 240px !important;
+  font-size: 11.5px !important;
+}
+#mapPanel .karta-search {
+  min-width: 240px !important;
+  max-width: 320px !important;
+}

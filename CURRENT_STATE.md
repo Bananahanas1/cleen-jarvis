@@ -1,6 +1,20 @@
 # CURRENT_STATE.md - Jarvis
 
-Senast uppdaterad: 2026-05-13
+Senast uppdaterad: 2026-05-16
+
+## 2026-05-16 - Cinematic Workspace Pro Fas 3 foundation
+
+- `SceneComposerV1.cs` (V2-schema: 7 layouttyper, FromV1-adapter).
+- `dashboard/scene-renderer-v1.js` (read-only dispatcher per layout).
+- V1 ScenePayload-flodet orort — bakatkompatibelt.
+- `HandleSceneShowAsync` skickar fortfarande V1; renderer dormant tills nasta slice.
+
+## 2026-05-16 - Docs-konsolidering
+
+- 14 duplicate plan/master/index-filer arkiverade till `archive/`.
+- `MASTER_PLAN.md` ar nu enda kallan (runtime-refererad).
+- Root .md-filer: 24 → 12.
+
 
 ## 2026-05-13 - BrowserPolicyV1
 

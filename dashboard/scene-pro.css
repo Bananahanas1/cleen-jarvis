@@ -210,8 +210,14 @@ body #scenePanel .scene-empty {
 
 .scene-tool-icon span:first-child {
   color: var(--jarvis-cyan);
-  font-size: 18px;
+  font-size: 26px;
   text-shadow: var(--jarvis-glow-sm);
+  line-height: 1;
+}
+
+.scene-tool-icon .scene-tool-glyph {
+  font-size: 26px;
+  filter: drop-shadow(0 0 6px rgba(106, 217, 255, 0.35));
 }
 
 .scene-tool-icon span:last-child {

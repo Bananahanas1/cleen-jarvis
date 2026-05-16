@@ -10,6 +10,8 @@
   <script src="https://unpkg.com/maplibre-gl@5.6.0/dist/maplibre-gl.js" defer></script>
   <!-- hls.js för att kunna spela m3u8-streams direkt i <video> -->
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
+  <!-- Scene Composer V2 renderer (Fas 3) — read-only, fills #scenePanel slots -->
+  <script src="scene-renderer-v1.js" defer></script>
   <style>
     * {
       box-sizing: border-box;
@@ -52,7 +54,7 @@
 
     .layout {
       display: grid;
-      grid-template-columns: 280px minmax(380px, 1fr) 390px;
+      grid-template-columns: 280px minmax(380px, 1fr) 440px;
       height: 100vh;
       width: 100vw;
     }
@@ -404,32 +406,33 @@
 
     .monitor-panel-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
-      gap: 10px;
-      margin: 2px 0 12px 0;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 14px;
+      margin: 2px 0 14px 0;
     }
 
     .monitor-command-panel {
       min-width: 0;
       background: rgba(7, 19, 33, 0.72);
       border: 1px solid #193247;
-      border-radius: 8px;
-      padding: 10px;
+      border-radius: 10px;
+      padding: 14px 16px;
     }
 
     .monitor-panel-title {
-      color: #f4fbff;
-      font-size: 13px;
+      color: #44d9ff;
+      font-size: 15px;
       font-weight: 700;
-      margin-bottom: 4px;
+      margin-bottom: 6px;
+      letter-spacing: 0.3px;
     }
 
     .monitor-panel-desc {
       color: #9bb2c3;
-      font-size: 11px;
-      line-height: 1.35;
-      min-height: 30px;
-      margin-bottom: 8px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      min-height: 34px;
+      margin-bottom: 10px;
       overflow-wrap: anywhere;
     }
 
@@ -626,8 +629,10 @@
 
     .msg {
       margin: 8px 0;
-      padding: 8px;
+      padding: 10px 12px;
       border-radius: 8px;
+      font-size: 14.5px;
+      line-height: 1.55;
     }
 
     .user {
@@ -793,7 +798,7 @@
 
     /* Brain-läge: dölj Project Explorer (vänster) och editor-knappar så bara chat + 3D syns. */
     body.brain-mode .layout {
-      grid-template-columns: minmax(380px, 1fr) 390px !important;
+      grid-template-columns: minmax(380px, 1fr) 440px !important;
     }
     body.brain-mode .explorer { display: none !important; }
     body.brain-mode #activeFileLabel,
@@ -804,7 +809,7 @@
 
     /* Sidopanel-togglar (V3 2026-05-14):
        Använder enkla 1fr-tracks utan minmax så grid kollapsar pålitligt vid hide. */
-    body.hide-left  .layout { grid-template-columns: 0 1fr 390px !important; }
+    body.hide-left  .layout { grid-template-columns: 0 1fr 440px !important; }
     body.hide-right .layout { grid-template-columns: 280px 1fr 0 !important; }
     body.hide-left.hide-right .layout { grid-template-columns: 0 1fr 0 !important; }
     body.hide-left  .explorer { display: none !important; }
@@ -1736,12 +1741,12 @@ Skärmvision kräver UI-TARS.</div>
             </section>
 
             <nav class="scene-tool-dock" aria-label="Jarvis tools">
-              <div class="scene-tool-icon" title="Chat"><span>CH</span><span>Chat</span></div>
-              <div class="scene-tool-icon" title="Camera"><span>CM</span><span>Camera</span></div>
-              <div class="scene-tool-icon" title="Map"><span>MP</span><span>Map</span></div>
-              <div class="scene-tool-icon" title="Media"><span>MD</span><span>Media</span></div>
-              <div class="scene-tool-icon" title="Files"><span>FL</span><span>Files</span></div>
-              <div class="scene-tool-icon" title="Terminal"><span>TR</span><span>Terminal</span></div>
+              <div class="scene-tool-icon" title="Chat"><span class="scene-tool-glyph">💬</span><span>Chat</span></div>
+              <div class="scene-tool-icon" title="Camera"><span class="scene-tool-glyph">📷</span><span>Camera</span></div>
+              <div class="scene-tool-icon" title="Map"><span class="scene-tool-glyph">🗺️</span><span>Map</span></div>
+              <div class="scene-tool-icon" title="Media"><span class="scene-tool-glyph">🎬</span><span>Media</span></div>
+              <div class="scene-tool-icon" title="Files"><span class="scene-tool-glyph">📁</span><span>Files</span></div>
+              <div class="scene-tool-icon" title="Terminal"><span class="scene-tool-glyph">⌨️</span><span>Terminal</span></div>
             </nav>
           </div>
         </div>
@@ -2180,6 +2185,27 @@ Skärmvision kräver UI-TARS.</div>
       });
       _kartaMap.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-right");
       _kartaMap.addControl(new maplibregl.ScaleControl({ maxWidth: 100, unit: "metric" }), "bottom-right");
+
+      // Singleton popup tracker: stänger föregående popup när en ny öppnas, så
+      // POI/väder/reseplan inte staplas ovanpå varandra. Patchar bara en gång.
+      if (!maplibregl.Popup.prototype._jarvisAutoCloseInstalledV1) {
+        const _origAddTo = maplibregl.Popup.prototype.addTo;
+        maplibregl.Popup.prototype.addTo = function (map) {
+          try {
+            if (map && map._jarvisActivePopupV1 && map._jarvisActivePopupV1 !== this) {
+              try { map._jarvisActivePopupV1.remove(); } catch (e) {}
+            }
+            if (map) map._jarvisActivePopupV1 = this;
+            this.on && this.on("close", function () {
+              if (map && map._jarvisActivePopupV1 === this) {
+                map._jarvisActivePopupV1 = null;
+              }
+            }.bind(this));
+          } catch (e) {}
+          return _origAddTo.call(this, map);
+        };
+        maplibregl.Popup.prototype._jarvisAutoCloseInstalledV1 = true;
+      }
 
       _kartaMap.on("load", function() {
         // OpenFreeMap-stilen kan override:a vår globe-projection. Tvinga den explicit.

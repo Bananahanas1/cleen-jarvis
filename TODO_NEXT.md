@@ -2,6 +2,19 @@
 
 Senast uppdaterad: 2026-05-15
 
+## Git hygiene 2026-05-15
+
+- [x] Stoppa `git-lfs filter-process`-stormen genom att ignorera secrets,
+  checkpoints, build-output, runtime-data, venv/node_modules och stora assets.
+- [x] Lagg regression `tests/gitignore-safety.test.js`.
+- [ ] Senare: se over `.gitattributes`; `*.json filter=lfs` ar brett och kan
+  vara onodigt tungt for vanliga config/test-json.
+
+## Desktop launcher 2026-05-15
+
+- [x] Skapa skrivbordsgenvag `Jarvis Clean - senaste.lnk` som pekar pa
+  `F:\Jarvis-clean\Starta-Jarvis.vbs`.
+
 ## Karta-utvidgning 2026-05-15
 
 - [x] Lägg `TRAFIKLAB_API_KEY` i `EnvVaultV1`-whitelist.
@@ -57,7 +70,12 @@ weather-animationer och andra stora future-features.
   `logs` och `runtimes` inte gor folder/graph-laddning seg.
 - [x] Hotfix: lagg regression `tests/project-scan-pruning-performance.test.js`.
 - [ ] Fas 2: lagg `SystemHealthPanelV1` och samla repetitiva tekniska fel.
-- [ ] Fas 3: lagg `SceneComposerV1` och `dashboard/scene-renderer-v1.js`.
+- [x] Fas 3 foundation: `SceneComposerV1.cs` (V2-schema + 7 layouter + FromV1-adapter)
+  och `dashboard/scene-renderer-v1.js` (read-only, dispatchar per layouttyp).
+  Test: `tests/scene-composer-phase3.test.js` 55/55 PASS.
+- [ ] Fas 3 nasta slice: migrera `HandleSceneShowAsync` att skicka V2-payload
+  via `jarvisApplySceneV2` istallet for V1 ScenePayload.
+- [ ] Fas 3 polish: flytta kort-rendering ur `index.html` till renderer-modulen.
 - [ ] Fas 4: forbattra news brief med timeline, confirmed/uncertain, impact
   och next questions.
 - [ ] LÃ¤gg till riktig pause/resume fÃ¶r background jobs.
