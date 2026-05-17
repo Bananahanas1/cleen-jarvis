@@ -2,6 +2,28 @@
 
 Senast uppdaterad: 2026-05-17
 
+## 2026-05-17 - Sprint 2 + 3 startade
+
+Sprint 2 (tool-calling) foundation klar:
+- `data/agent/tools.json` med 12 tools (search_web, open_file, write_file,
+  run_terminal, navigate_panel, speak, create_task, read_project_index,
+  open_url, show_widget, close_widget, finish).
+- `app/Agent/ToolsRegistryV1.cs`, `AgentLoopV1.cs`, `AgentToolExecutorV1.cs`.
+- Hooket in i `ProcessUserChatAsync` bakom `VoiceConfigV1.AgentMode` (default false).
+- Tool-loop kor max 5 iterations. Risky tools (write_file, run_terminal) returnerar
+  pending-approval, sa LLM ser krav pa godkannande utan att utfora destruktivt.
+- Verifierat att Ollama 0.24 + qwen2.5-coder:7b stoder native tool-calling.
+- Modellpaket nedladdade: llama3.2:3b, mistral-nemo:12b (extra tool-callable backups).
+
+Sprint 3 (draggable scen-widgets) klar (foundation):
+- `dashboard/widgets-v1.{css,js}` — JarvisWidgetsV1 namespace.
+- Widget-typer: image, iframe, webcam, video, text, chat-mini, html.
+- Drag i header, resize i nedre hogra hornet. Position+storlek persisteras
+  per typ i localStorage.
+- Widget-tools (show_widget / close_widget) i agent-loop sa LLM kan
+  skapa/stanga widgets via "visa kameran", "spela spotify" etc.
+- HUD-styling (cyan borders, glow, Jarvis-feeling).
+
 ## 2026-05-17 - Agentic Roadmap startad
 
 Stort 7-sprint-spar inlagt i TODO_NEXT.md for att gora Jarvis agentisk.

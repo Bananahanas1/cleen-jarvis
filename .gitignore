@@ -10,6 +10,7 @@ obj/
 app/bin/
 app/obj/
 dist/
+dist-*/
 publish/
 
 # Local runtime/cache data

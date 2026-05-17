@@ -17,7 +17,8 @@ internal sealed record VoiceConfigV1(
     List<string>? StopWords = null,
     string EdgeVoice = "sv-SE-MattiasNeural",
     string SapiVoice = "",
-    string SttBackend = "whisper")
+    string SttBackend = "whisper",
+    bool AgentMode = true)
 {
     public List<string> EffectiveStopWords =>
         StopWords ?? new List<string> { "vänta", "hejdå", "hej då" };

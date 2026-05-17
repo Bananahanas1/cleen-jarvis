@@ -8,22 +8,24 @@ Stort spar: gora Jarvis till en agentisk assistent som kan utfora uppgifter
 sjalv (program, web, desktop) och visa allt i scen-vyn. Ska delas upp i 7 sprintar.
 Anvandaren begar att alla sprintar gors i ordning 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7.
 
-### Sprint 1 (i progress) - Auto-research i scen med bilder
-- [ ] Forbattra `SceneResearchV1` med DuckDuckGo Image Search-source
-- [ ] Lagg till Wikimedia Commons image-API for fria bilder
-- [ ] Lagg till HTML content scraping av forsta hit (HtmlAgilityPack eller manuell parse)
-- [ ] Visa 3-5 bilder i scen-vyn istallet for bara hero
-- [ ] Auto-trigga scen nar user fragar i chatten (om query bedoms research-vard)
-- [ ] Test: scen fylls med relevanta bilder + sammanfattning utan att user explicit ber
+### Sprint 1 - Auto-research i scen med bilder (DONE 2026-05-17)
+- [x] Wikimedia Commons image-API for fria bilder
+- [x] Visa 3-5 bilder i scen-vyn istallet for bara hero
+- [x] Self-critique: LLM kvalitetsgranskar sin egen research
+- [ ] DuckDuckGo Image Search-source (kvarstaende)
+- [ ] HTML content scraping av forsta hit (kvarstaende)
+- [ ] Auto-trigga scen nar user fragar i chatten (planeras till Sprint 2 efter tool-loop)
 
-### Sprint 2 - Tool-calling framework (hjartat i agentic Jarvis)
-- [ ] Designa `tools.json` med tool-definitions (open_file, run_cmd, search_web, ui_click, read_screen, etc.)
-- [ ] System-prompt template som ger LLM tool-list + svensk instruktion
-- [ ] `ToolCallRouterV1` parsar LLM-output for tool-calls (JSON eller XML-format)
-- [ ] Execute-pipeline med `PendingApprovalV1` for risky tools (write, click, exec)
-- [ ] Tool-result feedback-loop sa LLM kan reagera pa resultat och kalla fler tools
-- [ ] Stop-condition: max N tool-calls per query, eller LLM signalerar klar
-- [ ] Logg per tool-call i `data/agent/runs/<id>.jsonl`
+### Sprint 2 - Tool-calling framework (DONE 2026-05-17 foundation)
+- [x] `data/agent/tools.json` med 12 tool-definitions
+- [x] `ToolsRegistryV1.cs` laser + cachar + bygger Ollama-format
+- [x] `AgentLoopV1.cs` parsar tool_calls och loopar (max 5 iter)
+- [x] `AgentToolExecutorV1.cs` mappar tool-name -> handler
+- [x] Hooket in i ProcessUserChatAsync bakom AgentMode-flag
+- [x] Risky tools (write_file, run_terminal) returnerar pending-approval
+- [x] Verifierat med Ollama 0.24 + qwen2.5-coder:7b
+- [ ] Riktigt approval-flow (just nu returnerar bara status — Sprint 2c+ for full integration med PendingApprovalV1)
+- [ ] Logg per tool-call i `data/agent/runs/<id>.jsonl` (just nu lagg-debug.log enbart)
 
 #### Sprint 2b (optionellt) - MCP-klient
 - [ ] Implementera MCP-protokoll (JSON-RPC over stdio) som klient
@@ -32,17 +34,16 @@ Anvandaren begar att alla sprintar gors i ordning 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 
 - [ ] Routa tool-call till ratt MCP-server eller native handler
 - [ ] Gratis MCP-servers att testa: filesystem, fetch, brave-search, github, memory
 
-### Sprint 3 - Draggable scene-widgets
-- [ ] Bygg `WidgetV1`-komponent i `index.html` (header med title + close + drag-handle)
-- [ ] Mouse-drag positioning, position sparas i localStorage per widget-typ
-- [ ] Predefinierade widgets:
-  - `chat-mini` (kompakt chat-vy mellan user och Jarvis)
-  - `webcam` (visar webcam-stream fran karta-source)
-  - `image-viewer` (visar bilder fran scen-research)
-  - `info-panel` (visar nyckeldata om aktiv query)
-  - `code-snippet` (visar kod-result fran tool-calls)
-- [ ] `/widget <typ>` command for att skapa nya widgets
-- [ ] Widgets snap till grid for snyggt placering
+### Sprint 3 - Draggable scen-widgets (DONE 2026-05-17 foundation)
+- [x] `dashboard/widgets-v1.{css,js}` med JarvisWidgetsV1 namespace
+- [x] Mouse-drag i header, resize-handle nere hoger, position+storlek i localStorage
+- [x] Widget-typer: image, iframe, webcam, video, text, chat-mini, html
+- [x] HUD-styling (cyan borders, glow, fixed positioning over alla paneler)
+- [x] Tools `show_widget` + `close_widget` i agent-loop sa LLM kan styra
+- [ ] Spotify-mini med riktig API-integration (just nu via iframe-embed)
+- [ ] Calculator-widget (iframe till Google calc eller egen)
+- [ ] News-widget med chart+breaking-news (referens-screenshot)
+- [ ] Widget snap till grid for snyggt placering
 
 ### Sprint 4 - Browser autopilot (Playwright deepening)
 - [ ] Polera existerande `BrowserAutopilotRunnerV1` for langre uppdrag
@@ -67,6 +68,32 @@ Anvandaren begar att alla sprintar gors i ordning 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 
 - [ ] Tool: `desktop_click(x, y)`, `desktop_type(text)`, `desktop_screenshot()`
 - [ ] Tool: `desktop_open_app(name)` via SafeAppLauncher
 - [ ] Action recording sa Jarvis kan "replay" tidigare flows
+
+### Sprint 8 - Anvandar-visioner (2026-05-17)
+
+Anvandaren beskrev konkreta use-cases som ska byggas in i agent-loopen.
+Alla bygger ovanpa Sprint 2 (tools) + Sprint 4 (browser) + Sprint 5 (Browserbase).
+
+- [ ] Hotel-bokning: "leta upp basta hotell i Stockholm budget 1000kr en natt"
+  - Browser-autopilot soker pa booking.com/hotels.com/expedia
+  - Filtrerar pa pris + datum
+  - Presenterar 3-5 alternativ i scen-widgets (bild, pris, betyg, lank)
+  - Med approval kan Jarvis genomfora hela bokningen
+- [ ] Senaste pewdiepie-video: "visa senaste pewdiepie videon"
+  - YouTube-search pa kanal
+  - Embed top-1 video som video-widget i scen
+- [ ] FISKE-LAGG (egen sub-sprint):
+  - Foto av fisk -> visions-API (eller egen modell) identifierar typ
+  - Loggar typ, vikt, temperatur, vagor, position, datum
+  - Sparas i `data/fishing/catches/<datum>.json` + bild
+  - Karta-overlay "Fiske-spots" med tidigare faangst-positioner
+  - Vader-prognos + vagor + tempratur som rekommenderar tider att fiska
+  - Slash: `/fiske foto`, `/fiske rapport`, `/fiske karta`
+  - Widget med "nasta bra fiske-tillfalle"
+- [ ] Senaste relevanta nyheter (referens-screenshot 50)
+  - Aggregator over RSS-feeds + Brave Search
+  - Breaking-news widget med chart om data finns
+  - Filtrerad pa user-intresse (fran memory eller config)
 
 ### Sprint 7 - Self-test runner
 - [ ] `/test alla paneler`-kommando

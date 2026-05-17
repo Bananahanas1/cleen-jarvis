@@ -1,0 +1,173 @@
+/* widgets-v1.css — Sprint 3 (2026-05-17): floating, draggable, resizable widgets för Jarvis scen-vy.
+   Inspiration: Iron Man / Jarvis HUD-stil + Apple Dynamic Island.
+   Användning: window.JarvisWidgetsV1.create('image', { url: '...' }) etc. */
+
+.jarvis-widget {
+  /* position sätts dynamiskt av widgets-v1.js: "absolute" inuti #scenePanel, "fixed" som fallback. */
+  position: absolute;
+  min-width: 200px;
+  min-height: 110px;
+  max-width: 100%;
+  max-height: 100%;
+  background: rgba(6, 12, 22, 0.86);
+  border: 1px solid rgba(106, 216, 255, 0.45);
+  border-radius: 12px;
+  box-shadow:
+    0 0 24px rgba(0, 0, 0, 0.55),
+    0 0 60px rgba(42, 140, 255, 0.18),
+    inset 0 0 14px rgba(106, 216, 255, 0.08);
+  backdrop-filter: blur(8px);
+  color: #c5e6ff;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  user-select: none;
+  transition: box-shadow 0.25s ease, border-color 0.25s ease;
+}
+
+.jarvis-widget.is-focused {
+  border-color: rgba(106, 216, 255, 0.95);
+  box-shadow:
+    0 0 32px rgba(0, 0, 0, 0.6),
+    0 0 80px rgba(42, 140, 255, 0.35),
+    inset 0 0 16px rgba(106, 216, 255, 0.18);
+  z-index: 9100;
+}
+
+.jarvis-widget.is-dragging {
+  cursor: grabbing;
+  opacity: 0.92;
+  transition: none;
+}
+
+.jarvis-widget.is-resizing { transition: none; }
+.jarvis-widget.is-minimized .jarvis-widget-body,
+.jarvis-widget.is-minimized .jarvis-widget-resize { display: none; }
+.jarvis-widget.is-minimized { min-height: 0; height: auto !important; }
+
+.jarvis-widget-header {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 8px 0 12px;
+  background: linear-gradient(180deg, rgba(20, 40, 70, 0.65) 0%, rgba(10, 20, 35, 0.55) 100%);
+  border-bottom: 1px solid rgba(106, 216, 255, 0.25);
+  cursor: grab;
+  flex-shrink: 0;
+}
+.jarvis-widget-header:active { cursor: grabbing; }
+
+.jarvis-widget-title {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #80d8ff;
+  text-shadow: 0 0 8px rgba(106, 216, 255, 0.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.jarvis-widget-controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.jarvis-widget-controls button {
+  width: 22px;
+  height: 22px;
+  background: rgba(106, 216, 255, 0.12);
+  border: 1px solid rgba(106, 216, 255, 0.35);
+  border-radius: 4px;
+  color: #80d8ff;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.jarvis-widget-controls button:hover {
+  background: rgba(106, 216, 255, 0.3);
+  color: #fff;
+}
+.jarvis-widget-controls .widget-btn-close:hover {
+  background: rgba(255, 80, 80, 0.4);
+  border-color: rgba(255, 120, 120, 0.7);
+  color: #fff;
+}
+
+.jarvis-widget-body {
+  flex: 1;
+  overflow: hidden;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.4;
+  position: relative;
+}
+.jarvis-widget-body img,
+.jarvis-widget-body video,
+.jarvis-widget-body iframe {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 0;
+  display: block;
+}
+.jarvis-widget-body[data-content-mode="iframe"],
+.jarvis-widget-body[data-content-mode="image"],
+.jarvis-widget-body[data-content-mode="webcam"],
+.jarvis-widget-body[data-content-mode="video"] { padding: 0; }
+
+.jarvis-widget-body.text-mode { color: #d6ebff; white-space: pre-wrap; overflow-y: auto; }
+.jarvis-widget-body.text-mode::-webkit-scrollbar { width: 6px; }
+.jarvis-widget-body.text-mode::-webkit-scrollbar-thumb { background: rgba(106, 216, 255, 0.4); border-radius: 3px; }
+
+.jarvis-widget-chat-line {
+  margin: 0 0 6px 0;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+.jarvis-widget-chat-line[data-role="user"] { background: rgba(255, 165, 60, 0.12); color: #ffd29a; }
+.jarvis-widget-chat-line[data-role="assistant"] { background: rgba(106, 216, 255, 0.1); color: #c5e6ff; }
+.jarvis-widget-chat-line .role-tag {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-right: 6px;
+  opacity: 0.7;
+}
+
+.jarvis-widget-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  cursor: nwse-resize;
+  background:
+    linear-gradient(135deg, transparent 0%, transparent 45%, rgba(106, 216, 255, 0.55) 50%, transparent 55%, transparent 70%, rgba(106, 216, 255, 0.35) 75%, transparent 80%);
+  z-index: 1;
+}
+
+/* Scene-panel container — säkerställer att absolute-children placeras relativt scen. */
+#scenePanel { position: relative; }
+
+/* Webcam-widget får extra Jarvis-overlay (HUD-cross). */
+.jarvis-widget[data-type="webcam"] .jarvis-widget-body::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(0deg, transparent 49%, rgba(106, 216, 255, 0.18) 50%, transparent 51%),
+    linear-gradient(90deg, transparent 49%, rgba(106, 216, 255, 0.18) 50%, transparent 51%);
+}

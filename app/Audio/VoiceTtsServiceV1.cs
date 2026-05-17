@@ -28,6 +28,11 @@ internal static class VoiceTtsServiceV1
         if (string.IsNullOrWhiteSpace(text))
             return;
 
+        // Sanera text innan TTS — tar bort URLs, JSON, emoji, markdown osv. sa Sofie
+        // inte laser bokstavligt "asterisk hash" eller "skraestrek skraestrek".
+        text = TtsTextSanitizerV1.Sanitize(text);
+        if (string.IsNullOrWhiteSpace(text)) return;
+
         // Routing: backend "elevenlabs" -> REST + MP3 via VoiceTtsElevenLabsV1.
         //          backend "edge"       -> Microsoft Edge TTS via WebSocket (native svenska).
         // Default backend "piper" (eller okand) -> existerande lokala Piper-flode.

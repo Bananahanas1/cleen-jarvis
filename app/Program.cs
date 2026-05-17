@@ -195,6 +195,13 @@ public sealed class JarvisForm : Form
         if (_wakeWordListener is not null) return;
         var configDir = Path.Combine(ProjectRoot, "config");
         var config = VoiceConfigV1.Load(configDir);
+        // Synka voice state med config — ShouldSpeak kraver Mode != Off.
+        // Utan detta skippas all TTS med "ShouldSpeak=false" trots att enabled=true i config.
+        if (config.Enabled && VoiceStateV1.Snapshot.Mode == VoiceModeV1.Off)
+        {
+            VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            VoiceStateV1.SetModelLabels(config.SttModel, config.TtsVoice);
+        }
         if (!config.Enabled || !config.WakeWordEnabled) return;
 
         var modelPath = VoiceAssetManagerV1.WhisperModelPath(ProjectRoot, config.SttModel);
@@ -1004,8 +1011,275 @@ public sealed class JarvisForm : Form
         }
     }
 
+    private AgentToolExecutorV1? _agentExecutor;
+
+    private void EnsureAgentExecutor()
+    {
+        if (_agentExecutor is not null) return;
+        _agentExecutor = new AgentToolExecutorV1(ProjectRoot);
+        RegisterAgentTools(_agentExecutor);
+    }
+
+    private void RegisterAgentTools(AgentToolExecutorV1 exec)
+    {
+        exec.Register("finish", args =>
+        {
+            var summary = AgentToolExecutorV1.GetString(args, "summary", "");
+            return Task.FromResult(AgentToolExecutorV1.Finish(summary));
+        });
+
+        exec.Register("search_web", async args =>
+        {
+            var query = AgentToolExecutorV1.GetString(args, "query");
+            if (string.IsNullOrWhiteSpace(query))
+                return AgentToolExecutorV1.Error("query saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            try
+            {
+                // 1. Byt till scen-panel sa anvandaren ser arbetsytan direkt.
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+
+                // 2. Kor research: hits + bilder parallellt, sen summary med hits som kontext.
+                //    Summary blir mer informativ nar Ollama far snippets fran kallorna.
+                var searchTask = SceneResearchV1.SearchAsync(query, 6);
+                var imagesTask = SceneResearchV1.CollectImagesAsync(query, 5);
+
+                var hits = await searchTask;
+                var images = await imagesTask;
+                var summary = await BuildSceneSummaryAsync(query, hits);
+
+                // 3. Bygg widget-specs MED STORLEK efter relevans + visuell prioritet:
+                //    BILDER = hero (storsta, placeras overst i grid)
+                //    SAMMANFATTNING = medium (mellanstor, mitten)
+                //    KALLOR = small (smasta, underst med snippet + URL)
+                var widgetSpecs = new List<object>();
+
+                // Bilder forst i listan => placeras forst => hamnar overst i griden.
+                // Adaptiv storlek: farre bilder => storre individuellt. Manga bilder => mindre.
+                var imageList = images.Take(3).ToList();
+                for (int i = 0; i < imageList.Count; i++)
+                {
+                    string imgSize;
+                    if (imageList.Count == 1) imgSize = "hero";             // 1 bild = stor hero
+                    else if (imageList.Count == 2) imgSize = i == 0 ? "hero" : "medium"; // 1 hero + 1 medium
+                    else imgSize = i == 0 ? "hero" : "medium";              // 1 hero + 2 medium
+                    widgetSpecs.Add(new
+                    {
+                        type = "image",
+                        size = imgSize,
+                        options = new { title = imageList[i].Caption ?? "BILD", url = imageList[i].Url }
+                    });
+                }
+
+                if (!string.IsNullOrWhiteSpace(summary))
+                {
+                    widgetSpecs.Add(new
+                    {
+                        type = "text",
+                        size = "medium",
+                        options = new { title = "SAMMANFATTNING", content = summary }
+                    });
+                }
+
+                foreach (var hit in hits.Take(4))
+                {
+                    var snippet = !string.IsNullOrWhiteSpace(hit.Snippet) ? hit.Snippet : "(ingen sammanfattning)";
+                    var body = snippet;
+                    if (!string.IsNullOrWhiteSpace(hit.Url)) body += "\n\n→ " + hit.Url;
+                    widgetSpecs.Add(new
+                    {
+                        type = "text",
+                        size = "small",
+                        options = new { title = hit.Title ?? "KÄLLA", content = body }
+                    });
+                }
+
+                if (widgetSpecs.Count == 0)
+                {
+                    return AgentToolExecutorV1.OkText("Hittade inget om '" + query + "'.");
+                }
+
+                // 4. Skicka till JS composeScene som ritar grid-layout.
+                var specsJson = JsonSerializer.Serialize(widgetSpecs);
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "window.JarvisWidgetsV1 && window.JarvisWidgetsV1.composeScene(" + specsJson + ");");
+
+                return AgentToolExecutorV1.OkText(
+                    "Scen presenterad för '" + query + "' med " + widgetSpecs.Count +
+                    " widgets (" + images.Count + " bilder, " + hits.Count + " källor + sammanfattning).");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("search_web kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("navigate_panel", async args =>
+        {
+            var panel = AgentToolExecutorV1.GetString(args, "panel");
+            if (string.IsNullOrWhiteSpace(panel))
+                return AgentToolExecutorV1.Error("panel saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            // Mappa svenska/alias panel-namn till botton-ID:n i index.html.
+            var lower = panel.Trim().ToLowerInvariant();
+            var btnId = lower switch
+            {
+                "karta" or "map" or "maps" => "showMapBtn",
+                "scen" or "scene" or "scenen" or "cinematic" or "workspace" => "showSceneBtn",
+                "brain" or "hjärna" or "hjarna" or "graf" => "showBrainBtn",
+                "chat" or "chatt" or "files" or "filer" or "explorer" or "explore" or "projekt" => "showWorkspaceBtn",
+                "visual" or "översikt" or "oversikt" or "overview" => "showVisualBtn",
+                "settings" or "inställningar" or "installningar" or "konfig" => "showSettingsBtn",
+                _ => ""
+            };
+
+            if (string.IsNullOrEmpty(btnId))
+                return AgentToolExecutorV1.Error("Okant panel-namn '" + panel + "'. Anvand karta, scen, brain, chat, oversikt eller inställningar.");
+
+            // Klicka pa knappen sa hela tab-switch-logiken (CSS-class, panel-show/hide,
+            // visibility-pause) triggas korrekt.
+            var script = "(function(){var b=document.getElementById('" + btnId + "');if(!b)return 'NO_BTN'; b.click(); return 'OK';})()";
+            var result = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+            var clean = result.Trim('"');
+            if (clean == "NO_BTN")
+                return AgentToolExecutorV1.Error("Hittade inte knappen för panel: " + panel);
+            return AgentToolExecutorV1.OkText("Bytte till panel: " + panel);
+        });
+
+        exec.Register("open_file", async args =>
+        {
+            var path = AgentToolExecutorV1.GetString(args, "path");
+            if (string.IsNullOrWhiteSpace(path))
+                return AgentToolExecutorV1.Error("path saknas");
+            try
+            {
+                var reply = await OpenProjectFileSmartAsync(path);
+                return AgentToolExecutorV1.OkText(reply);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("open_file kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("speak", args =>
+        {
+            var spokenText = AgentToolExecutorV1.GetString(args, "text");
+            if (string.IsNullOrWhiteSpace(spokenText))
+                return Task.FromResult(AgentToolExecutorV1.Error("text saknas"));
+            try
+            {
+                var voiceConfig = VoiceConfigV1.Load(Path.Combine(ProjectRoot, "config"));
+                VoiceTtsServiceV1.SpeakIfEnabled(spokenText, ProjectRoot, voiceConfig);
+            }
+            catch { }
+            return Task.FromResult(AgentToolExecutorV1.OkText("Talade: " + spokenText));
+        });
+
+        // Sprint 2c - risky tools gar via pending approval.
+        // For nu: returnera pending-status sa LLM ser att approval krävs.
+        exec.Register("write_file", args =>
+        {
+            var path = AgentToolExecutorV1.GetString(args, "path");
+            var reason = AgentToolExecutorV1.GetString(args, "reason");
+            return Task.FromResult(AgentToolExecutorV1.PendingApproval("write_file",
+                "Skriva fil " + path + ": " + reason));
+        });
+
+        exec.Register("run_terminal", args =>
+        {
+            var cmd = AgentToolExecutorV1.GetString(args, "command");
+            var reason = AgentToolExecutorV1.GetString(args, "reason");
+            return Task.FromResult(AgentToolExecutorV1.PendingApproval("run_terminal",
+                "Köra: " + cmd + " — anledning: " + reason));
+        });
+
+        // Sprint 3 (2026-05-17) - widgets via JarvisWidgetsV1 i webview.
+        exec.Register("show_widget", async args =>
+        {
+            var widgetType = AgentToolExecutorV1.GetString(args, "type");
+            if (string.IsNullOrWhiteSpace(widgetType))
+                return AgentToolExecutorV1.Error("type saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            var url = AgentToolExecutorV1.GetString(args, "url");
+            var content = AgentToolExecutorV1.GetString(args, "content");
+            var title = AgentToolExecutorV1.GetString(args, "title");
+            var optionsObj = new Dictionary<string, object?>();
+            if (!string.IsNullOrWhiteSpace(url)) optionsObj["url"] = url;
+            if (!string.IsNullOrWhiteSpace(content)) optionsObj["content"] = content;
+            if (!string.IsNullOrWhiteSpace(title)) optionsObj["title"] = title;
+            var optionsJson = JsonSerializer.Serialize(optionsObj);
+            var typeJson = JsonSerializer.Serialize(widgetType);
+
+            var script = "(function(){if(!window.JarvisWidgetsV1)return 'NO_WIDGETS'; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+            var raw = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+            return AgentToolExecutorV1.OkText("Widget skapad: " + widgetType + " (id=" + raw.Trim('"') + ")");
+        });
+
+        exec.Register("close_widget", async args =>
+        {
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+            var id = AgentToolExecutorV1.GetString(args, "id");
+            var widgetType = AgentToolExecutorV1.GetString(args, "type");
+            string script;
+            if (!string.IsNullOrWhiteSpace(id))
+            {
+                var idJson = JsonSerializer.Serialize(id);
+                script = "window.JarvisWidgetsV1 && window.JarvisWidgetsV1.close(" + idJson + ")";
+            }
+            else if (!string.IsNullOrWhiteSpace(widgetType))
+            {
+                var typeJson = JsonSerializer.Serialize(widgetType);
+                script = "(function(){if(!window.JarvisWidgetsV1)return 0; var n=0; window.JarvisWidgetsV1.list().forEach(function(w){if(w.type===" + typeJson + "){window.JarvisWidgetsV1.close(w.id); n++;}}); return n;})()";
+            }
+            else
+            {
+                return AgentToolExecutorV1.Error("Ange id eller type");
+            }
+            await _webView.CoreWebView2.ExecuteScriptAsync(script);
+            return AgentToolExecutorV1.OkText("Widget stängd");
+        });
+
+        // Stubs - kan utvidgas senare.
+        exec.Register("create_task", args => Task.FromResult(AgentToolExecutorV1.OkText("create_task ej implementerad än")));
+        exec.Register("read_project_index", args => Task.FromResult(AgentToolExecutorV1.OkText("read_project_index ej implementerad än")));
+        exec.Register("open_url", args => Task.FromResult(AgentToolExecutorV1.OkText("open_url ej implementerad än")));
+    }
+
     private async Task ProcessUserChatAsync(string text)
     {
+        // Sprint 2b/2c: om AgentMode ar pa, kor tool-loop istallet for vanlig chat.
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var voiceConfig = VoiceConfigV1.Load(configDir);
+        if (voiceConfig.AgentMode)
+        {
+            EnsureAgentExecutor();
+            try
+            {
+                var loop = new AgentLoopV1(
+                    ProjectRoot,
+                    OllamaUrl,
+                    _activeModel,
+                    Http,
+                    _agentExecutor!,
+                    onAssistantText: AddAssistantMessage);
+                await loop.RunAsync(text);
+            }
+            catch (Exception ex)
+            {
+                await AddAssistantMessage("Agent-fel: " + ex.Message);
+            }
+            return;
+        }
+
         if (await TryHandleCommandRouterV1UiAsync(text))
             return;
 
@@ -8673,17 +8947,28 @@ public sealed class JarvisForm : Form
         return "";
     }
 
-    private async Task<string> BuildSceneSummaryAsync(string query)
+    private async Task<string> BuildSceneSummaryAsync(string query, List<SceneResearchHitV1>? sourceHits = null)
     {
         try
         {
             var systemPrompt = "Du är Jarvis. Användaren har bett om en scen/presentation om ett ämne. " +
-                               "Ge en kort, faktabaserad sammanfattning på svenska (3-5 meningar) som kan visas på en arbetsyta " +
-                               "och läsas upp för användaren. Inga rubriker, ingen markdown, bara prosa.";
+                               "Skriv en RIKLIG, faktabaserad sammanfattning på svenska (6-10 meningar, cirka 150-250 ord). " +
+                               "Täck huvudpunkterna, kontext, bakgrund och varför ämnet är relevant just nu. " +
+                               "Använd informationen från källorna nedan om det finns några — citera fakta men skriv i din egen prosa. " +
+                               "Inga rubriker, ingen markdown, bara löpande svensk text som kan läsas upp.";
+
+            var userContent = "Fråga: " + query;
+            if (sourceHits is { Count: > 0 })
+            {
+                var sourceContext = string.Join("\n\n",
+                    sourceHits.Take(5).Select(h => "• " + h.Title + ": " + h.Snippet));
+                userContent += "\n\nKällor att basera sammanfattningen på:\n" + sourceContext;
+            }
+
             var messages = new List<object>
             {
                 new { role = "system", content = systemPrompt },
-                new { role = "user", content = query }
+                new { role = "user", content = userContent }
             };
             var payload = new
             {
