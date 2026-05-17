@@ -75,7 +75,12 @@ internal sealed class AgentLoopV1
             "Svara bara kort och kalla finish.\n" +
             "10. Din chat-text och scen-presentationen ska MATCHA. Om du svarar med text om ett ämne, " +
             "kalla search_web på samma ämne så scen-widgets backar upp ditt svar med bilder och källor. " +
-            "Skicka inte search_web på fel ämne. Tänk: 'vad svarar jag?' → 'vilken sökterm matchar det?'.\n\n" +
+            "Skicka inte search_web på fel ämne. Tänk: 'vad svarar jag?' → 'vilken sökterm matchar det?'.\n" +
+            "11. KÄLLKRITIK: Behandla källor och bilder kritiskt. Använd PRIMÄRT seriösa källor som " +
+            "BBC, Reuters, SVT, DN, AP, NYT, Al Jazeera, Wikipedia (för bakgrund), officiella myndighetssidor. " +
+            "Använd EJ memer, propaganda, tabloid-sensationer, social media-shitposts, fan-art eller " +
+            "vinklade aktivist-sidor som primärkälla. För dagsfärska nyheter — sök specifikt efter aktuella " +
+            "headlines från etablerade nyhetsbyråer, inte Wikipedia-stub-artiklar.\n\n" +
             toolsPrompt;
 
         var messages = new List<Dictionary<string, object?>>

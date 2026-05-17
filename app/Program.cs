@@ -1199,6 +1199,71 @@ public sealed class JarvisForm : Form
                 "Köra: " + cmd + " — anledning: " + reason));
         });
 
+        exec.Register("search_news", async args =>
+        {
+            var topic = AgentToolExecutorV1.GetString(args, "topic");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            try
+            {
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+                await AddAssistantMessage(string.IsNullOrWhiteSpace(topic)
+                    ? "Hämtar senaste nyheter..."
+                    : "Söker senaste nyheter om: " + topic);
+
+                var headlines = await NewsAggregatorV1.FetchHeadlinesAsync(topic, maxPerFeed: 3, totalMax: 9);
+                if (headlines.Count == 0)
+                    return AgentToolExecutorV1.OkText("Inga nyheter hittades.");
+
+                var widgetSpecs = new List<object>();
+
+                // Forsta headline med bild = hero. Resten med bild = medium. Utan bild = small text.
+                int withImage = 0;
+                foreach (var h in headlines)
+                {
+                    if (!string.IsNullOrWhiteSpace(h.ImageUrl))
+                    {
+                        var size = withImage == 0 ? "hero" : "medium";
+                        widgetSpecs.Add(new
+                        {
+                            type = "image",
+                            size = size,
+                            options = new { title = h.Source + " • " + h.Title, url = h.ImageUrl }
+                        });
+                        withImage++;
+                    }
+                }
+
+                foreach (var h in headlines)
+                {
+                    var content = h.Summary;
+                    if (h.Published.HasValue)
+                        content = h.Published.Value.ToString("yyyy-MM-dd HH:mm") + " • " + h.Source + "\n\n" + content;
+                    if (!string.IsNullOrWhiteSpace(h.Url)) content += "\n\n→ " + h.Url;
+                    widgetSpecs.Add(new
+                    {
+                        type = "text",
+                        size = "small",
+                        options = new { title = h.Title, content = content }
+                    });
+                }
+
+                var specsJson = JsonSerializer.Serialize(widgetSpecs);
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "window.JarvisWidgetsV1 && window.JarvisWidgetsV1.composeScene(" + specsJson + ");");
+
+                return AgentToolExecutorV1.OkText(
+                    "Presenterade " + headlines.Count + " headlines från " +
+                    string.Join(", ", headlines.Select(h => h.Source).Distinct()) + ".");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("search_news kraschade: " + ex.Message);
+            }
+        });
+
         // Sprint 3 (2026-05-17) - widgets via JarvisWidgetsV1 i webview.
         exec.Register("show_widget", async args =>
         {

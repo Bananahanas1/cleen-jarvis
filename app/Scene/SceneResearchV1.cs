@@ -233,6 +233,39 @@ internal static class SceneResearchV1
     /// Sprint 1+ (2026-05-17) — Wikimedia Commons är en stor bilddatabas med fria bilder.
     /// API:t är samma MediaWiki som Wikipedia. Anropet returnerar både filnamn och direkta URLs i ett svep.
     /// </summary>
+    // Lagkvalitets-keywords som ska filtreras bort fran bild-namn — om query inte handlar
+    // om dem specifikt. T.ex. en flag-bild ar OK om query ar "Sveriges flagga" men inte "kriget".
+    private static readonly string[] LowQualityKeywords = new[]
+    {
+        "logo", "icon", "favicon", "thumb", "spoiler",
+        "propaganda", "meme", "fanart", "fan_art", "fan art",
+        "stub", "noimage", "placeholder", "blank",
+        "poster_1942", "poster_1943", "poster_1944", "poster_1945",  // krigstid-propagandafilmer
+        "wpa_poster"  // US-propaganda
+    };
+
+    private static bool IsLowQualityImageTitle(string title, string query)
+    {
+        if (string.IsNullOrWhiteSpace(title)) return true;
+        var lowerTitle = title.ToLowerInvariant();
+        var lowerQuery = (query ?? "").ToLowerInvariant();
+
+        // SVG-logos blockeras alltid (vektorgrafik = ofta logo/icon).
+        if (lowerTitle.EndsWith(".svg")) return true;
+
+        // Skip om title innehaller spoiled keyword OCH query inte explicit beder om det.
+        foreach (var bad in LowQualityKeywords)
+        {
+            if (lowerTitle.Contains(bad) && !lowerQuery.Contains(bad)) return true;
+        }
+
+        // Specifika filtyper som ofta ar lagkvalitet (audio, video, dokument).
+        if (lowerTitle.EndsWith(".ogg") || lowerTitle.EndsWith(".oga") ||
+            lowerTitle.EndsWith(".webm") || lowerTitle.EndsWith(".pdf")) return true;
+
+        return false;
+    }
+
     private static async Task<List<SceneImageHitV1>> TryCollectCommonsImagesAsync(string query, int max)
     {
         var result = new List<SceneImageHitV1>();
@@ -259,8 +292,7 @@ internal static class SceneResearchV1
                 if (result.Count >= max) break;
                 var title = page.TryGetProperty("title", out var ttl) ? ttl.GetString() ?? "" : "";
                 if (!title.StartsWith("File:", StringComparison.OrdinalIgnoreCase)) continue;
-                if (title.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) continue;
-                if (title.Contains("logo", StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsLowQualityImageTitle(title, query)) continue;
 
                 if (!page.TryGetProperty("imageinfo", out var infoArr) || infoArr.ValueKind != JsonValueKind.Array) continue;
                 if (infoArr.GetArrayLength() == 0) continue;
@@ -338,11 +370,9 @@ internal static class SceneResearchV1
                 var itemType = item.TryGetProperty("type", out var t) ? t.GetString() ?? "" : "";
                 if (!string.Equals(itemType, "image", StringComparison.OrdinalIgnoreCase)) continue;
 
-                // Filtrera bort SVG-logos och små icon-bilder
+                // Kallkritik-filter (2026-05-17): blockera lagkvalitets-bilder.
                 var itemTitle = item.TryGetProperty("title", out var tt) ? tt.GetString() ?? "" : "";
-                if (itemTitle.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) continue;
-                if (itemTitle.Contains("logo", StringComparison.OrdinalIgnoreCase)) continue;
-                if (itemTitle.Contains("icon", StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsLowQualityImageTitle(itemTitle, query)) continue;
 
                 // srcset[].src ger bild-URL (oftast //upload.wikimedia.org/...)
                 if (!item.TryGetProperty("srcset", out var srcset) || srcset.ValueKind != JsonValueKind.Array) continue;
