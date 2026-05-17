@@ -28,6 +28,27 @@ internal static class VoiceTtsServiceV1
         if (string.IsNullOrWhiteSpace(text))
             return;
 
+        // Routing: backend "elevenlabs" -> REST + MP3 via VoiceTtsElevenLabsV1.
+        //          backend "edge"       -> Microsoft Edge TTS via WebSocket (native svenska).
+        // Default backend "piper" (eller okand) -> existerande lokala Piper-flode.
+        if (string.Equals(config.TtsBackend, "elevenlabs", StringComparison.OrdinalIgnoreCase))
+        {
+            SpeakElevenLabs(text, projectRoot);
+            return;
+        }
+
+        if (string.Equals(config.TtsBackend, "edge", StringComparison.OrdinalIgnoreCase))
+        {
+            SpeakEdge(text, projectRoot, config);
+            return;
+        }
+
+        if (string.Equals(config.TtsBackend, "sapi", StringComparison.OrdinalIgnoreCase))
+        {
+            SpeakSapi(text, projectRoot, config);
+            return;
+        }
+
         var report = VoiceAssetManagerV1.BuildReport(projectRoot, config);
         if (!report.TtsReady)
         {
@@ -46,6 +67,91 @@ internal static class VoiceTtsServiceV1
         VoiceStateV1.TransitionTo(VoiceModeV1.Speaking);
 
         _currentTask = Task.Run(() => RunPiperAndPlayAsync(text, report, projectRoot, ctsLocal.Token), ctsLocal.Token);
+    }
+
+    private static void SpeakSapi(string text, string projectRoot, VoiceConfigV1 config)
+    {
+        CancellationTokenSource ctsLocal;
+        lock (Lock)
+        {
+            StopInternal();
+            ctsLocal = new CancellationTokenSource();
+            _currentCts = ctsLocal;
+        }
+
+        VoiceStateV1.TransitionTo(VoiceModeV1.Speaking);
+
+        _currentTask = Task.Run(async () =>
+        {
+            try
+            {
+                await VoiceTtsSapiV1.SpeakAsync(text, projectRoot, config.SapiVoice, ctsLocal.Token);
+            }
+            finally
+            {
+                if (VoiceStateV1.IsEnabled)
+                    VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            }
+        }, ctsLocal.Token);
+    }
+
+    private static void SpeakEdge(string text, string projectRoot, VoiceConfigV1 config)
+    {
+        CancellationTokenSource ctsLocal;
+        lock (Lock)
+        {
+            StopInternal();
+            ctsLocal = new CancellationTokenSource();
+            _currentCts = ctsLocal;
+        }
+
+        VoiceStateV1.TransitionTo(VoiceModeV1.Speaking);
+
+        _currentTask = Task.Run(async () =>
+        {
+            try
+            {
+                await VoiceTtsEdgeV1.SpeakAsync(text, projectRoot, config.EdgeVoice, ctsLocal.Token);
+            }
+            finally
+            {
+                if (VoiceStateV1.IsEnabled)
+                    VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            }
+        }, ctsLocal.Token);
+    }
+
+    private static void SpeakElevenLabs(string text, string projectRoot)
+    {
+        var settings = ElevenLabsSettingsV1.Load(Path.Combine(projectRoot, "config"));
+        if (!settings.IsReady)
+        {
+            Log(projectRoot, "skip: elevenlabs settings not ready (apiKey/voiceId saknas i config/elevenlabs.json eller ELEVENLABS_API_KEY env var)");
+            return;
+        }
+
+        CancellationTokenSource ctsLocal;
+        lock (Lock)
+        {
+            StopInternal();
+            ctsLocal = new CancellationTokenSource();
+            _currentCts = ctsLocal;
+        }
+
+        VoiceStateV1.TransitionTo(VoiceModeV1.Speaking);
+
+        _currentTask = Task.Run(async () =>
+        {
+            try
+            {
+                await VoiceTtsElevenLabsV1.SpeakAsync(text, projectRoot, settings, ctsLocal.Token);
+            }
+            finally
+            {
+                if (VoiceStateV1.IsEnabled)
+                    VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+            }
+        }, ctsLocal.Token);
     }
 
     public static void Stop()

@@ -1,0 +1,9 @@
+{
+  "apiKey": "PASTE_YOUR_ELEVENLABS_API_KEY_HERE",
+  "voiceId": "PASTE_VOICE_ID_HERE",
+  "modelId": "eleven_multilingual_v2",
+  "stability": 0.5,
+  "similarityBoost": 0.75,
+  "style": 0.0,
+  "useSpeakerBoost": true
+}

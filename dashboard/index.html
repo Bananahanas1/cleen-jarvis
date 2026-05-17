@@ -12,6 +12,53 @@
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js" defer></script>
   <!-- Scene Composer V2 renderer (Fas 3) — read-only, fills #scenePanel slots -->
   <script src="scene-renderer-v1.js" defer></script>
+  <!-- Jarvis FX (typeOn, particles, radar, telemetry, mission clock, glitch, click-ripple m.fl.) -->
+  <script src="jarvis-fx.js" defer></script>
+  <!-- Karta visibility-pause (2026-05-16): pausar alla _karta*-pollers nar Jarvis-fonstret ar dolt/minimerat.
+       Ingen feature pajar, ingen toggle/polling-frekvens andras. Pause via setInterval-wrapper som bara trackar
+       named functions vars namn borjar med "_karta" — alla andra setInterval-anrop ar opaverkade. -->
+  <script>
+    (function _kartaVisibilityPauseV1() {
+      var _origSet = window.setInterval;
+      var _origClr = window.clearInterval;
+      var _tracked = new Map(); // id -> { fn, ms, paused }
+      window.setInterval = function (fn, ms) {
+        var id = _origSet.apply(window, arguments);
+        if (typeof fn === 'function' && fn.name && fn.name.indexOf('_karta') === 0) {
+          _tracked.set(id, { fn: fn, ms: ms, paused: false });
+        }
+        return id;
+      };
+      window.clearInterval = function (id) {
+        _tracked.delete(id);
+        return _origClr.apply(window, arguments);
+      };
+      function pauseAll() {
+        _tracked.forEach(function (entry, id) {
+          if (!entry.paused) { _origClr.call(window, id); entry.paused = true; }
+        });
+      }
+      function resumeAll() {
+        var rewire = [];
+        _tracked.forEach(function (entry, id) {
+          if (entry.paused) {
+            var newId = _origSet.call(window, entry.fn, entry.ms);
+            rewire.push({ oldId: id, newId: newId });
+            entry.paused = false;
+          }
+        });
+        rewire.forEach(function (m) {
+          var e = _tracked.get(m.oldId);
+          _tracked.delete(m.oldId);
+          _tracked.set(m.newId, e);
+        });
+      }
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) pauseAll(); else resumeAll();
+      });
+      window._kartaVisibilityGuard = { pauseAll: pauseAll, resumeAll: resumeAll, tracked: _tracked };
+    })();
+  </script>
   <style>
     * {
       box-sizing: border-box;
@@ -807,6 +854,25 @@
     body.brain-mode .editor { padding: 8px !important; }
     body.brain-mode #brainPanel { flex: 1; min-height: 0 !important; }
 
+    /* Scen-läge (2026-05-17): dölj Project Explorer + editor-knappar så bara chat + scen syns. */
+    body.scene-mode .layout {
+      grid-template-columns: minmax(380px, 1fr) 440px !important;
+    }
+    body.scene-mode .explorer { display: none !important; }
+    body.scene-mode #activeFileLabel,
+    body.scene-mode #changeReviewBar,
+    body.scene-mode .editor-actions { display: none !important; }
+    body.scene-mode .editor { padding: 8px !important; }
+    body.scene-mode #scenePanel { flex: 1; min-height: 0 !important; }
+
+    /* Karta-läge (2026-05-17): dölj Project Explorer + editor-knappar så bara chat + karta syns. */
+    body.map-mode .layout {
+      grid-template-columns: minmax(380px, 1fr) 440px !important;
+    }
+    body.map-mode .explorer { display: none !important; }
+    body.map-mode #changeReviewBar,
+    body.map-mode .editor-actions { display: none !important; }
+
     /* Sidopanel-togglar (V3 2026-05-14):
        Använder enkla 1fr-tracks utan minmax så grid kollapsar pålitligt vid hide. */
     body.hide-left  .layout { grid-template-columns: 0 1fr 440px !important; }
@@ -939,8 +1005,38 @@
   </style>
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="scene-pro.css">
+  <link rel="stylesheet" href="jarvis-fx.css">
 </head>
 <body>
+  <!-- Jarvis Siri-bubbla — top-right floating orb. data-mode: idle | active | off -->
+  <div id="jarvisOrbWrap" class="jarvis-orb-wrap" data-mode="idle">
+    <div class="orb-sweep"></div>
+    <div class="orb-ring-outer"></div>
+    <div class="orb-ring-inner"></div>
+    <div class="orb-core"></div>
+    <svg class="orb-wave" viewBox="0 0 60 16" preserveAspectRatio="none">
+      <path d="M0 8 Q 7.5 4 15 8 T 30 8 T 45 8 T 60 8">
+        <animate attributeName="d" dur="0.55s" repeatCount="indefinite"
+          values="M0 8 Q 7.5 4 15 8 T 30 8 T 45 8 T 60 8;
+                  M0 8 Q 7.5 12 15 8 T 30 8 T 45 8 T 60 8;
+                  M0 8 Q 7.5 4 15 8 T 30 8 T 45 8 T 60 8"/>
+      </path>
+    </svg>
+  </div>
+  <script>
+    (function () {
+      window.setJarvisOrbMode = function (mode) {
+        var el = document.getElementById("jarvisOrbWrap");
+        if (!el) return;
+        var safe = String(mode || "idle").toLowerCase();
+        // Bakat-kompat: 'listening'/'speaking' → 'active' (en gemensam state).
+        if (safe === "listening" || safe === "speaking" || safe === "transcribing") safe = "active";
+        if (safe !== "idle" && safe !== "active" && safe !== "off") safe = "idle";
+        el.setAttribute("data-mode", safe);
+      };
+    })();
+  </script>
+
   <!-- Reopen-flikar — visas på edge när motsv. sidopanel är dold -->
   <div id="reopenLeftTab" class="panel-reopen-tab" title="Öppna Project Explorer">›</div>
   <div id="reopenRightTab" class="panel-reopen-tab" title="Öppna Jarvis Chat">‹</div>
@@ -1229,6 +1325,120 @@ Skärmvision kräver UI-TARS.</div>
         body.map-mode #mapPanel { position: absolute; top: 50px; left: 0; right: 0; bottom: 0; min-height: 0; }
         /* Dölj edit-läge / spara-knapparna i map-mode (de hör till file editor) */
         body.map-mode .editor > div:last-child { display: none !important; }
+
+    /* Jarvis Siri-bubbla (2026-05-17 v2) — top-right, multi-layer Jarvis HUD + Siri organic flow + waveform. */
+    .jarvis-orb-wrap {
+      position: fixed;
+      top: 64px;
+      right: 24px;
+      width: 110px;
+      height: 110px;
+      z-index: 9999;
+      pointer-events: none;
+      transition: opacity 0.4s ease, transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    /* Conic gradient sweep bakom — Jarvis HUD scan-effekt. */
+    .orb-sweep {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, transparent 0deg, rgba(106, 216, 255, 0.32) 50deg, transparent 110deg);
+      animation: orbSweep 4s linear infinite;
+      opacity: 0.7;
+      filter: blur(1px);
+    }
+    /* Yttre ring (Jarvis HUD-stil med tjockare top-bit som indikerar rotation). */
+    .orb-ring-outer {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid rgba(106, 216, 255, 0.35);
+      border-top-color: rgba(106, 216, 255, 0.95);
+      border-right-color: rgba(106, 216, 255, 0.6);
+      animation: orbRingSpin 6s linear infinite;
+      box-shadow:
+        0 0 16px rgba(106, 216, 255, 0.4),
+        inset 0 0 8px rgba(106, 216, 255, 0.2);
+    }
+    /* Inre ring (motroterande, dashed). */
+    .orb-ring-inner {
+      position: absolute;
+      inset: 14%;
+      border-radius: 50%;
+      border: 1px dashed rgba(106, 216, 255, 0.45);
+      animation: orbRingSpin 4.5s linear infinite reverse;
+    }
+    /* Center sphere — Siri organic flow (multi-stop radial + hue-flow). */
+    .orb-core {
+      position: absolute;
+      inset: 24%;
+      border-radius: 50%;
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.55) 0%, transparent 35%),
+        radial-gradient(circle at 70% 65%, rgba(106, 216, 255, 0.6) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, #2a8cff 0%, #1a4ed1 50%, #0a1530 100%);
+      box-shadow:
+        0 0 22px rgba(106, 216, 255, 0.65),
+        0 0 50px rgba(42, 140, 255, 0.3),
+        inset 0 0 16px rgba(255, 255, 255, 0.35);
+      animation: orbCorePulse 3.2s ease-in-out infinite, orbHueShift 12s linear infinite;
+    }
+    /* Sinus-vag overlay — synlig vid active state. */
+    .orb-wave {
+      position: absolute;
+      inset: 42% 22%;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    .orb-wave path { stroke: rgba(255, 255, 255, 0.9); fill: none; stroke-width: 1.4; }
+
+    /* ACTIVE state: orange Jarvis-HUD efter wake. Stannar tills "vanta"/"hejda". */
+    .jarvis-orb-wrap[data-mode="active"] .orb-sweep {
+      background: conic-gradient(from 0deg, transparent 0deg, rgba(255, 165, 60, 0.5) 50deg, transparent 110deg);
+      animation-duration: 1.5s;
+      opacity: 1;
+    }
+    .jarvis-orb-wrap[data-mode="active"] .orb-ring-outer {
+      border-color: rgba(255, 165, 60, 0.4);
+      border-top-color: rgba(255, 200, 120, 1);
+      border-right-color: rgba(255, 165, 60, 0.75);
+      box-shadow:
+        0 0 22px rgba(255, 165, 60, 0.65),
+        inset 0 0 10px rgba(255, 165, 60, 0.3);
+      animation-duration: 2s;
+    }
+    .jarvis-orb-wrap[data-mode="active"] .orb-ring-inner {
+      border-color: rgba(255, 200, 120, 0.7);
+      animation-duration: 1.8s;
+    }
+    .jarvis-orb-wrap[data-mode="active"] .orb-core {
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.65) 0%, transparent 35%),
+        radial-gradient(circle at 70% 65%, rgba(255, 200, 120, 0.7) 0%, transparent 50%),
+        radial-gradient(circle at 50% 50%, #ff8d3a 0%, #c44a14 60%, #2b0a02 100%);
+      box-shadow:
+        0 0 32px rgba(255, 141, 58, 0.85),
+        0 0 70px rgba(255, 141, 58, 0.4),
+        inset 0 0 22px rgba(255, 220, 180, 0.55);
+      animation: orbCorePulse 1.1s ease-in-out infinite;
+    }
+    .jarvis-orb-wrap[data-mode="active"] .orb-wave { opacity: 1; }
+    .jarvis-orb-wrap[data-mode="active"] .orb-wave path { stroke: rgba(255, 230, 200, 0.95); }
+
+    /* Off: helt dold. */
+    .jarvis-orb-wrap[data-mode="off"] { opacity: 0; transform: scale(0.5); }
+
+    @keyframes orbCorePulse {
+      0%, 100% { transform: scale(1);   filter: brightness(1) saturate(1); }
+      50%      { transform: scale(1.08); filter: brightness(1.18) saturate(1.15); }
+    }
+    @keyframes orbRingSpin { to { transform: rotate(360deg); } }
+    @keyframes orbSweep { to { transform: rotate(360deg); } }
+    @keyframes orbHueShift {
+      0%, 100% { filter: hue-rotate(0deg); }
+      50%      { filter: hue-rotate(20deg); }
+    }
         /* Popup styling för Jarvis-tema */
         .karta-note-popup { font-family: inherit; min-width: 220px; }
         .karta-note-popup textarea { width: 100%; min-height: 60px; background: #0a1622;
@@ -1999,6 +2209,18 @@ Skärmvision kräver UI-TARS.</div>
       try { document.body && document.body.classList && document.body.classList.toggle("brain-mode", mode === "brain"); } catch {}
       // Map-mode: dölj andra workspace-element så kartan får hela utrymmet
       try { document.body && document.body.classList && document.body.classList.toggle("map-mode", mode === "map"); } catch {}
+      // Scene-mode: full-screen scen som brain — bara chat + scen synliga
+      try { document.body && document.body.classList && document.body.classList.toggle("scene-mode", mode === "scene"); } catch {}
+
+      // Resource-pausning per panel (2026-05-17) — undvik att karta-pollers och brain-grafens 3D-loop
+      // fortsatter ata CPU/GPU/network nar deras panel inte ar aktiv.
+      try {
+        if (window._kartaVisibilityGuard) {
+          if (mode === "map") window._kartaVisibilityGuard.resumeAll();
+          else window._kartaVisibilityGuard.pauseAll();
+        }
+      } catch {}
+      try { window._brainAnimationPaused = (mode !== "brain"); } catch {}
     }
 
     function computeActiveFolderLabelV1(path) {
@@ -8477,6 +8699,9 @@ Skärmvision kräver UI-TARS.</div>
 
       function animate() {
         requestAnimationFrame(animate);
+        // Skippa hela render-frame om brain-panelen inte är aktiv. rAF fortsätter (low cost),
+        // men inga matrix-uppdateringar eller renderer.render. Sparar CPU/GPU dramatiskt.
+        if (window._brainAnimationPaused) return;
         frame++;
         const t = performance.now() * 0.001;
         // Bloom-läget pulserar också

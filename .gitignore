@@ -1,0 +1,48 @@
+# Local secrets
+.env
+*.env
+config/elevenlabs.json
+config/groq.json
+
+# Build outputs
+bin/
+obj/
+app/bin/
+app/obj/
+dist/
+publish/
+
+# Local runtime/cache data
+data/
+logs/
+.checkpoints/
+.jarvis/
+
+# Python/Node generated folders
+.venv/
+venv/
+__pycache__/
+*.pyc
+node_modules/
+amy-windows/.venv/
+amy-windows/frontend/node_modules/
+
+# IDE/local machine files
+.vs/
+.vscode/*.log
+*.user
+*.suo
+
+# Large local model/audio assets
+*.onnx
+*.gguf
+*.bin
+*.pt
+*.pth
+*.wav
+*.mp3
+*.mp4
+
+# Jarvis generated graph/output caches
+graphify-out/
+.gstack/

@@ -10,8 +10,18 @@ internal sealed record VoiceConfigV1(
     string PttHotkey,
     bool TtsAutoSpeak,
     int MicDeviceId,
-    bool Muted)
+    bool Muted,
+    string TtsBackend = "piper",
+    bool WakeWordEnabled = false,
+    string WakeWord = "jarvis",
+    List<string>? StopWords = null,
+    string EdgeVoice = "sv-SE-MattiasNeural",
+    string SapiVoice = "",
+    string SttBackend = "whisper")
 {
+    public List<string> EffectiveStopWords =>
+        StopWords ?? new List<string> { "vänta", "hejdå", "hej då" };
+
     public const string ConfigFileName = "voice.json";
     public const string EnabledEnvironmentName = "JARVIS_VOICE_ENABLED";
     public const string ModelEnvironmentName = "JARVIS_VOICE_MODEL";
@@ -27,7 +37,11 @@ internal sealed record VoiceConfigV1(
             PttHotkey: "Ctrl+Space",
             TtsAutoSpeak: true,
             MicDeviceId: -1,
-            Muted: false);
+            Muted: false,
+            TtsBackend: "piper",
+            WakeWordEnabled: false,
+            WakeWord: "jarvis",
+            StopWords: null);
     }
 
     public static VoiceConfigV1 Load(string configDirectory)

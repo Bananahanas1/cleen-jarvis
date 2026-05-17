@@ -132,12 +132,18 @@ public sealed class JarvisForm : Form
         try { _neuroLinkedBridge.StopAsync().GetAwaiter().GetResult(); } catch { }
     }
 
+    private WakeWordListenerV1? _wakeWordListener;
+    private System.Windows.Forms.Timer? _orbTicker;
+    private string _lastOrbMode = "";
+
     protected override void OnHandleCreated(EventArgs e)
     {
         base.OnHandleCreated(e);
         try { RegisterHotKey(Handle, DesktopKillHotkeyIdV1, ModControlV1 | ModShiftV1 | ModAltV1, (uint)Keys.J); } catch { }
         VoiceHotkeyV1.PttPressed += OnVoicePttHotkey;
         VoiceHotkeyV1.Register(Handle);
+        EnsureWakeWordListener();
+        StartOrbTicker();
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
@@ -145,7 +151,116 @@ public sealed class JarvisForm : Form
         try { UnregisterHotKey(Handle, DesktopKillHotkeyIdV1); } catch { }
         VoiceHotkeyV1.Unregister(Handle);
         VoiceHotkeyV1.PttPressed -= OnVoicePttHotkey;
+        try { _wakeWordListener?.Dispose(); } catch { }
+        _wakeWordListener = null;
+        try { _orbTicker?.Stop(); _orbTicker?.Dispose(); } catch { }
+        _orbTicker = null;
         base.OnHandleDestroyed(e);
+    }
+
+    private void StartOrbTicker()
+    {
+        if (_orbTicker is not null) return;
+        _orbTicker = new System.Windows.Forms.Timer { Interval = 400 };
+        _orbTicker.Tick += (_, _) => UpdateOrbFromVoiceState();
+        _orbTicker.Start();
+    }
+
+    private void UpdateOrbFromVoiceState()
+    {
+        if (_webView?.CoreWebView2 is null) return;
+        var mode = VoiceStateV1.Snapshot.Mode;
+        var orbMode = mode switch
+        {
+            VoiceModeV1.Off => "off",
+            // Active state: en gemensam orange/glowing tillstand for allt fran wake-trigger till svar klart.
+            VoiceModeV1.Listening => "active",
+            VoiceModeV1.Transcribing => "active",
+            VoiceModeV1.Sending => "active",
+            VoiceModeV1.Speaking => "active",
+            _ => "idle"
+        };
+        if (orbMode == _lastOrbMode) return;
+        _lastOrbMode = orbMode;
+        try
+        {
+            _ = _webView.CoreWebView2.ExecuteScriptAsync(
+                "window.setJarvisOrbMode && window.setJarvisOrbMode('" + orbMode + "');");
+        }
+        catch { }
+    }
+
+    private void EnsureWakeWordListener()
+    {
+        if (_wakeWordListener is not null) return;
+        var configDir = Path.Combine(ProjectRoot, "config");
+        var config = VoiceConfigV1.Load(configDir);
+        if (!config.Enabled || !config.WakeWordEnabled) return;
+
+        var modelPath = VoiceAssetManagerV1.WhisperModelPath(ProjectRoot, config.SttModel);
+        if (string.IsNullOrEmpty(modelPath) || !File.Exists(modelPath)) return;
+
+        try
+        {
+            _wakeWordListener = new WakeWordListenerV1(
+                ProjectRoot,
+                modelPath,
+                config,
+                OnWakeWordUserSaidAsync,
+                OnWakeWordWakeAsync,
+                OnWakeWordStopAsync);
+            _wakeWordListener.Start(config.MicDeviceId);
+        }
+        catch
+        {
+            try { _wakeWordListener?.Dispose(); } catch { }
+            _wakeWordListener = null;
+        }
+    }
+
+    private Task OnWakeWordUserSaidAsync(string text)
+    {
+        BeginInvoke(new Action(async () =>
+        {
+            try
+            {
+                // Visa vad mic+Whisper transkriberade som user-meddelande i chatten
+                // sa anvandaren ser exakt vad systemet horde innan Jarvis svarar.
+                if (_webView.CoreWebView2 is not null)
+                {
+                    var roleJson = JsonSerializer.Serialize("user");
+                    var textJson = JsonSerializer.Serialize("[rost] " + text);
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.jarvisAddMessage && window.jarvisAddMessage({roleJson}, {textJson});");
+                }
+                await ProcessUserChatAsync(text);
+            }
+            catch (Exception ex) { try { await AddAssistantMessage("Wake-word: " + ex.Message); } catch { } }
+        }));
+        return Task.CompletedTask;
+    }
+
+    private Task OnWakeWordWakeAsync()
+    {
+        // Synka voice state direkt sa orb byter till orange omedelbart (innan timer tickar).
+        VoiceStateV1.TransitionTo(VoiceModeV1.Listening);
+        UpdateOrbFromVoiceState();
+        BeginInvoke(new Action(async () =>
+        {
+            try { await AddAssistantMessage("Yes boss"); } catch { }
+        }));
+        return Task.CompletedTask;
+    }
+
+    private Task OnWakeWordStopAsync()
+    {
+        VoiceStateV1.TransitionTo(VoiceModeV1.Idle);
+        UpdateOrbFromVoiceState();
+        BeginInvoke(new Action(async () =>
+        {
+            try { await AddAssistantMessage("OK, väntar."); } catch { }
+        }));
+        return Task.CompletedTask;
     }
 
     private void OnVoicePttHotkey()
@@ -881,37 +996,41 @@ public sealed class JarvisForm : Form
                 return;
             }
 
-            if (await TryHandleCommandRouterV1UiAsync(text))
-                return;
-
-            if (NaturalEditTool.TryParseNaturalLanguage(text, out var naturalEditRequest))
-            {
-                var naturalEditReply = await NaturalEditRequestToolAsync(naturalEditRequest.RelativePath, naturalEditRequest.Instruction);
-                await AddAssistantMessage(naturalEditReply);
-                await ShowOrHidePendingApprovalPopupV1Async();
-                await SendJarvisOverviewV1Async(showPanel: false);
-                return;
-            }
-
-            // File open requests must be handled by local C# tools before Ollama gets the message.
-            // File open requests must be handled by local C# tools before Ollama gets the message.
-            if (TryExtractSmartOpenFileRequest(text, out var localFileOpen))
-            {
-                var localFileReply = await OpenProjectFileSmartAsync(localFileOpen);
-                await AddAssistantMessage(localFileReply);
-                return;
-            }
-            var reply = await HandleMessageAsync(text);
-            await AddAssistantMessage(reply);
-            await ShowOrHidePendingApprovalPopupV1Async();
-            await SendLatestFileChangeReviewV1Async();
-            await SendLatestTerminalPanelV1Async();
-            await SendJarvisOverviewV1Async(showPanel: false);
+            await ProcessUserChatAsync(text);
         }
         catch (Exception ex)
         {
             await AddAssistantMessage("C#-fel: " + ex.Message);
         }
+    }
+
+    private async Task ProcessUserChatAsync(string text)
+    {
+        if (await TryHandleCommandRouterV1UiAsync(text))
+            return;
+
+        if (NaturalEditTool.TryParseNaturalLanguage(text, out var naturalEditRequest))
+        {
+            var naturalEditReply = await NaturalEditRequestToolAsync(naturalEditRequest.RelativePath, naturalEditRequest.Instruction);
+            await AddAssistantMessage(naturalEditReply);
+            await ShowOrHidePendingApprovalPopupV1Async();
+            await SendJarvisOverviewV1Async(showPanel: false);
+            return;
+        }
+
+        if (TryExtractSmartOpenFileRequest(text, out var localFileOpen))
+        {
+            var localFileReply = await OpenProjectFileSmartAsync(localFileOpen);
+            await AddAssistantMessage(localFileReply);
+            return;
+        }
+
+        var reply = await HandleMessageAsync(text);
+        await AddAssistantMessage(reply);
+        await ShowOrHidePendingApprovalPopupV1Async();
+        await SendLatestFileChangeReviewV1Async();
+        await SendLatestTerminalPanelV1Async();
+        await SendJarvisOverviewV1Async(showPanel: false);
     }
 
     private async Task<bool> TryHandleCommandRouterV1UiAsync(string text)

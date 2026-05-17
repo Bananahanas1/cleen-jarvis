@@ -75,6 +75,9 @@ weather-animationer och andra stora future-features.
   Test: `tests/scene-composer-phase3.test.js` 55/55 PASS.
 - [ ] Fas 3 nasta slice: migrera `HandleSceneShowAsync` att skicka V2-payload
   via `jarvisApplySceneV2` istallet for V1 ScenePayload.
+  Forsta forsok 2026-05-16 rolled back: V2-renderern `_resetSceneSlots()`
+  raderar typeOn/source-stream/skeleton-shimmer-animationer. Behover
+  animations-aware diff i `applySceneV2` innan migration kan upprepas.
 - [ ] Fas 3 polish: flytta kort-rendering ur `index.html` till renderer-modulen.
 - [ ] Fas 4: forbattra news brief med timeline, confirmed/uncertain, impact
   och next questions.

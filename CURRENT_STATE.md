@@ -2,12 +2,23 @@
 
 Senast uppdaterad: 2026-05-16
 
+## 2026-05-16 - Fas 3 V2 migration FORSOKT och ROLLBACKAD
+
+- Migrerade forst `HandleSceneShowAsync` till `jarvisApplySceneV2`.
+- Visuell test: typeOn-animation pa summary, progressiv source-card stream
+  och skeleton-shimmer mellan faser FORSVANN — `applySceneV2` kor
+  `_resetSceneSlots()` vid varje push och bygger om DOM destruktivt.
+- Rollback: `HandleSceneShowAsync` aterstalld till V1-flodet (jarvisAddSceneCardV1,
+  jarvisUpdateSceneHeroV1, jarvisUpdateSceneSummaryV1). V2-renderern dormant igen.
+- `scene-renderer-v1.js` + `SceneComposerV1.cs` kvar i kodbasen — V2-migration
+  kraver forst att rendereren blir animations-medveten (smart diff istallet
+  for reset+rebuild).
+
 ## 2026-05-16 - Cinematic Workspace Pro Fas 3 foundation
 
 - `SceneComposerV1.cs` (V2-schema: 7 layouttyper, FromV1-adapter).
 - `dashboard/scene-renderer-v1.js` (read-only dispatcher per layout).
 - V1 ScenePayload-flodet orort — bakatkompatibelt.
-- `HandleSceneShowAsync` skickar fortfarande V1; renderer dormant tills nasta slice.
 
 ## 2026-05-16 - Docs-konsolidering
 

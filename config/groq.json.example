@@ -1,0 +1,4 @@
+{
+  "apiKey": "PASTE_YOUR_GROQ_API_KEY_HERE",
+  "model": "whisper-large-v3-turbo"
+}

@@ -207,14 +207,10 @@
 
   // ---------- 4. RADAR SWEEP ----------
   function initRadar() {
-    if (!FX.enabled.radar) return;
-    const mapPanel = document.getElementById("mapPanel");
-    if (!mapPanel) return;
-    if (document.getElementById("mapRadarSweep")) return;
-    const radar = document.createElement("div");
-    radar.id = "mapRadarSweep";
-    radar.innerHTML = `<div class="radar-rings"></div><div class="radar-cone"></div>`;
-    mapPanel.appendChild(radar);
+    // Radar borttagen 2026-05-16 — anvandare ville inte ha den pa kartan.
+    // Stadar bort eventuell tidigare DOM och hoppar over rendering.
+    var existing = document.getElementById("mapRadarSweep");
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
   }
 
   // ---------- 5. AUDIO-REACTIVE ORB ----------
