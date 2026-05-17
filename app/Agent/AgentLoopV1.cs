@@ -47,6 +47,7 @@ internal sealed class AgentLoopV1
     public async Task RunAsync(string userText)
     {
         if (string.IsNullOrWhiteSpace(userText)) return;
+        _executor.ResetVisualState();
 
         var toolsJson = ToolsRegistryV1.BuildOllamaToolsJson(_projectRoot);
         var toolsPrompt = ToolsRegistryV1.BuildAgentSystemPromptSegment(_projectRoot);
@@ -80,7 +81,18 @@ internal sealed class AgentLoopV1
             "BBC, Reuters, SVT, DN, AP, NYT, Al Jazeera, Wikipedia (för bakgrund), officiella myndighetssidor. " +
             "Använd EJ memer, propaganda, tabloid-sensationer, social media-shitposts, fan-art eller " +
             "vinklade aktivist-sidor som primärkälla. För dagsfärska nyheter — sök specifikt efter aktuella " +
-            "headlines från etablerade nyhetsbyråer, inte Wikipedia-stub-artiklar.\n\n" +
+            "headlines från etablerade nyhetsbyråer, inte Wikipedia-stub-artiklar.\n" +
+            "12. MATEMATIK: ANVÄND ALLTID `calculate`-verktyget för all beräkning, även 'enkla' som '12 + 5'. " +
+            "Du räknar fel i huvudet — varje gång användaren ber om ett tal eller siffra, kalla calculate.\n" +
+            "13. PLATSER: För 'var ligger X', 'ta mig till Y', 'visa Z på kartan' — kalla `map_pin`. " +
+            "Det zoomar kartan automatiskt och sätter en markör.\n" +
+            "14. VIDEOS: För 'visa video om X', 'senaste från Y på YouTube' — kalla `youtube_embed` " +
+            "med en bra sökterm. Den skapar en iframe-widget i scenen som spelar videon direkt.\n" +
+            "15. VÄDER: 'vädret i X', 'är det kallt', 'regnar det' — kalla `weather` med plats. " +
+            "Tool ger temperatur + prognos i widget.\n" +
+            "16. BILD+TEXT FÖR ALLT: För i princip ALLA info-frågor — kalla search_web (eller search_news). " +
+            "Användaren vill alltid se BÅDE en bild OCH text. Om du bara svarar i chat utan att kalla " +
+            "search_web kommer scenen vara tom — det är ett misslyckande. Kombinera alltid visualization med svar.\n\n" +
             toolsPrompt;
 
         var messages = new List<Dictionary<string, object?>>
@@ -109,10 +121,13 @@ internal sealed class AgentLoopV1
             if (toolCalls is { Count: > 0 }) assistantMsg["tool_calls"] = toolCalls;
             messages.Add(assistantMsg);
 
-            // Om LLM gav synlig text utan tool_calls -> visa for user och avsluta.
+            // Om LLM gav synlig text utan tool_calls -> visa for user.
+            // Sen: om ingen visual widget skapats men svaret innehaller substantiellt innehall,
+            // auto-trigga search_web sa scen alltid fylls med bild+text (kombinerad presentation).
             if ((toolCalls is null || toolCalls.Count == 0) && !string.IsNullOrWhiteSpace(assistantText))
             {
                 await _onAssistantText(assistantText);
+                await MaybeAutoFillSceneAsync(userText, assistantText);
                 return;
             }
 
@@ -159,6 +174,49 @@ internal sealed class AgentLoopV1
 
         Log("loop ended: max iterations reached (" + MaxIterations + ")");
         await _onAssistantText("(Agent: max " + MaxIterations + " iterationer nåddes utan finish.)");
+    }
+
+    /// <summary>
+    /// Auto-fyll-scen om LLM svarade med text men aldrig kallade en visual tool.
+    /// Sa scen alltid har bild+text for nastan alla fragor.
+    ///
+    /// Hoppar over for: korta ack-svar ("tack", "ok"), enkla math/calc-svar,
+    /// och nar svaret rorelser om Jarvis sjalv (status, capabilities).
+    /// </summary>
+    private async Task MaybeAutoFillSceneAsync(string userText, string assistantText)
+    {
+        if (_executor.DidVisualOutput) return;
+        if (string.IsNullOrWhiteSpace(assistantText)) return;
+        if (assistantText.Length < 40) return; // For korta svar - skippa
+
+        var lowerUser = userText.ToLowerInvariant();
+        var lowerAssistant = assistantText.ToLowerInvariant();
+
+        // Skippa for korta acknowledgments
+        var skipMarkers = new[] { "tack", "okej", " ok ", " ok.", "ok!", "mm", "aha", "japp", "yes" };
+        if (skipMarkers.Any(s => lowerUser.StartsWith(s) || lowerUser.Trim() == s.Trim())) return;
+
+        // Skippa meta-fragor om Jarvis sjalv (capabilities/status/voice)
+        var metaMarkers = new[] { "vem är du", "vad kan du", "stäng av", "slå på", "voice", "tysta", "muta" };
+        if (metaMarkers.Any(m => lowerUser.Contains(m))) return;
+
+        // Anvand user-query som soktema (renaste signalen).
+        var query = userText.Trim();
+        if (query.Length > 80) query = query.Substring(0, 80);
+
+        Log("auto-fill scene with query='" + query + "' (no visual output produced)");
+        try
+        {
+            var args = new Dictionary<string, JsonElement>();
+            using var doc = JsonDocument.Parse("{\"query\":" + JsonSerializer.Serialize(query) + "}");
+            foreach (var p in doc.RootElement.EnumerateObject())
+                args[p.Name] = p.Value.Clone();
+            await _executor.ExecuteAsync("search_web", args);
+        }
+        catch (Exception ex)
+        {
+            Log("auto-fill failed: " + ex.Message);
+        }
     }
 
     private async Task<JsonElement?> CallOllamaAsync(List<Dictionary<string, object?>> messages, string toolsJson)

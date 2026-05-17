@@ -19,10 +19,22 @@ internal sealed class AgentToolExecutorV1
     private readonly Dictionary<string, Func<Dictionary<string, JsonElement>, Task<AgentToolResultV1>>> _handlers
         = new(StringComparer.OrdinalIgnoreCase);
 
+    // Visual-output tracking: satts av tools som producerar nagot synligt i scen/karta/widget.
+    // AgentLoop kollar detta post-loop for att avgora om ett auto-search_web behovs.
+    public bool DidVisualOutput { get; private set; }
+
+    // Tools som rakanas som visual-producerande.
+    private static readonly HashSet<string> VisualTools = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "search_web", "search_news", "show_widget", "youtube_embed", "map_pin", "weather", "open_file", "navigate_panel"
+    };
+
     public AgentToolExecutorV1(string projectRoot)
     {
         _projectRoot = projectRoot;
     }
+
+    public void ResetVisualState() => DidVisualOutput = false;
 
     public void Register(string toolName, Func<Dictionary<string, JsonElement>, Task<AgentToolResultV1>> handler)
     {
@@ -42,7 +54,13 @@ internal sealed class AgentToolExecutorV1
 
         try
         {
-            return await handler(args);
+            var result = await handler(args);
+            if (VisualTools.Contains(toolName) && !string.IsNullOrEmpty(result.ResultJson)
+                && !result.ResultJson.Contains("\"ok\":false"))
+            {
+                DidVisualOutput = true;
+            }
+            return result;
         }
         catch (Exception ex)
         {

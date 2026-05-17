@@ -38,21 +38,33 @@ internal static class NewsAggregatorV1
 
     public static async Task<List<NewsHeadlineV1>> FetchHeadlinesAsync(string? topicFilter = null, int maxPerFeed = 3, int totalMax = 12)
     {
+        // Sprak-aware kallval (2026-05-17): om query innehaller "svensk"/"sverige"/etc.,
+        // hämta BARA från SVT så användaren faktiskt får svenska nyheter, inte BBC World.
+        (string Name, string Url)[] feedsToUse = DefaultFeeds;
+        var topic = (topicFilter ?? "").ToLowerInvariant();
+        var swedishKeywords = new[] { "svensk", "sverige", "sweden", "stockholm", "göteborg", "malmö", "uppsala", "skåne" };
+        if (swedishKeywords.Any(k => topic.Contains(k)))
+        {
+            feedsToUse = DefaultFeeds.Where(f => f.Name.Contains("SVT", StringComparison.OrdinalIgnoreCase)).ToArray();
+        }
+
         var allHeadlines = new List<NewsHeadlineV1>();
-        var tasks = DefaultFeeds.Select(f => TryFetchFeedAsync(f.Name, f.Url, maxPerFeed)).ToArray();
+        var tasks = feedsToUse.Select(f => TryFetchFeedAsync(f.Name, f.Url, maxPerFeed * 2)).ToArray();
         var results = await Task.WhenAll(tasks);
         foreach (var batch in results) allHeadlines.AddRange(batch);
 
-        // Filtrera pa topic om angivet
-        if (!string.IsNullOrWhiteSpace(topicFilter))
+        // Filtrera pa topic om angivet — men hoppa over om query bara ar "svensk"/"senaste"
+        // (da vill anvandaren se ALLT senaste fran svenska kallor).
+        var skipFilterKeywords = new[] { "svensk", "sverige", "sweden", "senaste", "nytt", "nyheter", "uppdatera" };
+        var topicWords = topic.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var meaningfulKeywords = topicWords.Where(w => !skipFilterKeywords.Contains(w) && w.Length > 2).ToArray();
+        if (meaningfulKeywords.Length > 0)
         {
-            var topic = topicFilter.ToLowerInvariant();
-            var keywords = topic.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             allHeadlines = allHeadlines
                 .Where(h =>
                 {
                     var blob = (h.Title + " " + h.Summary).ToLowerInvariant();
-                    return keywords.Any(k => blob.Contains(k));
+                    return meaningfulKeywords.Any(k => blob.Contains(k));
                 })
                 .ToList();
         }

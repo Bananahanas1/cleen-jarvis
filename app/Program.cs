@@ -1013,6 +1013,19 @@ public sealed class JarvisForm : Form
 
     private AgentToolExecutorV1? _agentExecutor;
 
+    private static string WeatherCodeText(int code) => code switch
+    {
+        0 => "klart",
+        1 or 2 or 3 => "växlande molnighet",
+        45 or 48 => "dimma",
+        51 or 53 or 55 => "duggregn",
+        61 or 63 or 65 => "regn",
+        71 or 73 or 75 => "snöfall",
+        80 or 81 or 82 => "regnskurar",
+        95 or 96 or 99 => "åska",
+        _ => "okänt väder"
+    };
+
     private void EnsureAgentExecutor()
     {
         if (_agentExecutor is not null) return;
@@ -1197,6 +1210,387 @@ public sealed class JarvisForm : Form
             var reason = AgentToolExecutorV1.GetString(args, "reason");
             return Task.FromResult(AgentToolExecutorV1.PendingApproval("run_terminal",
                 "Köra: " + cmd + " — anledning: " + reason));
+        });
+
+        // Sprint 9 (2026-05-17): calculator + youtube_embed + map_pin.
+        exec.Register("calculate", async args =>
+        {
+            var expr = AgentToolExecutorV1.GetString(args, "expression");
+            if (string.IsNullOrWhiteSpace(expr))
+                return AgentToolExecutorV1.Error("expression saknas");
+            try
+            {
+                var normalized = expr
+                    .Replace("×", "*").Replace("÷", "/").Replace(",", ".")
+                    .Replace("plus", "+", StringComparison.OrdinalIgnoreCase)
+                    .Replace("minus", "-", StringComparison.OrdinalIgnoreCase)
+                    .Replace("ggr", "*", StringComparison.OrdinalIgnoreCase)
+                    .Replace("delat med", "/", StringComparison.OrdinalIgnoreCase);
+                var table = new System.Data.DataTable();
+                var raw = table.Compute(normalized, "");
+                var result = Convert.ToString(raw, System.Globalization.CultureInfo.InvariantCulture);
+                var text = expr + " = " + result;
+                await AddAssistantMessage(text);
+                return AgentToolExecutorV1.OkText(text);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("Kunde inte beräkna '" + expr + "': " + ex.Message);
+            }
+        });
+
+        exec.Register("youtube_embed", async args =>
+        {
+            var query = AgentToolExecutorV1.GetString(args, "query");
+            if (string.IsNullOrWhiteSpace(query))
+                return AgentToolExecutorV1.Error("query saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            string embedUrl;
+            // Om query ser ut som video-ID eller URL: anvand direkt embed.
+            var ytIdMatch = System.Text.RegularExpressions.Regex.Match(query,
+                @"(?:youtube\.com/(?:watch\?v=|embed/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})");
+            if (ytIdMatch.Success)
+            {
+                embedUrl = "https://www.youtube.com/embed/" + ytIdMatch.Groups[1].Value + "?autoplay=1";
+            }
+            else if (System.Text.RegularExpressions.Regex.IsMatch(query, @"^[A-Za-z0-9_-]{11}$"))
+            {
+                embedUrl = "https://www.youtube.com/embed/" + query + "?autoplay=1";
+            }
+            else
+            {
+                // Sok-mode: anvand YouTube embed med listType=search.
+                embedUrl = "https://www.youtube.com/embed?listType=search&list=" + Uri.EscapeDataString(query);
+            }
+
+            await _webView.CoreWebView2.ExecuteScriptAsync(
+                "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+
+            var optionsJson = JsonSerializer.Serialize(new { url = embedUrl, title = "YOUTUBE: " + query });
+            var typeJson = JsonSerializer.Serialize("iframe");
+            var script = "(function(){if(!window.JarvisWidgetsV1)return 'NO_WIDGETS'; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+            var raw = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+            return AgentToolExecutorV1.OkText("YouTube-widget skapad för '" + query + "' (id=" + raw.Trim('"') + ")");
+        });
+
+        exec.Register("stock_chart", async args =>
+        {
+            var symbol = AgentToolExecutorV1.GetString(args, "symbol");
+            if (string.IsNullOrWhiteSpace(symbol))
+                return AgentToolExecutorV1.Error("symbol saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+                http.DefaultRequestHeaders.UserAgent.TryParseAdd("Mozilla/5.0 (Windows NT 10.0; Win64; x64)");
+                // Yahoo Finance public chart endpoint (ingen API-key)
+                var url = "https://query1.finance.yahoo.com/v8/finance/chart/" + Uri.EscapeDataString(symbol) +
+                          "?interval=1d&range=1mo";
+                var json = await http.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(json);
+                var chart = doc.RootElement.GetProperty("chart");
+                if (chart.TryGetProperty("error", out var errEl) && errEl.ValueKind != JsonValueKind.Null)
+                    return AgentToolExecutorV1.Error("Yahoo: " + errEl.ToString());
+
+                var result = chart.GetProperty("result")[0];
+                var meta = result.GetProperty("meta");
+                var price = meta.GetProperty("regularMarketPrice").GetDouble();
+                var currency = meta.TryGetProperty("currency", out var cur) ? cur.GetString() ?? "" : "";
+                var prevClose = meta.TryGetProperty("chartPreviousClose", out var pc) ? pc.GetDouble() : price;
+                var change = price - prevClose;
+                var changePct = prevClose != 0 ? (change / prevClose * 100) : 0;
+                var symbolName = meta.TryGetProperty("symbol", out var sym) ? sym.GetString() ?? symbol : symbol;
+
+                var quote = result.GetProperty("indicators").GetProperty("quote")[0];
+                var closes = quote.GetProperty("close").EnumerateArray()
+                    .Where(e => e.ValueKind == JsonValueKind.Number)
+                    .Select(e => e.GetDouble()).ToArray();
+                var monthMin = closes.Length > 0 ? closes.Min() : price;
+                var monthMax = closes.Length > 0 ? closes.Max() : price;
+
+                var trend = change >= 0 ? "▲" : "▼";
+                var color = change >= 0 ? "+" : "";
+                var content = symbolName.ToUpper() + "  " + price.ToString("F2") + " " + currency + "\n" +
+                              trend + " " + color + change.ToString("F2") + " (" + color + changePct.ToString("F2") + "%)\n\n" +
+                              "1 månad: " + monthMin.ToString("F2") + " – " + monthMax.ToString("F2") + " " + currency + "\n" +
+                              "Stängningskurs (igår): " + prevClose.ToString("F2") + " " + currency;
+
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+                var optionsJson = JsonSerializer.Serialize(new { title = "AKTIE • " + symbol.ToUpper(), content = content });
+                var typeJson = JsonSerializer.Serialize("text");
+                var script = "(function(){if(!window.JarvisWidgetsV1)return; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+                await _webView.CoreWebView2.ExecuteScriptAsync(script);
+
+                return AgentToolExecutorV1.OkText(content.Replace("\n", " | "));
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("stock_chart kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("translate", async args =>
+        {
+            var text = AgentToolExecutorV1.GetString(args, "text");
+            var target = AgentToolExecutorV1.GetString(args, "target", "en");
+            var source = AgentToolExecutorV1.GetString(args, "source", "auto");
+            if (string.IsNullOrWhiteSpace(text))
+                return AgentToolExecutorV1.Error("text saknas");
+
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                var langpair = (source == "auto" ? "" : source) + "|" + target;
+                var url = "https://api.mymemory.translated.net/get?q=" + Uri.EscapeDataString(text) +
+                          "&langpair=" + Uri.EscapeDataString(langpair);
+                var json = await http.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("responseData", out var rd))
+                    return AgentToolExecutorV1.Error("Inget svar från MyMemory");
+                var translated = rd.GetProperty("translatedText").GetString() ?? "";
+                if (string.IsNullOrWhiteSpace(translated))
+                    return AgentToolExecutorV1.Error("Tom översättning");
+
+                if (_webView?.CoreWebView2 is not null)
+                {
+                    var content = "Original: " + text + "\n\n" +
+                                  "Översättning (" + target.ToUpper() + "): " + translated;
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+                    var optionsJson = JsonSerializer.Serialize(new { title = "ÖVERSÄTTNING → " + target.ToUpper(), content = content });
+                    var typeJson = JsonSerializer.Serialize("text");
+                    var script = "(function(){if(!window.JarvisWidgetsV1)return; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+                    await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+
+                return AgentToolExecutorV1.OkText(translated);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("translate kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("define", async args =>
+        {
+            var word = AgentToolExecutorV1.GetString(args, "word");
+            if (string.IsNullOrWhiteSpace(word))
+                return AgentToolExecutorV1.Error("word saknas");
+
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                http.DefaultRequestHeaders.UserAgent.TryParseAdd("JarvisClean/1.0");
+                // Prova sv först, sen en
+                string? definition = null;
+                string lang = "";
+                foreach (var l in new[] { "sv", "en" })
+                {
+                    var url = "https://" + l + ".wiktionary.org/api/rest_v1/page/definition/" + Uri.EscapeDataString(word);
+                    try
+                    {
+                        var resp = await http.GetAsync(url);
+                        if (!resp.IsSuccessStatusCode) continue;
+                        var json = await resp.Content.ReadAsStringAsync();
+                        using var doc = JsonDocument.Parse(json);
+                        // Wiktionary returnerar { "sv": [{partOfSpeech, definitions: [{definition}]}] }
+                        foreach (var prop in doc.RootElement.EnumerateObject())
+                        {
+                            var arr = prop.Value;
+                            if (arr.ValueKind != JsonValueKind.Array) continue;
+                            var parts = new List<string>();
+                            foreach (var entry in arr.EnumerateArray())
+                            {
+                                var pos = entry.TryGetProperty("partOfSpeech", out var p) ? p.GetString() ?? "" : "";
+                                if (!entry.TryGetProperty("definitions", out var defs)) continue;
+                                foreach (var d in defs.EnumerateArray())
+                                {
+                                    if (d.TryGetProperty("definition", out var defText))
+                                    {
+                                        var clean = System.Text.RegularExpressions.Regex.Replace(defText.GetString() ?? "", "<[^>]+>", "");
+                                        parts.Add("• " + pos + ": " + clean);
+                                    }
+                                }
+                            }
+                            if (parts.Count > 0) { definition = string.Join("\n", parts.Take(5)); lang = l; break; }
+                        }
+                        if (definition is not null) break;
+                    }
+                    catch { }
+                }
+
+                if (definition is null)
+                    return AgentToolExecutorV1.OkText("Ingen definition hittad för '" + word + "'.");
+
+                if (_webView?.CoreWebView2 is not null)
+                {
+                    var content = word.ToUpper() + " (" + lang.ToUpper() + ")\n\n" + definition;
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+                    var optionsJson = JsonSerializer.Serialize(new { title = "DEFINITION: " + word, content = content });
+                    var typeJson = JsonSerializer.Serialize("text");
+                    var script = "(function(){if(!window.JarvisWidgetsV1)return; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+                    await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                }
+
+                return AgentToolExecutorV1.OkText(definition);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("define kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("read_ui_state", async args =>
+        {
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+            try
+            {
+                var script =
+                    "(function(){" +
+                    "var state={};" +
+                    "state.activeMode=document.body.className.match(/(brain|scene|map)-mode/)?RegExp.$1:'chat/default';" +
+                    "state.widgetCount=(window.JarvisWidgetsV1?window.JarvisWidgetsV1.list().length:0);" +
+                    "state.widgets=(window.JarvisWidgetsV1?window.JarvisWidgetsV1.list():[]);" +
+                    "var msgs=document.getElementById('messages');" +
+                    "state.lastMessages=msgs?Array.prototype.slice.call(msgs.children).slice(-4).map(function(m){return (m.textContent||'').trim().substring(0,200);}):[];" +
+                    "return JSON.stringify(state);})()";
+                var raw = await _webView.CoreWebView2.ExecuteScriptAsync(script);
+                // Result kommer som JSON-string-omsluten av "" från WebView2
+                var inner = JsonSerializer.Deserialize<string>(raw) ?? "{}";
+                return new AgentToolResultV1(inner, false, "");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("read_ui_state kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("weather", async args =>
+        {
+            var place = AgentToolExecutorV1.GetString(args, "place");
+            if (string.IsNullOrWhiteSpace(place))
+                return AgentToolExecutorV1.Error("place saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                http.DefaultRequestHeaders.UserAgent.TryParseAdd("JarvisClean/1.0 (https://github.com/local; weather)");
+
+                // 1. Geocoda plats
+                var geoUrl = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + Uri.EscapeDataString(place);
+                var geoJson = await http.GetStringAsync(geoUrl);
+                using var geoDoc = JsonDocument.Parse(geoJson);
+                if (geoDoc.RootElement.GetArrayLength() == 0)
+                    return AgentToolExecutorV1.Error("Hittade inte platsen '" + place + "'");
+                var geo = geoDoc.RootElement[0];
+                var lat = double.Parse(geo.GetProperty("lat").GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+                var lon = double.Parse(geo.GetProperty("lon").GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+                var displayName = geo.TryGetProperty("display_name", out var dn) ? dn.GetString() ?? place : place;
+
+                // 2. Open-Meteo aktuell + 3-dagars prognos
+                var inv = System.Globalization.CultureInfo.InvariantCulture;
+                var wUrl =
+                    "https://api.open-meteo.com/v1/forecast?latitude=" + lat.ToString(inv) +
+                    "&longitude=" + lon.ToString(inv) +
+                    "&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code" +
+                    "&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,weather_code" +
+                    "&timezone=auto&forecast_days=4";
+                var wJson = await http.GetStringAsync(wUrl);
+                using var wDoc = JsonDocument.Parse(wJson);
+                var w = wDoc.RootElement;
+
+                var current = w.GetProperty("current");
+                var tNow = current.GetProperty("temperature_2m").GetDouble();
+                var humid = current.GetProperty("relative_humidity_2m").GetDouble();
+                var wind = current.GetProperty("wind_speed_10m").GetDouble();
+                var nowCode = current.GetProperty("weather_code").GetInt32();
+
+                var daily = w.GetProperty("daily");
+                var times = daily.GetProperty("time").EnumerateArray().Select(e => e.GetString() ?? "").ToArray();
+                var tmax = daily.GetProperty("temperature_2m_max").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+                var tmin = daily.GetProperty("temperature_2m_min").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+                var prec = daily.GetProperty("precipitation_sum").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+
+                var content = "📍 " + displayName + "\n\n";
+                content += "Just nu: " + tNow.ToString("0.0") + "°C, " + WeatherCodeText(nowCode) + "\n";
+                content += "Fuktighet: " + humid.ToString("0") + "%, vind: " + wind.ToString("0.0") + " km/h\n\n";
+                content += "Prognos:\n";
+                for (int i = 0; i < Math.Min(times.Length, 4); i++)
+                {
+                    content += "• " + times[i] + ": " + tmin[i].ToString("0") + "° – " + tmax[i].ToString("0") + "°C";
+                    if (prec[i] > 0.1) content += ", " + prec[i].ToString("0.0") + " mm regn";
+                    content += "\n";
+                }
+
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var b=document.getElementById('showSceneBtn');if(b)b.click();})()");
+
+                var optionsJson = JsonSerializer.Serialize(new { title = "VÄDER • " + place.ToUpper(), content = content });
+                var typeJson = JsonSerializer.Serialize("text");
+                var script = "(function(){if(!window.JarvisWidgetsV1)return 'NO_WIDGETS'; return window.JarvisWidgetsV1.create(" + typeJson + ", " + optionsJson + ");})()";
+                await _webView.CoreWebView2.ExecuteScriptAsync(script);
+
+                return AgentToolExecutorV1.OkText(content.Replace("\n", " | "));
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("weather kraschade: " + ex.Message);
+            }
+        });
+
+        exec.Register("map_pin", async args =>
+        {
+            var place = AgentToolExecutorV1.GetString(args, "place");
+            if (string.IsNullOrWhiteSpace(place))
+                return AgentToolExecutorV1.Error("place saknas");
+            if (_webView?.CoreWebView2 is null)
+                return AgentToolExecutorV1.Error("WebView ej redo");
+
+            try
+            {
+                // Geocoda via Nominatim (OpenStreetMap, gratis, kraver User-Agent).
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(8) };
+                http.DefaultRequestHeaders.UserAgent.TryParseAdd("JarvisClean/1.0 (https://github.com/local; map-pin)");
+                var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + Uri.EscapeDataString(place);
+                var resp = await http.GetStringAsync(url);
+                using var doc = JsonDocument.Parse(resp);
+                var arr = doc.RootElement;
+                if (arr.ValueKind != JsonValueKind.Array || arr.GetArrayLength() == 0)
+                    return AgentToolExecutorV1.Error("Hittade inte platsen '" + place + "'");
+
+                var hit = arr[0];
+                var lat = double.Parse(hit.GetProperty("lat").GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+                var lon = double.Parse(hit.GetProperty("lon").GetString() ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+                var displayName = hit.TryGetProperty("display_name", out var dn) ? dn.GetString() ?? place : place;
+
+                // Byt till karta + zooma + sätt pin.
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    "(function(){var b=document.getElementById('showMapBtn');if(b)b.click();})()");
+                await Task.Delay(300); // vänta på panel-byte
+                var lonStr = lon.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var latStr = lat.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var nameJson = JsonSerializer.Serialize(displayName);
+                var mapScript =
+                    "(function(){if(!window._kartaMap)return 'NO_MAP'; " +
+                    "window._kartaMap.flyTo({center:[" + lonStr + "," + latStr + "],zoom:10,duration:1500}); " +
+                    "if(window.maplibregl){var m=new maplibregl.Marker({color:'#ff8800'}).setLngLat([" + lonStr + "," + latStr + "]).setPopup(new maplibregl.Popup().setText(" + nameJson + ")).addTo(window._kartaMap); window._kartaMarkers=window._kartaMarkers||[]; window._kartaMarkers.push(m);} return 'OK';})()";
+                await _webView.CoreWebView2.ExecuteScriptAsync(mapScript);
+
+                return AgentToolExecutorV1.OkText("Zoomade kartan till " + displayName + " (" + lat.ToString("F4") + ", " + lon.ToString("F4") + ")");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("map_pin kraschade: " + ex.Message);
+            }
         });
 
         exec.Register("search_news", async args =>
