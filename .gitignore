@@ -14,6 +14,12 @@ publish/
 
 # Local runtime/cache data
 data/
+
+# Undantag: agent-config ska in i repot, men inte agent runtime-loggar.
+!data/agent/
+!data/agent/tools.json
+data/agent/runs/
+data/agent/test-runs/
 logs/
 .checkpoints/
 .jarvis/
