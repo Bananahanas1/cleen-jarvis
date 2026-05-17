@@ -8492,8 +8492,9 @@ public sealed class JarvisForm : Form
                 $"window.jarvisApplyScenePayloadV1 && window.jarvisApplyScenePayloadV1({skeletonJson});");
         }
 
-        // 2. Parallellt: riktig web-research + Ollama-sammanfattning.
+        // 2. Parallellt: riktig web-research + extra bilder via Wikipedia media-list + Ollama-sammanfattning.
         var searchTask = SceneResearchV1.SearchAsync(query);
+        var imagesTask = SceneResearchV1.CollectImagesAsync(query, 5);
         var summaryTask = BuildSceneSummaryAsync(query);
 
         // 3. När research returnerar:
@@ -8542,6 +8543,38 @@ public sealed class JarvisForm : Form
             // research best-effort — fortsätt med summary
         }
 
+        // 3b. Sprint 1: lägg in extra bilder från Wikipedia media-list som image-cards.
+        //     Hoppa över den bild vi redan använt som hero så vi inte dubbel-renderar.
+        try
+        {
+            var images = await imagesTask;
+            if (_webView.CoreWebView2 is not null && images.Count > 0)
+            {
+                int rendered = 0;
+                foreach (var img in images)
+                {
+                    if (rendered >= 4) break;
+                    if (!string.IsNullOrWhiteSpace(heroImageUrl) &&
+                        string.Equals(img.Url, heroImageUrl, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var imgCardJson = JsonSerializer.Serialize(new
+                    {
+                        type = "image",
+                        title = img.Caption,
+                        body = img.Caption,
+                        imageUrl = img.Url
+                    });
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.jarvisAddSceneCardV1 && window.jarvisAddSceneCardV1({imgCardJson});");
+                    rendered++;
+                }
+            }
+        }
+        catch
+        {
+            // images best-effort — fortsatt med summary
+        }
+
         // 4. När Ollama returnerar — uppdatera summary-kortet + läs upp via TTS.
         var summaryText = await summaryTask;
         if (_webView.CoreWebView2 is not null)
@@ -8549,6 +8582,31 @@ public sealed class JarvisForm : Form
             var summaryJson = JsonSerializer.Serialize(summaryText);
             await _webView.CoreWebView2.ExecuteScriptAsync(
                 $"window.jarvisUpdateSceneSummaryV1 && window.jarvisUpdateSceneSummaryV1({summaryJson});");
+        }
+
+        // 5. Sprint 1+ Self-critique: lat LLM bedoma kvaliteten pa sin egen research.
+        //    Kallad efter summary sa LLM ser bade sammanfattning och resultat-count.
+        try
+        {
+            var hits = await searchTask;
+            var images = await imagesTask;
+            var critique = await BuildSceneCritiqueAsync(query, summaryText, hits.Count, images.Count);
+            if (!string.IsNullOrWhiteSpace(critique) && _webView.CoreWebView2 is not null)
+            {
+                var critiqueCardJson = JsonSerializer.Serialize(new
+                {
+                    type = "source",
+                    title = "Jarvis bedömning",
+                    body = critique,
+                    imageUrl = ""
+                });
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.jarvisAddSceneCardV1 && window.jarvisAddSceneCardV1({critiqueCardJson});");
+            }
+        }
+        catch
+        {
+            // critique best-effort
         }
 
         // Cinematic V3: scen-summary läses upp utan badge-prefix (V3 fix 2026-05-14).
@@ -8564,6 +8622,55 @@ public sealed class JarvisForm : Form
                 // TTS får aldrig krascha scen-flödet.
             }
         }
+    }
+
+    /// <summary>
+    /// Sprint 1+ (2026-05-17) — sjalv-kritik: LLM bedomer sin egen research-output.
+    /// Ger 1-2 meningar om vad som ar bra/saknas, sa anvandaren ser om Jarvis tycker
+    /// det blev en bra eller mediokar sammanfattning.
+    /// </summary>
+    private async Task<string> BuildSceneCritiqueAsync(string query, string summary, int hitCount, int imageCount)
+    {
+        try
+        {
+            var systemPrompt =
+                "Du är Jarvis kvalitetsgranskare. Du får en användarfråga, en sammanfattning och antal källor/bilder. " +
+                "Skriv 1-2 korta meningar (max 35 ord total) pa svenska. Var ärlig: " +
+                "Om sammanfattningen är bra och täcker frågan, säg det kort. " +
+                "Om något viktigt saknas eller verkar fel, peka konkret pa det. " +
+                "Inga rubriker, ingen markdown, bara prosa.";
+            var userText =
+                "Fråga: " + query + "\n" +
+                "Sammanfattning: " + (summary ?? "(ingen)") + "\n" +
+                "Antal text-källor: " + hitCount + "\n" +
+                "Antal bilder: " + imageCount;
+
+            var messages = new List<object>
+            {
+                new { role = "system", content = systemPrompt },
+                new { role = "user", content = userText }
+            };
+            var payload = new
+            {
+                model = _activeModel,
+                stream = false,
+                keep_alive = "30m",
+                messages
+            };
+            using var response = await Http.PostAsJsonAsync(OllamaUrl, payload);
+            if (!response.IsSuccessStatusCode) return "";
+            using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            if (json.RootElement.TryGetProperty("message", out var msg) &&
+                msg.TryGetProperty("content", out var content))
+            {
+                return (content.GetString() ?? "").Trim();
+            }
+        }
+        catch
+        {
+            // best-effort
+        }
+        return "";
     }
 
     private async Task<string> BuildSceneSummaryAsync(string query)

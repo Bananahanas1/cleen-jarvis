@@ -1,6 +1,82 @@
 ﻿# TODO_NEXT.md - nÃ¤sta praktiska steg
 
-Senast uppdaterad: 2026-05-15
+Senast uppdaterad: 2026-05-17
+
+## Jarvis Agentic Roadmap 2026-05-17
+
+Stort spar: gora Jarvis till en agentisk assistent som kan utfora uppgifter
+sjalv (program, web, desktop) och visa allt i scen-vyn. Ska delas upp i 7 sprintar.
+Anvandaren begar att alla sprintar gors i ordning 1 -> 2 -> 3 -> 4 -> 5 -> 6 -> 7.
+
+### Sprint 1 (i progress) - Auto-research i scen med bilder
+- [ ] Forbattra `SceneResearchV1` med DuckDuckGo Image Search-source
+- [ ] Lagg till Wikimedia Commons image-API for fria bilder
+- [ ] Lagg till HTML content scraping av forsta hit (HtmlAgilityPack eller manuell parse)
+- [ ] Visa 3-5 bilder i scen-vyn istallet for bara hero
+- [ ] Auto-trigga scen nar user fragar i chatten (om query bedoms research-vard)
+- [ ] Test: scen fylls med relevanta bilder + sammanfattning utan att user explicit ber
+
+### Sprint 2 - Tool-calling framework (hjartat i agentic Jarvis)
+- [ ] Designa `tools.json` med tool-definitions (open_file, run_cmd, search_web, ui_click, read_screen, etc.)
+- [ ] System-prompt template som ger LLM tool-list + svensk instruktion
+- [ ] `ToolCallRouterV1` parsar LLM-output for tool-calls (JSON eller XML-format)
+- [ ] Execute-pipeline med `PendingApprovalV1` for risky tools (write, click, exec)
+- [ ] Tool-result feedback-loop sa LLM kan reagera pa resultat och kalla fler tools
+- [ ] Stop-condition: max N tool-calls per query, eller LLM signalerar klar
+- [ ] Logg per tool-call i `data/agent/runs/<id>.jsonl`
+
+#### Sprint 2b (optionellt) - MCP-klient
+- [ ] Implementera MCP-protokoll (JSON-RPC over stdio) som klient
+- [ ] Lat user konfigurera MCP-servers i `config/mcp-servers.json`
+- [ ] Auto-discover tools fran connected MCP-servers
+- [ ] Routa tool-call till ratt MCP-server eller native handler
+- [ ] Gratis MCP-servers att testa: filesystem, fetch, brave-search, github, memory
+
+### Sprint 3 - Draggable scene-widgets
+- [ ] Bygg `WidgetV1`-komponent i `index.html` (header med title + close + drag-handle)
+- [ ] Mouse-drag positioning, position sparas i localStorage per widget-typ
+- [ ] Predefinierade widgets:
+  - `chat-mini` (kompakt chat-vy mellan user och Jarvis)
+  - `webcam` (visar webcam-stream fran karta-source)
+  - `image-viewer` (visar bilder fran scen-research)
+  - `info-panel` (visar nyckeldata om aktiv query)
+  - `code-snippet` (visar kod-result fran tool-calls)
+- [ ] `/widget <typ>` command for att skapa nya widgets
+- [ ] Widgets snap till grid for snyggt placering
+
+### Sprint 4 - Browser autopilot (Playwright deepening)
+- [ ] Polera existerande `BrowserAutopilotRunnerV1` for langre uppdrag
+- [ ] Smartare login-detection (Gmail, GitHub, common SaaS)
+- [ ] Approval per click/form/submit med screenshot
+- [ ] 2FA-handoff: pause + Jarvis fragar user innan fortsatt
+- [ ] Multi-step recipes (t.ex. "boka Apoteket-tid")
+- [ ] Page reading: extrahera readable content + screenshots av aktiv sida
+- [ ] Kanske integrera Browserbase eller behall lokal Playwright
+
+### Sprint 5 - Browserbase web scraper-integration
+- [ ] Skapa `config/browserbase.json.example` template
+- [ ] `BrowserbaseClientV1.cs` for REST-API (sessions, navigate, scrape)
+- [ ] Stealth/AI-driven scraping for sidor som blockar lokal Playwright
+- [ ] Anvandning fran scen-research nar lokal scraping failar
+- [ ] Anvandning fran browser-autopilot for hard sidor
+
+### Sprint 6 - Desktop control + live screen feed
+- [ ] Forbattra `UI-TARS`-integration (redan delvis byggd)
+- [ ] Live screenshot via `PrintWindow` API (alternative: BitBlt eller WGC)
+- [ ] Stream screenshots till WebView (canvas eller img.src= dataURL var Nms)
+- [ ] Tool: `desktop_click(x, y)`, `desktop_type(text)`, `desktop_screenshot()`
+- [ ] Tool: `desktop_open_app(name)` via SafeAppLauncher
+- [ ] Action recording sa Jarvis kan "replay" tidigare flows
+
+### Sprint 7 - Self-test runner
+- [ ] `/test alla paneler`-kommando
+- [ ] Spawnar parallel Jarvis-instans i headless mode (WebView2 utan synligt fonster?)
+- [ ] Klickar alla tabs sekventiellt, verifierar att inget kraschar
+- [ ] Visual regression: screenshot per panel + diff mot baseline
+- [ ] Report till `data/agent/test-runs/<timestamp>.md`
+- [ ] CI-like check: kor mellan releases for att fanga regressions
+
+## Git hygiene 2026-05-15
 
 ## Git hygiene 2026-05-15
 

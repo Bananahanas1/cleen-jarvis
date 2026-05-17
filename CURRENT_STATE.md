@@ -1,6 +1,31 @@
 # CURRENT_STATE.md - Jarvis
 
-Senast uppdaterad: 2026-05-16
+Senast uppdaterad: 2026-05-17
+
+## 2026-05-17 - Agentic Roadmap startad
+
+Stort 7-sprint-spar inlagt i TODO_NEXT.md for att gora Jarvis agentisk.
+Sprint 1 (auto-research i scen med bilder) ar i progress.
+Resten i ordning: tool-calling (2), widgets (3), browser-autopilot (4),
+Browserbase (5), desktop+live-screen (6), self-test (7).
+
+MCP-server-undersokning klar: MCP behovs inte i runtime (Ollama talar inte MCP),
+men MCP-klient kan laggas till som Sprint 2b for att fa gratis access till
+Anthropic + community MCP-servers (filesystem, fetch, brave-search, github, etc.).
+
+## 2026-05-17 - Sofie Neural TTS + Groq Whisper STT + wake-word + Siri-orb
+
+- TTS: `VoiceTtsEdgeV1` mot Microsoft Edge TTS (Sec-MS-GEC token), default sv-SE-SofieNeural.
+- TTS fallbacks: `VoiceTtsElevenLabsV1` (REST) + `VoiceTtsSapiV1` (lokal SAPI via COM).
+- STT: `VoiceSttGroqV1` mot Whisper-large-v3-turbo via Groq API (~0.5s, free tier).
+- Wake-word: `WakeWordListenerV1` med VAD + svenska Whisper-aliases (hjarvis/joris m.fl.).
+- Barge-in: avbryt Sofie genom att borja prata mitt i ett svar.
+- Stop-ord: "vanta" / "hejda" terminerar dialog.
+- Siri-orb (ovre hogra hornet): conic-sweep + HUD-ringar + organic core + sinus-wave.
+- Scen + karta full-screen som brain (`body.scene-mode` + `body.map-mode`).
+- Karta-pollers pausar per panel + brain 3D-render pausar nar inte aktiv.
+- `Starta-Jarvis.vbs` pekar nu pa `dist-v4` (dist/ last av Session-0 instance).
+- Commit `ba35a40` pushad till GitHub.
 
 ## 2026-05-16 - Fas 3 V2 migration FORSOKT och ROLLBACKAD
 
