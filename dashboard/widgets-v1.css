@@ -171,3 +171,119 @@
     linear-gradient(0deg, transparent 49%, rgba(106, 216, 255, 0.18) 50%, transparent 51%),
     linear-gradient(90deg, transparent 49%, rgba(106, 216, 255, 0.18) 50%, transparent 51%);
 }
+
+/* Widget V2 — grid-overlay syns under drag/resize */
+.widget-grid-overlay {
+  position: fixed;
+  pointer-events: none;
+  z-index: 999;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+  background-image:
+    repeating-linear-gradient(to right,
+      rgba(106, 217, 255, 0.15) 0,
+      rgba(106, 217, 255, 0.15) 1px,
+      transparent 1px,
+      transparent var(--grid-cell-w, 80px)),
+    repeating-linear-gradient(to bottom,
+      rgba(106, 217, 255, 0.15) 0,
+      rgba(106, 217, 255, 0.15) 1px,
+      transparent 1px,
+      transparent var(--grid-cell-h, 60px));
+}
+.widget-grid-overlay.visible {
+  opacity: 1;
+}
+
+/* Widget V2 — sidebar */
+.widget-sidebar {
+  position: fixed;
+  top: 80px;
+  left: 0;
+  width: 56px;
+  background: rgba(6, 21, 32, 0.92);
+  border-right: 1px solid rgba(106, 217, 255, 0.25);
+  border-top-right-radius: 8px;
+  border-bottom-right-radius: 8px;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 0;
+  transition: transform 0.2s ease-out;
+  box-shadow: 0 0 24px rgba(106, 217, 255, 0.1);
+}
+.widget-sidebar[data-collapsed="true"] {
+  transform: translateX(-50px);
+}
+.widget-sidebar-toggle {
+  background: rgba(106, 217, 255, 0.15);
+  border: 1px solid rgba(106, 217, 255, 0.3);
+  color: #aee6ff;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  margin: 0 auto 10px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget-sidebar-toggle:hover {
+  background: rgba(106, 217, 255, 0.3);
+}
+.widget-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px;
+}
+.widget-icon {
+  width: 40px;
+  height: 40px;
+  background: rgba(13, 31, 46, 0.85);
+  border: 1px solid rgba(106, 217, 255, 0.25);
+  color: #aee6ff;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.widget-icon:hover {
+  background: rgba(106, 217, 255, 0.2);
+  border-color: #6ad9ff;
+  box-shadow: 0 0 12px rgba(106, 217, 255, 0.4);
+}
+
+/* Widget V2 — layout-switcher menu */
+.layout-menu {
+  position: fixed;
+  top: 80px;
+  right: 100px;
+  background: rgba(6, 21, 32, 0.95);
+  border: 1px solid rgba(106, 217, 255, 0.3);
+  border-radius: 6px;
+  padding: 6px;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 200px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.layout-menu-item {
+  background: transparent;
+  border: none;
+  color: #aee6ff;
+  text-align: left;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.layout-menu-item:hover {
+  background: rgba(106, 217, 255, 0.2);
+}

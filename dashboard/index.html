@@ -14,6 +14,8 @@
   <script src="scene-renderer-v1.js" defer></script>
   <!-- Jarvis FX (typeOn, particles, radar, telemetry, mission clock, glitch, click-ripple m.fl.) -->
   <script src="jarvis-fx.js" defer></script>
+  <!-- Fas 4.1 (2026-05-18): Performance Hud, toggle med Ctrl+Shift+F -->
+  <script src="perf-overlay-v1.js" defer></script>
   <!-- Sprint 3 (2026-05-17): floating widgets (image, iframe, webcam, chat-mini m.fl.) -->
   <link rel="stylesheet" href="widgets-v1.css">
   <script src="widgets-v1.js" defer></script>
@@ -136,7 +138,11 @@
       flex-direction: column;
       gap: 10px;
       border-right: none;
+      position: relative; /* for chatDropOverlay som ar position:absolute */
     }
+    /* Drop-zone visa nar drag pagar */
+    .chat.dragover #chatDropOverlay { display: flex !important; }
+    /* OBS: ingen display-regel pa #chatAttachment - JS styr inline (none/flex). */
 
     h1, h2 {
       margin: 0 0 10px 0;
@@ -1011,6 +1017,18 @@
   <link rel="stylesheet" href="jarvis-fx.css">
 </head>
 <body>
+  <aside id="widgetSidebar" class="widget-sidebar" data-collapsed="true">
+    <button id="widgetSidebarToggle" class="widget-sidebar-toggle" title="Visa/dölj widget-bibliotek">◧</button>
+    <div class="widget-sidebar-list">
+      <button class="widget-icon" data-widget-type="text" title="Text-widget">T</button>
+      <button class="widget-icon" data-widget-type="image" title="Bild-widget">🖼</button>
+      <button class="widget-icon" data-widget-type="iframe" title="Webb-widget">🌐</button>
+      <button class="widget-icon" data-widget-type="webcam" title="Kamera-widget">📷</button>
+      <button class="widget-icon" data-widget-type="video" title="Video-widget">▶</button>
+      <button class="widget-icon" data-widget-type="chat-mini" title="Chat-mini">💬</button>
+      <button class="widget-icon" data-widget-type="html" title="HTML-widget">{}</button>
+    </div>
+  </aside>
   <!-- Jarvis Siri-bubbla — top-right floating orb. data-mode: idle | active | off -->
   <div id="jarvisOrbWrap" class="jarvis-orb-wrap" data-mode="idle">
     <div class="orb-sweep"></div>
@@ -1064,6 +1082,9 @@
         <button id="showBrainBtn" class="panel-button">Brain</button>
         <button id="showSceneBtn" class="panel-button">Scen</button>
         <button id="showMapBtn" class="panel-button">Karta</button>
+        <button id="layoutSwitcherBtn" class="panel-button" type="button" title="Byt widget-layout">Layout ▾</button>
+        <div id="layoutSwitcherMenu" class="layout-menu" style="display:none;"></div>
+        <button id="layoutSaveCurrentBtn" class="panel-button" type="button" title="Spara nuvarande layout">💾</button>
         <button id="showSettingsBtn" class="panel-button">Inställningar</button>
         <button id="showTerminalBtn">Terminal</button>
         <button id="copyEditorBtn">Kopiera</button>
@@ -2045,15 +2066,31 @@ Skärmvision kräver UI-TARS.</div>
       </div>
     </main>
 
-    <section class="chat">
+    <section class="chat" id="chatPanel">
       <h2>Jarvis Chat</h2>
       <div id="messages"></div>
+
+      <!-- Drop-zone overlay: dyker upp nar fil dras over chat-panelen -->
+      <div id="chatDropOverlay" style="display:none; position:absolute; inset:8px; background:rgba(6,21,32,0.92); border:2px dashed #2c9ccb; border-radius:8px; z-index:1000; align-items:center; justify-content:center; pointer-events:none; flex-direction:column; gap:8px;">
+        <div style="font-size:42px; color:#6ad9ff;">&#128206;</div>
+        <div style="font-size:14px; color:#c9eaff; text-align:center;">Slapp filen for att skicka till Jarvis<br><span style="font-size:11px; color:#7eb5d4;">Text, kod, PDF eller bild</span></div>
+      </div>
+
+      <!-- Bilaga-preview: visar vald fil innan skickas -->
+      <div id="chatAttachment" style="display:none; padding:8px 10px; margin:6px 0; background:rgba(31,78,104,0.25); border-left:3px solid #6ad9ff; border-radius:4px; font-size:12px; color:#c9eaff; align-items:center; gap:8px;">
+        <span id="chatAttachmentIcon" style="font-size:16px;">&#128196;</span>
+        <span id="chatAttachmentName" style="flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+        <span id="chatAttachmentMeta" style="opacity:0.7; font-size:11px;"></span>
+        <button id="chatAttachmentRemove" type="button" style="background:none; border:none; color:#ff8c8c; cursor:pointer; font-size:14px; padding:0 4px;">&times;</button>
+      </div>
 
       <div class="input-wrap">
         <div id="suggestions"></div>
         <div id="pendingApprovalHint"></div>
         <div class="input-row">
           <input id="input" placeholder="Skriv till Jarvis..." autocomplete="off">
+          <button id="attachBtn" type="button" title="Bifoga fil (text/kod/PDF/bild)" style="font-size:18px;">&#128206;</button>
+          <input id="fileInput" type="file" accept=".txt,.md,.json,.cs,.py,.js,.ts,.html,.css,.xml,.yaml,.yml,.log,.csv,.pdf,.png,.jpg,.jpeg,.webp,.gif" style="display:none;">
           <button id="micBtn" type="button" title="Håll inne för att tala. Släpp för att skicka. Ctrl+Space togglar.">🎙</button>
           <span id="micPulse" class="brain-pulse" style="display:none; margin: 0 4px;"></span>
           <button id="send">Skicka</button>
@@ -2085,6 +2122,141 @@ Skärmvision kräver UI-TARS.</div>
     const input = document.getElementById("input");
     const send = document.getElementById("send");
     const pendingApprovalHint = document.getElementById("pendingApprovalHint");
+
+    // ============================================================
+    // Bilagor i chatten (2026-05-18): drag-and-drop + gem-knapp
+    // ============================================================
+    // pendingAttachmentV1 = { name, mime, size, base64, kind } | null
+    //   kind = "text" | "image" | "pdf"
+    // Skickas med nasta user-meddelande via postMessage type="user_chat_with_attachment".
+    var pendingAttachmentV1 = null;
+
+    function _chatAttachKindForMime(mime, name) {
+      mime = String(mime || "").toLowerCase();
+      var lowerName = String(name || "").toLowerCase();
+      if (mime.startsWith("image/")) return "image";
+      if (mime === "application/pdf" || lowerName.endsWith(".pdf")) return "pdf";
+      return "text";
+    }
+
+    function _chatAttachIconForKind(kind) {
+      if (kind === "image") return "\u{1F5BC}️"; // ramad bild
+      if (kind === "pdf") return "\u{1F4D5}";          // bok-rod
+      return "\u{1F4C4}";                              // dokument
+    }
+
+    function showChatAttachment(attachment) {
+      var box = document.getElementById("chatAttachment");
+      var iconEl = document.getElementById("chatAttachmentIcon");
+      var nameEl = document.getElementById("chatAttachmentName");
+      var metaEl = document.getElementById("chatAttachmentMeta");
+      if (!box || !attachment) return;
+      iconEl.textContent = _chatAttachIconForKind(attachment.kind);
+      nameEl.textContent = attachment.name;
+      var sizeStr = attachment.size > 1024 * 1024
+        ? (attachment.size / 1024 / 1024).toFixed(1) + " MB"
+        : (attachment.size / 1024).toFixed(0) + " KB";
+      metaEl.textContent = sizeStr + " - " + attachment.kind;
+      box.style.display = "flex";
+    }
+
+    function clearChatAttachment() {
+      pendingAttachmentV1 = null;
+      var box = document.getElementById("chatAttachment");
+      if (box) box.style.display = "none";
+      var fileInput = document.getElementById("fileInput");
+      if (fileInput) fileInput.value = "";
+    }
+
+    function _arrayBufferToBase64(buffer) {
+      var bytes = new Uint8Array(buffer);
+      var binary = "";
+      var chunk = 8192;
+      for (var i = 0; i < bytes.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+      }
+      return window.btoa(binary);
+    }
+
+    function acceptChatFile(file) {
+      if (!file) return;
+      // Max 10 MB - storre filer ar sallsynta i chat-context och spranger base64-budgeten.
+      if (file.size > 10 * 1024 * 1024) {
+        alert("Filen ar for stor: " + (file.size / 1024 / 1024).toFixed(1) + " MB (max 10 MB).");
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function(ev) {
+        var kind = _chatAttachKindForMime(file.type, file.name);
+        pendingAttachmentV1 = {
+          name: file.name,
+          mime: file.type || "application/octet-stream",
+          size: file.size,
+          base64: _arrayBufferToBase64(ev.target.result),
+          kind: kind
+        };
+        showChatAttachment(pendingAttachmentV1);
+      };
+      reader.onerror = function() {
+        alert("Kunde inte lasa filen.");
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    function _wireChatAttachmentControlsV1() {
+      var attachBtn = document.getElementById("attachBtn");
+      var fileInput = document.getElementById("fileInput");
+      var removeBtn = document.getElementById("chatAttachmentRemove");
+      var chatPanel = document.getElementById("chatPanel");
+
+      if (attachBtn && fileInput) {
+        attachBtn.addEventListener("click", function() { fileInput.click(); });
+        fileInput.addEventListener("change", function(ev) {
+          var f = ev.target.files && ev.target.files[0];
+          if (f) acceptChatFile(f);
+        });
+      }
+      if (removeBtn) removeBtn.addEventListener("click", clearChatAttachment);
+
+      if (chatPanel) {
+        // Drag-and-drop pa hela chat-panelen.
+        var dragCounter = 0;
+        chatPanel.addEventListener("dragenter", function(ev) {
+          ev.preventDefault();
+          dragCounter++;
+          chatPanel.classList.add("dragover");
+        });
+        chatPanel.addEventListener("dragover", function(ev) {
+          ev.preventDefault();
+          if (ev.dataTransfer) ev.dataTransfer.dropEffect = "copy";
+        });
+        chatPanel.addEventListener("dragleave", function(ev) {
+          dragCounter--;
+          if (dragCounter <= 0) {
+            dragCounter = 0;
+            chatPanel.classList.remove("dragover");
+          }
+        });
+        chatPanel.addEventListener("drop", function(ev) {
+          ev.preventDefault();
+          dragCounter = 0;
+          chatPanel.classList.remove("dragover");
+          var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+          if (f) acceptChatFile(f);
+        });
+      }
+    }
+    // Document-level skydd: hindra WebView2 fran att navigera till filen om anvandaren
+    // tappar utanfor chat-panelen. Bara chat-panelens handler ska reagera.
+    document.addEventListener("dragover", function(ev) { ev.preventDefault(); }, false);
+    document.addEventListener("drop", function(ev) {
+      // Om drop sker utanfor chatPanel — skydda mot navigation, men gor inget annat.
+      var chatPanel = document.getElementById("chatPanel");
+      if (chatPanel && !chatPanel.contains(ev.target)) ev.preventDefault();
+    }, false);
+
+    // Wire pa DOMContentLoaded — elementen finns nar denna script-tagg kor (inline).
+    _wireChatAttachmentControlsV1();
 
     const fileTree = document.getElementById("fileTree");
     const folderPath = document.getElementById("folderPath");
@@ -2178,11 +2350,21 @@ Skärmvision kräver UI-TARS.</div>
     let jarvisOverviewPayloadV1 = null;
     let taskQuickPriorityV1 = "orange";
 
+    // Max-meddelanden i DOM. Aldsta tas bort nar gransen overskrids. Forhindrar
+    // oandlig DOM-growth som langsamt sanker FPS efter manga interaktioner.
+    const MAX_CHAT_MESSAGES_V1 = 50;
+
     window.jarvisAddMessage = function(role, text) {
       const div = document.createElement("div");
       div.className = "msg " + (role === "user" ? "user" : "assistant");
       div.textContent = (role === "user" ? "Du: " : "Jarvis: ") + String(text || "");
       messages.appendChild(div);
+
+      // Trim: ta bort aldsta meddelanden nar vi overskrider taket.
+      while (messages.childElementCount > MAX_CHAT_MESSAGES_V1) {
+        try { messages.removeChild(messages.firstElementChild); } catch (_) { break; }
+      }
+
       messages.scrollTop = messages.scrollHeight;
     };
 
@@ -7083,12 +7265,35 @@ Skärmvision kräver UI-TARS.</div>
 
     function sendMessage() {
       const text = input.value.trim();
-      if (!text) return;
+      // Tillat tom text om bilaga finns - bilagan ar fragan.
+      if (!text && !pendingAttachmentV1) return;
 
-      rememberMessage(text);
+      rememberMessage(text || ("[Bilaga: " + (pendingAttachmentV1 && pendingAttachmentV1.name) + "]"));
       input.value = "";
       hideSuggestions();
-      window.jarvisAddMessage("user", text);
+      // Visa user-meddelandet med bilaga-marker om relevant.
+      var displayText = text || ("Forklara denna fil: " + (pendingAttachmentV1 && pendingAttachmentV1.name));
+      if (pendingAttachmentV1) {
+        displayText = "\u{1F4CE} " + pendingAttachmentV1.name + (text ? " - " + text : "");
+      }
+      window.jarvisAddMessage("user", displayText);
+
+      // Om bilaga finns: skicka extended payload med fil-data, annars vanlig.
+      if (pendingAttachmentV1) {
+        postMessage({
+          type: "jarvis_chat_with_attachment",
+          text: text || "",
+          attachment: {
+            name: pendingAttachmentV1.name,
+            mime: pendingAttachmentV1.mime,
+            size: pendingAttachmentV1.size,
+            kind: pendingAttachmentV1.kind,
+            base64: pendingAttachmentV1.base64
+          }
+        });
+        clearChatAttachment();
+        return;
+      }
 
       const folderOpen = extractFolderOpen(text);
       if (folderOpen !== null) {
@@ -8798,6 +9003,67 @@ Skärmvision kräver UI-TARS.</div>
     };
 
     // Explorer-vyn borttagen 2026-05-10: Project Explorer (vänsterpanel) är "the" explorer.
+
+    // Widget V2 sidebar — collapse + create-on-click
+    (function () {
+      var toggle = document.getElementById("widgetSidebarToggle");
+      var sidebar = document.getElementById("widgetSidebar");
+      if (toggle && sidebar) {
+        toggle.addEventListener("click", function () {
+          var collapsed = sidebar.getAttribute("data-collapsed") === "true";
+          sidebar.setAttribute("data-collapsed", collapsed ? "false" : "true");
+        });
+      }
+      var icons = document.querySelectorAll(".widget-icon[data-widget-type]");
+      icons.forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var type = btn.getAttribute("data-widget-type");
+          if (!type || !window.JarvisWidgetsV1) return;
+          var defaults = {
+            text: { content: "Ny anteckning..." },
+            html: { content: "<div>HTML här</div>" },
+            image: { url: "" },
+            iframe: { url: "about:blank" }
+          };
+          window.JarvisWidgetsV1.create(type, defaults[type] || {});
+        });
+      });
+    })();
+
+    // Widget V2 layout-switcher
+    (function () {
+      var btn = document.getElementById("layoutSwitcherBtn");
+      var menu = document.getElementById("layoutSwitcherMenu");
+      var saveBtn = document.getElementById("layoutSaveCurrentBtn");
+
+      if (btn && menu) {
+        btn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (menu.style.display === "none") {
+            if (window.chrome && window.chrome.webview)
+              window.chrome.webview.postMessage({ type: "widget_layout_list" });
+            menu.style.display = "flex";
+          } else {
+            menu.style.display = "none";
+          }
+        });
+        document.addEventListener("click", function (e) {
+          if (e.target !== btn && !menu.contains(e.target)) {
+            menu.style.display = "none";
+          }
+        });
+      }
+
+      if (saveBtn) {
+        saveBtn.addEventListener("click", function () {
+          var name = prompt("Namn på layouten?");
+          if (!name || !name.trim()) return;
+          if (window.jarvisWidgetCollectCurrentLayoutV1) {
+            window.jarvisWidgetCollectCurrentLayoutV1(name.trim());
+          }
+        });
+      }
+    })();
   </script>
 </body>
 </html>

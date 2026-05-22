@@ -18,6 +18,97 @@
   var nextId = 1;
   var widgets = new Map(); // id -> { el, type, options }
 
+  // Widget V2 — Snap-grid model (12 cols x 8 rows)
+  var GRID_COLS = 12;
+  var GRID_ROWS = 8;
+  var GRID_PAD = 10;
+  var GRID_INSET = 16;
+
+  function getContainerRect(scoped) {
+    if (scoped) {
+      var scene = document.getElementById("scenePanel");
+      if (scene) return scene.getBoundingClientRect();
+    }
+    return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  }
+
+  function gridDims(scoped) {
+    var rect = getContainerRect(scoped);
+    var usableW = Math.max(rect.width - GRID_INSET * 2, 200);
+    var usableH = Math.max(rect.height - GRID_INSET * 2, 200);
+    var cellW = (usableW - GRID_PAD * (GRID_COLS - 1)) / GRID_COLS;
+    var cellH = (usableH - GRID_PAD * (GRID_ROWS - 1)) / GRID_ROWS;
+    return { rect: rect, cellW: cellW, cellH: cellH };
+  }
+
+  function pixelsToGridCell(left, top, scoped) {
+    var d = gridDims(scoped);
+    var relLeft = left - d.rect.left - GRID_INSET;
+    var relTop = top - d.rect.top - GRID_INSET;
+    var col = Math.round(relLeft / (d.cellW + GRID_PAD));
+    var row = Math.round(relTop / (d.cellH + GRID_PAD));
+    col = Math.max(0, Math.min(GRID_COLS - 1, col));
+    row = Math.max(0, Math.min(GRID_ROWS - 1, row));
+    return { col: col, row: row };
+  }
+
+  function gridCellToPixels(col, row, scoped) {
+    var d = gridDims(scoped);
+    return {
+      left: d.rect.left + GRID_INSET + col * (d.cellW + GRID_PAD),
+      top: d.rect.top + GRID_INSET + row * (d.cellH + GRID_PAD)
+    };
+  }
+
+  function snapToGrid(left, top, width, height, scoped) {
+    var d = gridDims(scoped);
+    var cell = pixelsToGridCell(left, top, scoped);
+    var px = gridCellToPixels(cell.col, cell.row, scoped);
+    var spanW = Math.max(1, Math.min(GRID_COLS - cell.col,
+      Math.round(width / (d.cellW + GRID_PAD))));
+    var spanH = Math.max(1, Math.min(GRID_ROWS - cell.row,
+      Math.round(height / (d.cellH + GRID_PAD))));
+    var snapW = spanW * d.cellW + (spanW - 1) * GRID_PAD;
+    var snapH = spanH * d.cellH + (spanH - 1) * GRID_PAD;
+    return {
+      left: px.left, top: px.top, width: snapW, height: snapH,
+      gridX: cell.col, gridY: cell.row, gridW: spanW, gridH: spanH
+    };
+  }
+
+  // Grid-overlay (visas under drag/resize)
+  function ensureGridOverlay() {
+    var el = document.getElementById("widgetGridOverlay");
+    if (el) return el;
+    el = document.createElement("div");
+    el.id = "widgetGridOverlay";
+    el.className = "widget-grid-overlay";
+    document.body.appendChild(el);
+    return el;
+  }
+  function showGridOverlay() {
+    var scoped = false;
+    widgets.forEach(function (w) {
+      if (w.el.dataset.scope === "scene" &&
+          (w.el.classList.contains("is-dragging") || w.el.classList.contains("is-resizing"))) {
+        scoped = true;
+      }
+    });
+    var d = gridDims(scoped);
+    var overlay = ensureGridOverlay();
+    overlay.style.left = (d.rect.left + GRID_INSET) + "px";
+    overlay.style.top = (d.rect.top + GRID_INSET) + "px";
+    overlay.style.width = (d.rect.width - GRID_INSET * 2) + "px";
+    overlay.style.height = (d.rect.height - GRID_INSET * 2) + "px";
+    overlay.style.setProperty("--grid-cell-w", (d.cellW + GRID_PAD) + "px");
+    overlay.style.setProperty("--grid-cell-h", (d.cellH + GRID_PAD) + "px");
+    overlay.classList.add("visible");
+  }
+  function hideGridOverlay() {
+    var overlay = document.getElementById("widgetGridOverlay");
+    if (overlay) overlay.classList.remove("visible");
+  }
+
   function loadGeom(type) {
     try {
       var raw = localStorage.getItem(LS_PREFIX + type);
@@ -76,6 +167,7 @@
       var rect = widget.el.getBoundingClientRect();
       startLeft = rect.left; startTop = rect.top;
       widget.el.classList.add("is-dragging");
+      showGridOverlay();
       focusWidget(widget.id);
       e.preventDefault();
     });
@@ -91,11 +183,21 @@
       if (!dragging) return;
       dragging = false;
       widget.el.classList.remove("is-dragging");
+      hideGridOverlay();
+      var scoped = widget.el.dataset.scope === "scene";
       var rect = widget.el.getBoundingClientRect();
+      var snap = snapToGrid(rect.left, rect.top, rect.width, rect.height, scoped);
+      var localLeft = scoped ? (snap.left - getContainerRect(true).left) : snap.left;
+      var localTop = scoped ? (snap.top - getContainerRect(true).top) : snap.top;
+      widget.el.style.left = localLeft + "px";
+      widget.el.style.top = localTop + "px";
+      widget.el.style.width = snap.width + "px";
+      widget.el.style.height = snap.height + "px";
+      widget.gridX = snap.gridX; widget.gridY = snap.gridY;
+      widget.gridW = snap.gridW; widget.gridH = snap.gridH;
       saveGeom(widget.type + "_" + (widget.el.dataset.scope || "global"), {
-        left: parseFloat(widget.el.style.left) || rect.left,
-        top: parseFloat(widget.el.style.top) || rect.top,
-        width: rect.width, height: rect.height
+        left: localLeft, top: localTop, width: snap.width, height: snap.height,
+        gridX: snap.gridX, gridY: snap.gridY, gridW: snap.gridW, gridH: snap.gridH
       });
     });
   }
@@ -109,6 +211,7 @@
       var rect = widget.el.getBoundingClientRect();
       startW = rect.width; startH = rect.height;
       widget.el.classList.add("is-resizing");
+      showGridOverlay();
       focusWidget(widget.id);
       e.preventDefault();
       e.stopPropagation();
@@ -124,11 +227,21 @@
       if (!resizing) return;
       resizing = false;
       widget.el.classList.remove("is-resizing");
+      hideGridOverlay();
+      var scoped = widget.el.dataset.scope === "scene";
       var rect = widget.el.getBoundingClientRect();
+      var snap = snapToGrid(rect.left, rect.top, rect.width, rect.height, scoped);
+      var localLeft = scoped ? (snap.left - getContainerRect(true).left) : snap.left;
+      var localTop = scoped ? (snap.top - getContainerRect(true).top) : snap.top;
+      widget.el.style.left = localLeft + "px";
+      widget.el.style.top = localTop + "px";
+      widget.el.style.width = snap.width + "px";
+      widget.el.style.height = snap.height + "px";
+      widget.gridX = snap.gridX; widget.gridY = snap.gridY;
+      widget.gridW = snap.gridW; widget.gridH = snap.gridH;
       saveGeom(widget.type + "_" + (widget.el.dataset.scope || "global"), {
-        left: parseFloat(widget.el.style.left) || rect.left,
-        top: parseFloat(widget.el.style.top) || rect.top,
-        width: rect.width, height: rect.height
+        left: localLeft, top: localTop, width: snap.width, height: snap.height,
+        gridX: snap.gridX, gridY: snap.gridY, gridW: snap.gridW, gridH: snap.gridH
       });
     });
   }
@@ -458,4 +571,138 @@
     clearScene: clearSceneWidgets,
     types: ["image", "iframe", "webcam", "video", "text", "chat-mini", "html"]
   };
+
+  // Widget V2 — layout-API (anropas av C# via ExecuteScriptAsync + interna handlers)
+
+  function postToHost(payload) {
+    try {
+      if (window.chrome && window.chrome.webview && window.chrome.webview.postMessage) {
+        window.chrome.webview.postMessage(payload);
+      }
+    } catch (e) {}
+  }
+
+  window.jarvisWidgetCollectCurrentLayoutV1 = function (name) {
+    var snapshot = [];
+    widgets.forEach(function (w) {
+      if (w.el.dataset.scope !== "scene") return; // Bara scen-scopade widgets sparas
+      snapshot.push({
+        type: w.type,
+        gridX: w.gridX || 0,
+        gridY: w.gridY || 0,
+        gridW: w.gridW || 2,
+        gridH: w.gridH || 2,
+        options: w.options || {}
+      });
+    });
+    postToHost({
+      type: "widget_layout_save_finalize",
+      name: String(name || "unnamed"),
+      widgets: snapshot
+    });
+  };
+
+  window.jarvisWidgetApplyLayoutV1 = function (payload) {
+    var list = Array.isArray(payload) ? payload : [];
+    if (list.length === 0) return;
+    var layout = list[0];
+    // Stäng existerande scen-scopade widgets
+    var toClose = [];
+    widgets.forEach(function (w) {
+      if (w.el.dataset.scope === "scene") toClose.push(w.id);
+    });
+    toClose.forEach(function (id) { closeWidget(id); });
+    // Skapa nya från layout
+    (layout.widgets || []).forEach(function (spec) {
+      var opts = Object.assign({}, spec.options || {});
+      var px = gridCellToPixels(spec.gridX, spec.gridY, true);
+      var d = gridDims(true);
+      var width = spec.gridW * d.cellW + (spec.gridW - 1) * GRID_PAD;
+      var height = spec.gridH * d.cellH + (spec.gridH - 1) * GRID_PAD;
+      var localLeft = px.left - d.rect.left;
+      var localTop = px.top - d.rect.top;
+      opts._initialGeom = { left: localLeft, top: localTop, width: width, height: height };
+      try {
+        var id = createWidget(spec.type, opts);
+        var w = widgets.get(id);
+        if (w) {
+          w.gridX = spec.gridX; w.gridY = spec.gridY;
+          w.gridW = spec.gridW; w.gridH = spec.gridH;
+        }
+      } catch (e) {
+        console.warn("apply layout: kunde inte skapa", spec.type, e);
+      }
+    });
+  };
+
+  var _knownLayouts = [];
+  window.jarvisWidgetSetLayoutsV1 = function (payload) {
+    _knownLayouts = Array.isArray(payload) ? payload : [];
+    var menu = document.getElementById("layoutSwitcherMenu");
+    if (!menu) return;
+    menu.innerHTML = "";
+    _knownLayouts.forEach(function (l) {
+      var btn = document.createElement("button");
+      btn.className = "layout-menu-item";
+      btn.textContent = l.name + " (" + (l.widgets || []).length + ")";
+      btn.addEventListener("click", function () {
+        postToHost({ type: "widget_layout_load", id: l.id });
+        menu.style.display = "none";
+      });
+      menu.appendChild(btn);
+    });
+  };
+  window.jarvisWidgetGetKnownLayoutsV1 = function () { return _knownLayouts; };
+
+  // Widget V2 — keyboard shortcuts (Ctrl+W close, Ctrl+M minimize, Ctrl+Shift+L menu, Esc unfocus, Tab cycle)
+  function getFocusedWidget() {
+    var found = null;
+    widgets.forEach(function (w) {
+      if (w.el.classList.contains("is-focused")) found = w;
+    });
+    return found;
+  }
+
+  function cycleWidgetFocus() {
+    var arr = Array.from(widgets.values());
+    if (arr.length === 0) return;
+    var current = getFocusedWidget();
+    var idx = current ? arr.indexOf(current) : -1;
+    var next = arr[(idx + 1) % arr.length];
+    if (next) focusWidget(next.id);
+  }
+
+  document.addEventListener("keydown", function (e) {
+    var inInput = (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA"));
+    if (inInput) return;
+
+    if (e.ctrlKey && e.shiftKey && (e.key === "L" || e.key === "l")) {
+      e.preventDefault();
+      var btn = document.getElementById("layoutSwitcherBtn");
+      if (btn) btn.click();
+      return;
+    }
+    if (e.ctrlKey && !e.shiftKey && (e.key === "w" || e.key === "W")) {
+      e.preventDefault();
+      var w1 = getFocusedWidget();
+      if (w1) closeWidget(w1.id);
+      return;
+    }
+    if (e.ctrlKey && !e.shiftKey && (e.key === "m" || e.key === "M")) {
+      e.preventDefault();
+      var w2 = getFocusedWidget();
+      if (w2) w2.el.classList.toggle("is-minimized");
+      return;
+    }
+    if (e.key === "Escape") {
+      widgets.forEach(function (w) { w.el.classList.remove("is-focused"); });
+      return;
+    }
+    if (e.key === "Tab" && !e.ctrlKey && !e.altKey) {
+      if (widgets.size > 0) {
+        e.preventDefault();
+        cycleWidgetFocus();
+      }
+    }
+  });
 })();

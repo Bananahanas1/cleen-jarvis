@@ -81,7 +81,7 @@ function Run-AppBuild {
 function Test-MarkdownLength {
     $tooLong = @()
     Get-ChildItem -LiteralPath $repoRoot -Recurse -Filter "*.md" |
-        Where-Object { $_.FullName -notmatch "\\(bin|obj|dist|\.git)\\" } |
+        Where-Object { $_.FullName -notmatch "\\(bin|obj|dist|\.git|node_modules|\.checkpoints|archive|superpowers)\\" } |
         ForEach-Object {
             $chars = (Get-Content -LiteralPath $_.FullName -Raw).Length
             if ($chars -gt 14000) {

@@ -118,6 +118,48 @@ public sealed class JarvisForm : Form
 
         Load += OnLoad;
         FormClosing += OnMainFormClosing;
+        InitSystemTrayV1();
+    }
+
+    // Sprint 10 (2026-05-18): system-tray + global hotkey
+    private NotifyIcon? _trayIcon;
+    private const int JarvisShowHotkeyIdV1 = 9101;
+    private void InitSystemTrayV1()
+    {
+        try
+        {
+            _trayIcon = new NotifyIcon
+            {
+                Icon = System.Drawing.SystemIcons.Application,
+                Text = "Jarvis - Ctrl+Alt+J for att visa/dolja",
+                Visible = true
+            };
+            var menu = new ContextMenuStrip();
+            menu.Items.Add("Visa Jarvis", null, (_, _) => ShowMainWindow());
+            menu.Items.Add("Dolja Jarvis", null, (_, _) => HideToTray());
+            menu.Items.Add("-");
+            menu.Items.Add("Avsluta", null, (_, _) => { _trayIcon!.Visible = false; Application.Exit(); });
+            _trayIcon.ContextMenuStrip = menu;
+            _trayIcon.DoubleClick += (_, _) => ToggleVisibility();
+        }
+        catch { /* tray ar nice-to-have, inte krittilskt */ }
+    }
+
+    private void ShowMainWindow()
+    {
+        Show();
+        WindowState = FormWindowState.Normal;
+        BringToFront();
+        Activate();
+    }
+    private void HideToTray()
+    {
+        Hide();
+    }
+    private void ToggleVisibility()
+    {
+        if (Visible && WindowState != FormWindowState.Minimized) HideToTray();
+        else ShowMainWindow();
     }
 
     // Static instans för WebView-anrop från static metoder.
@@ -144,6 +186,95 @@ public sealed class JarvisForm : Form
         VoiceHotkeyV1.Register(Handle);
         EnsureWakeWordListener();
         StartOrbTicker();
+        WarmupRouterModelsAsync();
+        StartPerfLogger();
+    }
+
+    // Fas 4.2 (2026-05-18): logga prestanda-snapshot var 60:e sek till data/voice/perf.log.
+    // Hjalper diagnosticera lang-sam minneslacka eller trad-uppbyggnad over tid.
+    private System.Threading.Timer? _perfLogTimer;
+    private void StartPerfLogger()
+    {
+        try
+        {
+            var dir = Path.Combine(ProjectRoot, "data", "voice");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, "perf.log");
+
+            // Skriv header om filen ar ny.
+            if (!File.Exists(path))
+            {
+                File.AppendAllText(path, "timestamp\trss_mb\tgc_total_mb\tthreads\tgen0\tgen1\tgen2\tjarvis_pid\n");
+            }
+
+            _perfLogTimer = new System.Threading.Timer(_ =>
+            {
+                try
+                {
+                    var p = System.Diagnostics.Process.GetCurrentProcess();
+                    var line = string.Format(
+                        "{0}\t{1}\t{2}\t{3}\t{4}\t{5}\t{6}\t{7}\n",
+                        DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"),
+                        (p.WorkingSet64 / (1024 * 1024)).ToString(),
+                        (GC.GetTotalMemory(false) / (1024 * 1024)).ToString(),
+                        p.Threads.Count.ToString(),
+                        GC.CollectionCount(0).ToString(),
+                        GC.CollectionCount(1).ToString(),
+                        GC.CollectionCount(2).ToString(),
+                        p.Id.ToString());
+                    File.AppendAllText(path, line);
+                }
+                catch { }
+            }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(60));
+        }
+        catch { }
+    }
+
+    // Pre-loada router-modeller i bakgrunden vid Jarvis-start sa forsta anropet inte timar ut.
+    // Ollama cold-start tar 30-60s per modell — om vi forst anropar nar user fragar, hinner
+    // 90s-timeouten lopa ut. keep_alive=30m haller modellerna i RAM efter warmup.
+    private void WarmupRouterModelsAsync()
+    {
+        var modelsToWarm = new[]
+        {
+            "phi4-mini:latest",
+            "llama3.2:3b",
+            "llama3.1:8b"
+        };
+        _ = Task.Run(async () =>
+        {
+            foreach (var model in modelsToWarm)
+            {
+                try
+                {
+                    var payload = new
+                    {
+                        model,
+                        messages = new[] { new { role = "user", content = "hej" } },
+                        stream = false,
+                        keep_alive = "30m"
+                    };
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                    using var resp = await Http.PostAsJsonAsync(OllamaUrl, payload, cts.Token);
+                    var status = resp.IsSuccessStatusCode ? "ok" : "HTTP " + (int)resp.StatusCode;
+                    var dir = Path.Combine(ProjectRoot, "data", "voice");
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                    File.AppendAllText(Path.Combine(dir, "stt-debug.log"),
+                        "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] [warmup] " + model + " " + status + Environment.NewLine);
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        var dir = Path.Combine(ProjectRoot, "data", "voice");
+                        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                        File.AppendAllText(Path.Combine(dir, "stt-debug.log"),
+                            "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] [warmup] " + model + " FAILED: " + ex.Message + Environment.NewLine);
+                    }
+                    catch { }
+                }
+            }
+        });
     }
 
     protected override void OnHandleDestroyed(EventArgs e)
@@ -168,6 +299,15 @@ public sealed class JarvisForm : Form
 
     private void UpdateOrbFromVoiceState()
     {
+        // Marshalla till UI-traden om vi kallas fran bakgrundstrad (wake-handler, voice-callbacks).
+        // Utan detta kraschar wake-handlern med "CoreWebView2 can only be accessed from UI thread"
+        // vilket gor att hela tool-loopen tystnar.
+        if (InvokeRequired)
+        {
+            try { BeginInvoke(new Action(UpdateOrbFromVoiceState)); } catch { }
+            return;
+        }
+
         if (_webView?.CoreWebView2 is null) return;
         var mode = VoiceStateV1.Snapshot.Mode;
         var orbMode = mode switch
@@ -793,6 +933,27 @@ public sealed class JarvisForm : Form
                 await HandleKartaDeleteNoteAsync(root);
                 return;
             }
+            // Widget V2 layout message-handlers
+            if (type == "widget_layout_list")
+            {
+                await SendWidgetLayoutsAsync();
+                return;
+            }
+            if (type == "widget_layout_save_finalize")
+            {
+                await HandleWidgetLayoutSaveFinalizeAsync(root);
+                return;
+            }
+            if (type == "widget_layout_load")
+            {
+                await HandleWidgetLayoutLoadAsync(root);
+                return;
+            }
+            if (type == "widget_layout_delete")
+            {
+                await HandleWidgetLayoutDeleteAsync(root);
+                return;
+            }
             if (type == "karta_get_google_key")
             {
                 await SendKartaGoogleKeyAsync();
@@ -997,9 +1158,23 @@ public sealed class JarvisForm : Form
                 return;
             }
 
+            if (type == "jarvis_chat_with_attachment")
+            {
+                await HandleChatWithAttachmentAsync(root, text);
+                return;
+            }
+
             if (type != "jarvis_chat")
             {
                 await AddAssistantMessage("C# fick okänd typ: " + type);
+                return;
+            }
+
+            // URL-detektion: om hela meddelandet bestar av en URL, fetcha den och bilagga.
+            var detectedUrl = ExtractStandaloneUrl(text);
+            if (detectedUrl is not null)
+            {
+                await HandleChatWithUrlAsync(text, detectedUrl);
                 return;
             }
 
@@ -1012,6 +1187,191 @@ public sealed class JarvisForm : Form
     }
 
     private AgentToolExecutorV1? _agentExecutor;
+
+    // ============================================================
+    // Chat-bilagor (2026-05-18): drag-and-drop, gem-knapp, URL-detektion
+    // ============================================================
+
+    private static string? ExtractStandaloneUrl(string text)
+        => ChatAttachmentHandlerV1.ExtractStandaloneUrl(text);
+
+    private static async Task<string> ReadWmicAsync(string scope, string field)
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "wmic",
+                Arguments = scope + " get " + field + " /value",
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = System.Diagnostics.Process.Start(psi);
+            if (p is null) return "n/a";
+            var stdout = await p.StandardOutput.ReadToEndAsync();
+            await p.WaitForExitAsync();
+            foreach (var line in stdout.Split('\n'))
+            {
+                var t = line.Trim();
+                if (t.StartsWith(field + "=", StringComparison.OrdinalIgnoreCase))
+                    return t.Substring(field.Length + 1).Trim();
+            }
+            return "n/a";
+        }
+        catch { return "n/a"; }
+    }
+
+    private static string EscapeXml(string s)
+        => s.Replace("&", "&amp;").Replace("<", "&lt;").Replace(">", "&gt;").Replace("\"", "&quot;").Replace("'", "&apos;");
+
+    // Bygger Python triple-quoted string-literal med korrekt escape.
+    private static string PythonStringLiteral(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "\"\"";
+        var escaped = s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
+        return "\"" + escaped + "\"";
+    }
+
+    // Hjalpare: kor Python via write_and_run_script och kolla outputfil.
+    private static async Task<AgentToolResultV1> RunPythonViaWriteAndRunAsync(
+        AgentToolExecutorV1 exec, string code, string outPath, string fileType)
+    {
+        var pyArgs = new Dictionary<string, JsonElement>();
+        using var doc = JsonDocument.Parse("{\"language\":\"python\",\"code\":" + JsonSerializer.Serialize(code) + "}");
+        foreach (var p in doc.RootElement.EnumerateObject())
+            pyArgs[p.Name] = p.Value.Clone();
+
+        var result = await exec.ExecuteAsync("write_and_run_script", pyArgs);
+        if (result.ResultJson.Contains("\"ok\":false"))
+            return AgentToolExecutorV1.Error(fileType + "-generering kraschade: " + result.ResultJson);
+        if (File.Exists(outPath))
+            return AgentToolExecutorV1.OkText(fileType + " skapad: " + outPath);
+        return AgentToolExecutorV1.Error("Script kordes men " + fileType + "-filen hittas inte: " + outPath + "\n" + result.ResultJson);
+    }
+
+    private async Task HandleChatWithAttachmentAsync(JsonElement root, string userText)
+    {
+        try
+        {
+            if (!root.TryGetProperty("attachment", out var att))
+            {
+                await AddAssistantMessage("Bilaga saknades i meddelandet.");
+                return;
+            }
+            var name = att.TryGetProperty("name", out var nEl) ? nEl.GetString() ?? "fil" : "fil";
+            var mime = att.TryGetProperty("mime", out var mEl) ? mEl.GetString() ?? "" : "";
+            var kind = att.TryGetProperty("kind", out var kEl) ? kEl.GetString() ?? "text" : "text";
+            var base64 = att.TryGetProperty("base64", out var bEl) ? bEl.GetString() ?? "" : "";
+
+            byte[] bytes;
+            try { bytes = Convert.FromBase64String(base64); }
+            catch { await AddAssistantMessage("Kunde inte avkoda bilaga (base64-fel)."); return; }
+
+            if (kind == "image")
+            {
+                await HandleImageAttachmentAsync(bytes, name, mime, userText);
+                return;
+            }
+
+            ChatAttachmentHandlerV1.TextExtractResult extract;
+            if (kind == "pdf")
+                extract = ChatAttachmentHandlerV1.ExtractPdf(bytes, name);
+            else
+                extract = ChatAttachmentHandlerV1.ExtractTextFile(bytes, name);
+
+            var prompt = ChatAttachmentHandlerV1.BuildAttachmentPrompt(name, kind, extract, userText);
+            await ProcessUserChatAsync(prompt);
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Fel vid bilagehantering: " + ex.Message);
+        }
+    }
+
+    private async Task HandleChatWithUrlAsync(string fullText, string url)
+    {
+        try
+        {
+            var (title, body) = await ChatAttachmentHandlerV1.FetchUrlAsync(url);
+            if (title is null && body.StartsWith("HTTP"))
+            {
+                await AddAssistantMessage("Kunde inte hamta " + url + " (" + body + ").");
+                await ProcessUserChatAsync(fullText);
+                return;
+            }
+            // Anvandartext minus URL = "fragan om sidan"
+            var question = fullText.Replace(url, "").Trim();
+            var prompt = ChatAttachmentHandlerV1.BuildUrlPrompt(url, title ?? "", body, question);
+            await ProcessUserChatAsync(prompt);
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Fel vid lank-hamtning: " + ex.Message);
+            await ProcessUserChatAsync(fullText);
+        }
+    }
+
+    // Bilder skickas till llava:7b via Ollama /api/chat med "images"-field (base64 utan prefix).
+    private async Task HandleImageAttachmentAsync(byte[] bytes, string name, string mime, string userText)
+    {
+        try
+        {
+            var base64 = Convert.ToBase64String(bytes);
+            var question = string.IsNullOrWhiteSpace(userText)
+                ? "Beskriv vad du ser i denna bild pa svenska. Var detaljerad."
+                : userText;
+
+            var payload = new
+            {
+                model = "llava:7b",
+                messages = new[]
+                {
+                    new
+                    {
+                        role = "user",
+                        content = question,
+                        images = new[] { base64 }
+                    }
+                },
+                stream = false,
+                keep_alive = "30m"
+            };
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+            using var resp = await Http.PostAsJsonAsync(OllamaUrl, payload, cts.Token);
+            if (!resp.IsSuccessStatusCode)
+            {
+                var err = await resp.Content.ReadAsStringAsync();
+                await AddAssistantMessage("Vision-modell svarade inte: HTTP " + (int)resp.StatusCode + " — " + err.Substring(0, Math.Min(200, err.Length)));
+                return;
+            }
+            using var stream = await resp.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(stream);
+            var msgRoot = doc.RootElement;
+            var content = "";
+            if (msgRoot.TryGetProperty("message", out var msgEl)
+                && msgEl.TryGetProperty("content", out var cEl))
+            {
+                content = cEl.GetString() ?? "";
+            }
+            if (string.IsNullOrWhiteSpace(content))
+            {
+                await AddAssistantMessage("Vision-modell gav tomt svar pa '" + name + "'.");
+                return;
+            }
+            await AddAssistantMessage(content);
+        }
+        catch (OperationCanceledException)
+        {
+            await AddAssistantMessage("Vision-modell timeout efter 120s. Forsta anropet tar lange — forsok igen.");
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Bild-analys kraschade: " + ex.Message);
+        }
+    }
 
     private static string WeatherCodeText(int code) => code switch
     {
@@ -1210,6 +1570,601 @@ public sealed class JarvisForm : Form
             var reason = AgentToolExecutorV1.GetString(args, "reason");
             return Task.FromResult(AgentToolExecutorV1.PendingApproval("run_terminal",
                 "Köra: " + cmd + " — anledning: " + reason));
+        });
+
+        // ===== Sprint 4 (2026-05-18): Desktop automation =====
+        // run_powershell: kor PowerShell-kommando direkt. Sakerhetsfilter mot destruktiva.
+        exec.Register("run_powershell", async args =>
+        {
+            var cmd = AgentToolExecutorV1.GetString(args, "command");
+            if (string.IsNullOrWhiteSpace(cmd))
+                return AgentToolExecutorV1.Error("command saknas");
+
+            // Sakerhetsfilter: blockera uppenbart destruktiva monster.
+            var lower = cmd.ToLowerInvariant();
+            string[] blocked = {
+                "remove-item -recurse", "rm -r", "format ", "diskpart",
+                "shutdown", "stop-computer", "restart-computer",
+                "reg delete", "regedit", "del /f /s /q",
+                "invoke-webrequest -outfile c:\\windows", "downloadstring("
+            };
+            foreach (var pattern in blocked)
+            {
+                if (lower.Contains(pattern))
+                    return AgentToolExecutorV1.Error("Sakerhetsfilter blockerade: '" + pattern + "'. Be mig kora kommandot manuellt om du verkligen vill det.");
+            }
+
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -NonInteractive -Command \"" + cmd.Replace("\"", "\\\"") + "\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc is null) return AgentToolExecutorV1.Error("Kunde inte starta powershell.exe");
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                try { await proc.WaitForExitAsync(cts.Token); }
+                catch (OperationCanceledException)
+                {
+                    try { if (!proc.HasExited) proc.Kill(true); } catch { }
+                    return AgentToolExecutorV1.Error("PowerShell-kommandot tog langre an 30s, avbruten.");
+                }
+                var stdout = await stdoutTask;
+                var stderr = await stderrTask;
+                var result = "Exit code: " + proc.ExitCode + "\n";
+                if (!string.IsNullOrWhiteSpace(stdout)) result += "Stdout:\n" + (stdout.Length > 2000 ? stdout.Substring(0, 2000) + "..." : stdout) + "\n";
+                if (!string.IsNullOrWhiteSpace(stderr)) result += "Stderr:\n" + (stderr.Length > 1000 ? stderr.Substring(0, 1000) + "..." : stderr);
+                return AgentToolExecutorV1.OkText(result);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("run_powershell kraschade: " + ex.Message);
+            }
+        });
+
+        // open_app: starta program by name ("notepad", "chrome", "code") eller full path.
+        exec.Register("open_app", async args =>
+        {
+            var app = AgentToolExecutorV1.GetString(args, "app");
+            var appArgs = AgentToolExecutorV1.GetString(args, "args");
+            if (string.IsNullOrWhiteSpace(app))
+                return AgentToolExecutorV1.Error("app saknas");
+
+            try
+            {
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = app,
+                    Arguments = appArgs ?? "",
+                    UseShellExecute = true
+                };
+                var proc = System.Diagnostics.Process.Start(psi);
+                if (proc is null) return AgentToolExecutorV1.Error("Kunde inte starta '" + app + "'");
+                await Task.Delay(200);
+                return AgentToolExecutorV1.OkText("Startade '" + app + "' (PID " + proc.Id + ").");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("open_app: " + ex.Message);
+            }
+        });
+
+        // ===== Sprint 6 (2026-05-18): Live screen vision =====
+        // screen_capture: ta skarmdump och returnera path till temp-fil.
+        exec.Register("screen_capture", args =>
+        {
+            try
+            {
+                if (!OperatingSystem.IsWindows())
+                    return Task.FromResult(AgentToolExecutorV1.Error("screen_capture funkar bara pa Windows."));
+                var path = ScreenCaptureToolV1.CaptureToTempFile();
+                return Task.FromResult(AgentToolExecutorV1.OkText("Skarmdump sparad: " + path));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(AgentToolExecutorV1.Error("screen_capture: " + ex.Message));
+            }
+        });
+
+        // Sprint 4.3 (2026-05-18): clipboard
+        exec.Register("read_clipboard", args =>
+        {
+            if (!OperatingSystem.IsWindows())
+                return Task.FromResult(AgentToolExecutorV1.Error("Bara Windows."));
+            try
+            {
+                var text = "";
+                var tcs = new TaskCompletionSource<string>();
+                var thread = new System.Threading.Thread(() =>
+                {
+                    try { tcs.SetResult(System.Windows.Forms.Clipboard.GetText() ?? ""); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                thread.SetApartmentState(System.Threading.ApartmentState.STA);
+                thread.Start();
+                thread.Join(3000);
+                text = tcs.Task.IsCompletedSuccessfully ? tcs.Task.Result : "";
+                if (string.IsNullOrEmpty(text)) return Task.FromResult(AgentToolExecutorV1.OkText("(klippbordet ar tomt eller innehaller ej text)"));
+                var preview = text.Length > 2000 ? text.Substring(0, 2000) + "..." : text;
+                return Task.FromResult(AgentToolExecutorV1.OkText("Klippbord (" + text.Length + " tecken):\n" + preview));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(AgentToolExecutorV1.Error("read_clipboard: " + ex.Message));
+            }
+        });
+
+        exec.Register("write_clipboard", args =>
+        {
+            var text = AgentToolExecutorV1.GetString(args, "text");
+            if (string.IsNullOrEmpty(text)) return Task.FromResult(AgentToolExecutorV1.Error("text saknas"));
+            if (!OperatingSystem.IsWindows())
+                return Task.FromResult(AgentToolExecutorV1.Error("Bara Windows."));
+            try
+            {
+                var tcs = new TaskCompletionSource<bool>();
+                var thread = new System.Threading.Thread(() =>
+                {
+                    try { System.Windows.Forms.Clipboard.SetText(text); tcs.SetResult(true); }
+                    catch (Exception ex) { tcs.SetException(ex); }
+                });
+                thread.SetApartmentState(System.Threading.ApartmentState.STA);
+                thread.Start();
+                thread.Join(3000);
+                return Task.FromResult(AgentToolExecutorV1.OkText("Klippbord uppdaterat (" + text.Length + " tecken)."));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(AgentToolExecutorV1.Error("write_clipboard: " + ex.Message));
+            }
+        });
+
+        // Sprint 4.4: system_info
+        exec.Register("system_info", async args =>
+        {
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                var cpuName = await ReadWmicAsync("cpu", "Name");
+                var gpuName = await ReadWmicAsync("path win32_VideoController", "Name");
+                var totalRamKb = await ReadWmicAsync("ComputerSystem", "TotalPhysicalMemory");
+
+                sb.AppendLine("CPU: " + cpuName);
+                sb.AppendLine("GPU: " + gpuName);
+                if (long.TryParse(totalRamKb, out var ramBytes))
+                    sb.AppendLine("RAM total: " + (ramBytes / 1024 / 1024 / 1024) + " GB");
+
+                // Top-5 processer by working set.
+                var procs = System.Diagnostics.Process.GetProcesses()
+                    .OrderByDescending(p => { try { return p.WorkingSet64; } catch { return 0L; } })
+                    .Take(5);
+                sb.AppendLine("\nTopp 5 processer:");
+                foreach (var p in procs)
+                {
+                    try { sb.AppendLine("  " + p.ProcessName + " (" + (p.WorkingSet64 / 1024 / 1024) + " MB)"); }
+                    catch { }
+                }
+                return AgentToolExecutorV1.OkText(sb.ToString());
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("system_info: " + ex.Message);
+            }
+        });
+
+        // Sprint 4.5: notify (Windows toast via PowerShell BurntToast saknas - vi anvander BalloonTip via NotifyIcon)
+        exec.Register("notify", async args =>
+        {
+            var title = AgentToolExecutorV1.GetString(args, "title");
+            var message = AgentToolExecutorV1.GetString(args, "message");
+            if (string.IsNullOrWhiteSpace(message)) return AgentToolExecutorV1.Error("message saknas");
+            if (string.IsNullOrWhiteSpace(title)) title = "Jarvis";
+            if (!OperatingSystem.IsWindows()) return AgentToolExecutorV1.Error("Bara Windows.");
+            try
+            {
+                // Anvand toast via PowerShell + Windows.UI.Notifications
+                var psCmd = "[Windows.UI.Notifications.ToastNotificationManager,Windows.UI.Notifications,ContentType=WindowsRuntime] > $null;" +
+                    "$xml = New-Object Windows.Data.Xml.Dom.XmlDocument;" +
+                    "$xml.LoadXml('<toast><visual><binding template=\"ToastText02\"><text id=\"1\">" + EscapeXml(title) +
+                    "</text><text id=\"2\">" + EscapeXml(message) + "</text></binding></visual></toast>');" +
+                    "$toast = New-Object Windows.UI.Notifications.ToastNotification $xml;" +
+                    "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('Jarvis').Show($toast)";
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "powershell.exe",
+                    Arguments = "-NoProfile -Command \"" + psCmd.Replace("\"", "\\\"") + "\"",
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                using var p = System.Diagnostics.Process.Start(psi);
+                if (p is null) return AgentToolExecutorV1.Error("Kunde inte starta powershell.");
+                await p.WaitForExitAsync();
+                return AgentToolExecutorV1.OkText("Notification skickad: " + title + " - " + message);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("notify: " + ex.Message);
+            }
+        });
+
+        // Sprint 7 (2026-05-18): write_and_run_script - kor godtyckligt script in-line
+        exec.Register("write_and_run_script", async args =>
+        {
+            var lang = AgentToolExecutorV1.GetString(args, "language").ToLowerInvariant();
+            var code = AgentToolExecutorV1.GetString(args, "code");
+            if (string.IsNullOrWhiteSpace(code)) return AgentToolExecutorV1.Error("code saknas");
+
+            // Sakerhetsfilter - blockera uppenbart destruktivt.
+            var lower = code.ToLowerInvariant();
+            string[] blockedPatterns = {
+                "remove-item -recurse", "rm -rf /", "format c:", "shutdown",
+                "stop-computer", "restart-computer", "reg delete hkey_local_machine",
+                "os.system('rm", "subprocess.call(['rm", "shutil.rmtree('c:",
+                "import shutil\nshutil.rmtree('c:"
+            };
+            foreach (var pat in blockedPatterns)
+            {
+                if (lower.Contains(pat))
+                    return AgentToolExecutorV1.Error("Sakerhetsfilter blockerade: " + pat);
+            }
+
+            string ext, fileName, runner;
+            List<string> runArgs;
+            switch (lang)
+            {
+                case "python":
+                case "py":
+                    ext = ".py";
+                    runner = @"C:\Users\banan\AppData\Local\Programs\Python\Python313\python.exe";
+                    if (!File.Exists(runner)) runner = "python";
+                    runArgs = new List<string> { "-X", "utf8" };
+                    break;
+                case "powershell":
+                case "ps1":
+                case "ps":
+                    ext = ".ps1";
+                    runner = "powershell.exe";
+                    runArgs = new List<string> { "-NoProfile", "-NonInteractive", "-File" };
+                    break;
+                case "batch":
+                case "cmd":
+                case "bat":
+                    ext = ".bat";
+                    runner = "cmd.exe";
+                    runArgs = new List<string> { "/c" };
+                    break;
+                default:
+                    return AgentToolExecutorV1.Error("language ska vara: python, powershell, eller batch");
+            }
+
+            fileName = Path.Combine(Path.GetTempPath(), "jarvis_script_" + Guid.NewGuid().ToString("N").Substring(0, 8) + ext);
+            try
+            {
+                await File.WriteAllTextAsync(fileName, code, System.Text.Encoding.UTF8);
+                var psi = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = runner,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    StandardOutputEncoding = System.Text.Encoding.UTF8,
+                    StandardErrorEncoding = System.Text.Encoding.UTF8
+                };
+                foreach (var a in runArgs) psi.ArgumentList.Add(a);
+                psi.ArgumentList.Add(fileName);
+                if (lang == "python" || lang == "py") psi.EnvironmentVariables["PYTHONIOENCODING"] = "utf-8";
+
+                using var proc = System.Diagnostics.Process.Start(psi);
+                if (proc is null) return AgentToolExecutorV1.Error("Kunde inte starta " + runner);
+
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+                var stdoutTask = proc.StandardOutput.ReadToEndAsync();
+                var stderrTask = proc.StandardError.ReadToEndAsync();
+                try { await proc.WaitForExitAsync(cts.Token); }
+                catch (OperationCanceledException)
+                {
+                    try { if (!proc.HasExited) proc.Kill(true); } catch { }
+                    return AgentToolExecutorV1.Error("Script-execution timeout (60s).");
+                }
+                var stdout = await stdoutTask;
+                var stderr = await stderrTask;
+                var result = "Exit: " + proc.ExitCode + "\n";
+                if (!string.IsNullOrWhiteSpace(stdout))
+                    result += "Stdout:\n" + (stdout.Length > 3000 ? stdout.Substring(0, 3000) + "..." : stdout) + "\n";
+                if (!string.IsNullOrWhiteSpace(stderr) && proc.ExitCode != 0)
+                    result += "Stderr:\n" + (stderr.Length > 1500 ? stderr.Substring(0, 1500) + "..." : stderr);
+                return AgentToolExecutorV1.OkText(result);
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("write_and_run_script: " + ex.Message);
+            }
+            finally
+            {
+                try { if (File.Exists(fileName)) File.Delete(fileName); } catch { }
+            }
+        });
+
+        // Sprint 8 (2026-05-18): create_powerpoint - genererar .pptx via python-pptx
+        exec.Register("create_powerpoint", async args =>
+        {
+            var filename = AgentToolExecutorV1.GetString(args, "filename");
+            if (string.IsNullOrWhiteSpace(filename)) filename = "jarvis_presentation.pptx";
+            if (!filename.EndsWith(".pptx", StringComparison.OrdinalIgnoreCase)) filename += ".pptx";
+
+            // Slides kommer som JSON-array
+            if (!args.TryGetValue("slides", out var slidesEl) || slidesEl.ValueKind != JsonValueKind.Array)
+                return AgentToolExecutorV1.Error("slides saknas eller ar inte array");
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("from pptx import Presentation");
+            sb.AppendLine("from pptx.util import Inches, Pt");
+            sb.AppendLine("prs = Presentation()");
+            sb.AppendLine("title_layout = prs.slide_layouts[0]");
+            sb.AppendLine("content_layout = prs.slide_layouts[1]");
+
+            int idx = 0;
+            foreach (var slide in slidesEl.EnumerateArray())
+            {
+                var title = slide.TryGetProperty("title", out var tEl) ? tEl.GetString() ?? "" : "Slide " + (idx + 1);
+                var bulletsList = new List<string>();
+                if (slide.TryGetProperty("bullets", out var bEl) && bEl.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var b in bEl.EnumerateArray())
+                        if (b.ValueKind == JsonValueKind.String) bulletsList.Add(b.GetString() ?? "");
+                }
+                var layout = idx == 0 ? "title_layout" : "content_layout";
+                sb.AppendLine($"slide{idx} = prs.slides.add_slide({layout})");
+                sb.AppendLine($"slide{idx}.shapes.title.text = " + PythonStringLiteral(title));
+                if (idx == 0 && bulletsList.Count > 0)
+                {
+                    sb.AppendLine($"slide{idx}.placeholders[1].text = " + PythonStringLiteral(string.Join(" - ", bulletsList)));
+                }
+                else if (bulletsList.Count > 0)
+                {
+                    sb.AppendLine($"body{idx} = slide{idx}.placeholders[1].text_frame");
+                    sb.AppendLine($"body{idx}.text = " + PythonStringLiteral(bulletsList[0]));
+                    for (int b = 1; b < bulletsList.Count; b++)
+                    {
+                        sb.AppendLine($"p{idx}_{b} = body{idx}.add_paragraph()");
+                        sb.AppendLine($"p{idx}_{b}.text = " + PythonStringLiteral(bulletsList[b]));
+                    }
+                }
+                idx++;
+            }
+            // Spara till Desktop som default
+            var outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), filename);
+            sb.AppendLine($"prs.save(r{PythonStringLiteral(outPath)})");
+            sb.AppendLine("print('SAVED:', " + PythonStringLiteral(outPath) + ")");
+
+            var code = sb.ToString();
+            var pyArgs = new Dictionary<string, JsonElement>();
+            using var doc = JsonDocument.Parse("{\"language\":\"python\",\"code\":" + JsonSerializer.Serialize(code) + "}");
+            foreach (var p in doc.RootElement.EnumerateObject())
+                pyArgs[p.Name] = p.Value.Clone();
+
+            var result = await exec.ExecuteAsync("write_and_run_script", pyArgs);
+            if (result.ResultJson.Contains("\"ok\":false")) return AgentToolExecutorV1.Error("PowerPoint-generering kraschade: " + result.ResultJson);
+            if (File.Exists(outPath))
+                return AgentToolExecutorV1.OkText("Presentation skapad: " + outPath + " (" + idx + " slides)");
+            return AgentToolExecutorV1.Error("Script kordes men filen hittas inte: " + outPath + "\n" + result.ResultJson);
+        });
+
+        // Sprint 8b (2026-05-18): create_excel via openpyxl
+        exec.Register("create_excel", async args =>
+        {
+            var filename = AgentToolExecutorV1.GetString(args, "filename");
+            if (string.IsNullOrWhiteSpace(filename)) filename = "jarvis_sheet.xlsx";
+            if (!filename.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase)) filename += ".xlsx";
+            if (!args.TryGetValue("rows", out var rowsEl) || rowsEl.ValueKind != JsonValueKind.Array)
+                return AgentToolExecutorV1.Error("rows saknas eller ar inte array");
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("from openpyxl import Workbook");
+            sb.AppendLine("wb = Workbook(); ws = wb.active");
+            var sheetName = AgentToolExecutorV1.GetString(args, "sheet");
+            if (!string.IsNullOrWhiteSpace(sheetName))
+                sb.AppendLine("ws.title = " + PythonStringLiteral(sheetName));
+
+            int rowIdx = 1;
+            foreach (var row in rowsEl.EnumerateArray())
+            {
+                if (row.ValueKind != JsonValueKind.Array) continue;
+                int colIdx = 1;
+                foreach (var cell in row.EnumerateArray())
+                {
+                    var val = cell.ValueKind == JsonValueKind.String ? PythonStringLiteral(cell.GetString() ?? "")
+                              : cell.ValueKind == JsonValueKind.Number ? cell.GetRawText()
+                              : cell.ValueKind == JsonValueKind.True ? "True"
+                              : cell.ValueKind == JsonValueKind.False ? "False"
+                              : PythonStringLiteral(cell.ToString());
+                    sb.AppendLine($"ws.cell(row={rowIdx}, column={colIdx}).value = {val}");
+                    colIdx++;
+                }
+                rowIdx++;
+            }
+            var outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), filename);
+            sb.AppendLine($"wb.save(r{PythonStringLiteral(outPath)})");
+            sb.AppendLine("print('SAVED:', " + PythonStringLiteral(outPath) + ")");
+
+            return await RunPythonViaWriteAndRunAsync(exec, sb.ToString(), outPath, "Excel");
+        });
+
+        // Sprint 8b: create_word via python-docx
+        exec.Register("create_word", async args =>
+        {
+            var filename = AgentToolExecutorV1.GetString(args, "filename");
+            if (string.IsNullOrWhiteSpace(filename)) filename = "jarvis_document.docx";
+            if (!filename.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) filename += ".docx";
+            if (!args.TryGetValue("sections", out var secsEl) || secsEl.ValueKind != JsonValueKind.Array)
+                return AgentToolExecutorV1.Error("sections saknas eller ar inte array");
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("from docx import Document");
+            sb.AppendLine("doc = Document()");
+
+            foreach (var sec in secsEl.EnumerateArray())
+            {
+                var heading = sec.TryGetProperty("heading", out var hEl) ? hEl.GetString() ?? "" : "";
+                var body = sec.TryGetProperty("body", out var bEl) ? bEl.GetString() ?? "" : "";
+                var level = sec.TryGetProperty("level", out var lEl) && lEl.ValueKind == JsonValueKind.Number ? lEl.GetInt32() : 1;
+                if (!string.IsNullOrEmpty(heading))
+                    sb.AppendLine($"doc.add_heading({PythonStringLiteral(heading)}, level={level})");
+                if (!string.IsNullOrEmpty(body))
+                    sb.AppendLine($"doc.add_paragraph({PythonStringLiteral(body)})");
+            }
+            var outPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), filename);
+            sb.AppendLine($"doc.save(r{PythonStringLiteral(outPath)})");
+            sb.AppendLine("print('SAVED:', " + PythonStringLiteral(outPath) + ")");
+
+            return await RunPythonViaWriteAndRunAsync(exec, sb.ToString(), outPath, "Word");
+        });
+
+        // Sprint 9: screen-watch toggle
+        exec.Register("screen_watch_start", async args =>
+        {
+            var intervalSec = 60;
+            if (args.TryGetValue("interval_seconds", out var ie) && ie.ValueKind == JsonValueKind.Number)
+                intervalSec = Math.Max(15, ie.GetInt32());
+            ScreenWatcherV1.Start(intervalSec, async (description) =>
+            {
+                await AddAssistantMessage("[skarm-watch] " + description);
+            });
+            await Task.CompletedTask;
+            return AgentToolExecutorV1.OkText("Skarmwatch startad — analyserar din skarm var " + intervalSec + "s. Kor screen_watch_stop for att avbryta.");
+        });
+        exec.Register("screen_watch_stop", args =>
+        {
+            ScreenWatcherV1.Stop();
+            return Task.FromResult(AgentToolExecutorV1.OkText("Skarmwatch stoppad."));
+        });
+
+        // Sprint 5 (2026-05-18): Playwright browser autopilot
+        exec.Register("browser_open", async args =>
+        {
+            var url = AgentToolExecutorV1.GetString(args, "url");
+            if (string.IsNullOrWhiteSpace(url)) return AgentToolExecutorV1.Error("url saknas");
+            return await PlaywrightBrowserV1.OpenAsync(url);
+        });
+
+        exec.Register("browser_click", async args =>
+        {
+            var sel = AgentToolExecutorV1.GetString(args, "selector");
+            if (string.IsNullOrWhiteSpace(sel)) return AgentToolExecutorV1.Error("selector saknas");
+            return await PlaywrightBrowserV1.ClickAsync(sel);
+        });
+
+        exec.Register("browser_fill", async args =>
+        {
+            var sel = AgentToolExecutorV1.GetString(args, "selector");
+            var val = AgentToolExecutorV1.GetString(args, "value");
+            if (string.IsNullOrWhiteSpace(sel)) return AgentToolExecutorV1.Error("selector saknas");
+            return await PlaywrightBrowserV1.FillAsync(sel, val);
+        });
+
+        exec.Register("browser_read", async args =>
+        {
+            var sel = AgentToolExecutorV1.GetString(args, "selector");
+            return await PlaywrightBrowserV1.ReadAsync(sel);
+        });
+
+        exec.Register("browser_close", async args =>
+        {
+            return await PlaywrightBrowserV1.CloseAsync();
+        });
+
+        // Sprint 4.6: list_files
+        exec.Register("list_files", args =>
+        {
+            var path = AgentToolExecutorV1.GetString(args, "path");
+            if (string.IsNullOrWhiteSpace(path)) path = Environment.CurrentDirectory;
+            try
+            {
+                if (!Directory.Exists(path))
+                    return Task.FromResult(AgentToolExecutorV1.Error("Mappen finns inte: " + path));
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Innehall i " + path + ":");
+                var dirs = Directory.GetDirectories(path).Take(50);
+                var files = Directory.GetFiles(path).Take(100);
+                foreach (var d in dirs) sb.AppendLine("[mapp] " + Path.GetFileName(d));
+                foreach (var f in files)
+                {
+                    var fi = new FileInfo(f);
+                    sb.AppendLine("       " + Path.GetFileName(f) + "  (" + (fi.Length / 1024) + " KB)");
+                }
+                return Task.FromResult(AgentToolExecutorV1.OkText(sb.ToString()));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromResult(AgentToolExecutorV1.Error("list_files: " + ex.Message));
+            }
+        });
+
+        // analyze_screen: ta skarmdump + skicka till llava + returnera svensk beskrivning.
+        exec.Register("analyze_screen", async args =>
+        {
+            var question = AgentToolExecutorV1.GetString(args, "question");
+            if (string.IsNullOrWhiteSpace(question))
+                question = "Beskriv vad du ser pa skarmen pa svenska. Var detaljerad om innehallet.";
+
+            try
+            {
+                if (!OperatingSystem.IsWindows())
+                    return AgentToolExecutorV1.Error("analyze_screen funkar bara pa Windows.");
+                var bytes = ScreenCaptureToolV1.CaptureToBytes(maxWidth: 1280);
+                var base64 = Convert.ToBase64String(bytes);
+
+                var payload = new
+                {
+                    model = "llava:7b",
+                    messages = new[]
+                    {
+                        new { role = "user", content = question, images = new[] { base64 } }
+                    },
+                    stream = false,
+                    keep_alive = "30m"
+                };
+                using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(120));
+                using var resp = await Http.PostAsJsonAsync(OllamaUrl, payload, cts.Token);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    var err = await resp.Content.ReadAsStringAsync();
+                    return AgentToolExecutorV1.Error("llava HTTP " + (int)resp.StatusCode + ": " + err.Substring(0, Math.Min(200, err.Length)));
+                }
+                using var stream = await resp.Content.ReadAsStreamAsync();
+                using var doc = await JsonDocument.ParseAsync(stream);
+                var content = "";
+                if (doc.RootElement.TryGetProperty("message", out var msgEl)
+                    && msgEl.TryGetProperty("content", out var cEl))
+                {
+                    content = cEl.GetString() ?? "";
+                }
+                if (string.IsNullOrWhiteSpace(content)) content = "(llava gav tomt svar)";
+                await AddAssistantMessage(content);
+                return AgentToolExecutorV1.OkText(content);
+            }
+            catch (OperationCanceledException)
+            {
+                return AgentToolExecutorV1.Error("analyze_screen: llava timeout 120s.");
+            }
+            catch (Exception ex)
+            {
+                return AgentToolExecutorV1.Error("analyze_screen: " + ex.Message);
+            }
         });
 
         // Sprint 9 (2026-05-17): calculator + youtube_embed + map_pin.
@@ -1994,6 +2949,33 @@ public sealed class JarvisForm : Form
         {
             var query = routedV1.Arguments.TryGetValue("query", out var q) ? q ?? "" : "";
             await HandleMapShowAsync(query);
+            return true;
+        }
+
+        if (routedV1.Intent is CommandIntent.WidgetLayoutSave
+            or CommandIntent.WidgetLayoutLoad
+            or CommandIntent.WidgetLayoutList
+            or CommandIntent.WidgetLayoutDelete)
+        {
+            await AddAssistantMessage(WidgetLayoutCommandHandlerV1.Apply(routedV1, ProjectRoot));
+            if (routedV1.Intent == CommandIntent.WidgetLayoutSave && _webView.CoreWebView2 is not null)
+            {
+                var nameArg = routedV1.Arguments.TryGetValue("name", out var n) ? n : "";
+                var nameJson = JsonSerializer.Serialize(nameArg);
+                await _webView.CoreWebView2.ExecuteScriptAsync(
+                    $"window.jarvisWidgetCollectCurrentLayoutV1 && window.jarvisWidgetCollectCurrentLayoutV1({nameJson});");
+            }
+            if (routedV1.Intent == CommandIntent.WidgetLayoutLoad && _webView.CoreWebView2 is not null)
+            {
+                var nameArg = routedV1.Arguments.TryGetValue("name", out var n) ? n : "";
+                var layout = WidgetLayoutStoreV1.Get(ProjectRoot, nameArg);
+                if (layout is not null)
+                {
+                    var json = WidgetLayoutStoreV1.ToClientJson(new List<WidgetLayoutV1> { layout });
+                    await _webView.CoreWebView2.ExecuteScriptAsync(
+                        $"window.jarvisWidgetApplyLayoutV1 && window.jarvisWidgetApplyLayoutV1({json});");
+                }
+            }
             return true;
         }
 
@@ -8381,6 +9363,85 @@ public sealed class JarvisForm : Form
         else
         {
             await AddAssistantMessage("Karta-note hittades inte: " + id);
+        }
+    }
+
+    private async Task SendWidgetLayoutsAsync()
+    {
+        if (_webView.CoreWebView2 is null) return;
+        var all = WidgetLayoutStoreV1.LoadAll(ProjectRoot);
+        var json = WidgetLayoutStoreV1.ToClientJson(all);
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisWidgetSetLayoutsV1 && window.jarvisWidgetSetLayoutsV1({json});");
+    }
+
+    private async Task HandleWidgetLayoutSaveFinalizeAsync(JsonElement root)
+    {
+        try
+        {
+            var name = root.TryGetProperty("name", out var nEl) ? (nEl.GetString() ?? "") : "";
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                await AddAssistantMessage("Widget-layout save: namn saknas.");
+                return;
+            }
+            var widgets = new List<WidgetPlacementV1>();
+            if (root.TryGetProperty("widgets", out var arr) && arr.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var w in arr.EnumerateArray())
+                {
+                    var t = w.TryGetProperty("type", out var tEl) ? (tEl.GetString() ?? "") : "";
+                    var gx = w.TryGetProperty("gridX", out var gxEl) ? gxEl.GetInt32() : 0;
+                    var gy = w.TryGetProperty("gridY", out var gyEl) ? gyEl.GetInt32() : 0;
+                    var gw = w.TryGetProperty("gridW", out var gwEl) ? gwEl.GetInt32() : 2;
+                    var gh = w.TryGetProperty("gridH", out var ghEl) ? ghEl.GetInt32() : 2;
+                    Dictionary<string, string>? opts = null;
+                    if (w.TryGetProperty("options", out var oEl) && oEl.ValueKind == JsonValueKind.Object)
+                    {
+                        opts = new Dictionary<string, string>();
+                        foreach (var p in oEl.EnumerateObject())
+                            opts[p.Name] = p.Value.ToString();
+                    }
+                    if (!string.IsNullOrWhiteSpace(t))
+                        widgets.Add(new WidgetPlacementV1(t, gx, gy, gw, gh, opts));
+                }
+            }
+            var id = name.ToLowerInvariant().Replace(" ", "-");
+            WidgetLayoutStoreV1.Save(ProjectRoot, new WidgetLayoutV1(id, name, widgets));
+            await AddAssistantMessage("Layout '" + name + "' sparad (" + widgets.Count + " widgets).");
+            await SendWidgetLayoutsAsync();
+        }
+        catch (Exception ex)
+        {
+            await AddAssistantMessage("Widget-layout save fel: " + ex.Message);
+        }
+    }
+
+    private async Task HandleWidgetLayoutLoadAsync(JsonElement root)
+    {
+        var id = root.TryGetProperty("id", out var idEl) ? (idEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var layout = WidgetLayoutStoreV1.Get(ProjectRoot, id);
+        if (layout is null)
+        {
+            await AddAssistantMessage("Layout '" + id + "' hittades inte.");
+            return;
+        }
+        if (_webView.CoreWebView2 is null) return;
+        var json = WidgetLayoutStoreV1.ToClientJson(new List<WidgetLayoutV1> { layout });
+        await _webView.CoreWebView2.ExecuteScriptAsync(
+            $"window.jarvisWidgetApplyLayoutV1 && window.jarvisWidgetApplyLayoutV1({json});");
+    }
+
+    private async Task HandleWidgetLayoutDeleteAsync(JsonElement root)
+    {
+        var id = root.TryGetProperty("id", out var idEl) ? (idEl.GetString() ?? "") : "";
+        if (string.IsNullOrWhiteSpace(id)) return;
+        var ok = WidgetLayoutStoreV1.Delete(ProjectRoot, id);
+        if (ok)
+        {
+            await AddAssistantMessage("Layout borttagen.");
+            await SendWidgetLayoutsAsync();
         }
     }
 

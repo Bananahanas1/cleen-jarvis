@@ -89,7 +89,11 @@ internal enum CommandIntent
     VoiceListVoices,
     VoiceSetVoice,
     SceneShow,
-    MapShow
+    MapShow,
+    WidgetLayoutSave,
+    WidgetLayoutLoad,
+    WidgetLayoutList,
+    WidgetLayoutDelete
 }
 
 internal enum CommandRisk
@@ -232,6 +236,29 @@ internal static class CommandRouterV1
         }
         if (command is "karta" or "kartan" or "map" or "visa karta" or "visa kartan")
             return MapResult("");
+
+        // Widget-layout
+        if (command.StartsWith("widget save ") || command.StartsWith("spara layout som "))
+        {
+            var prefix = command.StartsWith("spara layout som ") ? "spara layout som " : "widget save ";
+            return WidgetLayoutResult(CommandIntent.WidgetLayoutSave, command.Substring(prefix.Length).Trim());
+        }
+        if (command.StartsWith("widget load ") || command.StartsWith("ladda layout ")
+            || command.StartsWith("byt till layout "))
+        {
+            string p;
+            if (command.StartsWith("byt till layout ")) p = "byt till layout ";
+            else if (command.StartsWith("ladda layout ")) p = "ladda layout ";
+            else p = "widget load ";
+            return WidgetLayoutResult(CommandIntent.WidgetLayoutLoad, command.Substring(p.Length).Trim());
+        }
+        if (command is "widget list" or "lista layouts" or "visa layouts")
+            return WidgetLayoutResult(CommandIntent.WidgetLayoutList, "");
+        if (command.StartsWith("widget delete ") || command.StartsWith("ta bort layout "))
+        {
+            var p = command.StartsWith("ta bort layout ") ? "ta bort layout " : "widget delete ";
+            return WidgetLayoutResult(CommandIntent.WidgetLayoutDelete, command.Substring(p.Length).Trim());
+        }
 
         if (command is "minnesstatus" or "minne status")
         {
@@ -908,6 +935,20 @@ internal static class CommandRouterV1
             Risk = CommandRisk.SafeUi,
             ToolName = "map.show",
             Arguments = { ["query"] = query ?? "" },
+            ShouldSendToOllama = false
+        };
+    }
+
+    private static CommandResult WidgetLayoutResult(CommandIntent intent, string name)
+    {
+        var args = new Dictionary<string, string>();
+        if (!string.IsNullOrWhiteSpace(name)) args["name"] = name;
+        return new CommandResult
+        {
+            Intent = intent,
+            Risk = CommandRisk.SafeUi,
+            ToolName = "widget.layout." + intent.ToString().Replace("WidgetLayout", "").ToLowerInvariant(),
+            Arguments = args,
             ShouldSendToOllama = false
         };
     }
